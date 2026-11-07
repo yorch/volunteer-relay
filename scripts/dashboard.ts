@@ -17,7 +17,7 @@ interface Message {
 interface LiveTask {
   task: string;
   assignment: { owner: string; baseCommit: string; at: string; text: string };
-  claim: { branch: string; worktree: string } | null;
+  claim: { branch: string; worktree: string; at: string } | null;
   status: {
     state: string;
     text: string;
@@ -27,6 +27,7 @@ interface LiveTask {
   accepted: { commit: string; at: string; text: string } | null;
 }
 interface Board {
+  store: string;
   tasks: LiveTask[];
   messages: Message[];
   unanswered: Message[];
@@ -85,6 +86,56 @@ export function plannedTasks(plan: string, existingIds: Set<string>) {
     );
 }
 
+export async function monitorStatus(store: string, now = new Date()) {
+  try {
+    const value = JSON.parse(
+      await readFile(join(store, "monitor/latest.json"), "utf8"),
+    ) as {
+      running: boolean;
+      checkedAt: string;
+      intervalSeconds: number;
+      alerts: Array<{
+        key: string;
+        kind: string;
+        agent: string;
+        task: string | null;
+        text: string;
+      }>;
+      error: string | null;
+    };
+    if (
+      !Number.isFinite(Date.parse(value.checkedAt)) ||
+      !Number.isFinite(value.intervalSeconds) ||
+      value.intervalSeconds < 1 ||
+      !Array.isArray(value.alerts)
+    )
+      throw new Error("Invalid monitor snapshot");
+    const stale =
+      now.getTime() - Date.parse(value.checkedAt) >
+      (value.intervalSeconds * 2 + 5) * 1000;
+    return {
+      ...value,
+      state: !value.running
+        ? "stopped"
+        : stale
+          ? "stale"
+          : value.error
+            ? "error"
+            : "running",
+    };
+  } catch (error) {
+    return {
+      state:
+        (error as NodeJS.ErrnoException).code === "ENOENT"
+          ? "not-started"
+          : "unavailable",
+      checkedAt: null,
+      alerts: [],
+      error: null,
+    };
+  }
+}
+
 export async function snapshot(root: string) {
   const board: Board = JSON.parse(
     execFileSync(process.execPath, [cli, "board"], {
@@ -117,6 +168,7 @@ export async function snapshot(root: string) {
   tasks.sort((a, b) => a.id.localeCompare(b.id));
   return {
     updatedAt: new Date().toISOString(),
+    monitor: await monitorStatus(board.store),
     tasks,
     messages: board.messages,
     unanswered: board.unanswered,

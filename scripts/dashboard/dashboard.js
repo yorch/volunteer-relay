@@ -88,6 +88,20 @@ function render() {
       (n) => n.dataset.key,
     ),
   );
+  const monitor = data.monitor;
+  $("monitor-status").textContent = monitor?.state ?? "not-started";
+  $("monitor-note").textContent = monitor?.checkedAt
+    ? `Last watcher check: ${date(monitor.checkedAt)}. ${monitor.error ?? "Reports are observations; agents still post their own progress and answers."}`
+    : "Start with bun run agents:watch. The dashboard continues reading the live board independently.";
+  $("monitor-alerts").replaceChildren(
+    ...(monitor?.alerts ?? []).map((alert) =>
+      el(
+        "p",
+        `${alert.agent} · ${alert.task ?? "General"} · ${alert.text}`,
+        "watch-alert",
+      ),
+    ),
+  );
   const states = (state) => data.tasks.filter((t) => t.state === state).length;
   $("metrics").replaceChildren(
     ...[

@@ -24,6 +24,7 @@
     "db:seed": "node packages/db/src/seed.ts",
     "agents": "node scripts/agents.mjs",
     "agents:dashboard": "node scripts/dashboard.ts",
+    "agents:watch": "node scripts/watch.ts",
     "test:e2e": "node node_modules/@playwright/test/cli.js test",
     "test:e2e:install": "node node_modules/@playwright/test/cli.js install chromium",
     "test:integration": "node node_modules/vitest/vitest.mjs run --config packages/db/vitest.integration.config.ts"

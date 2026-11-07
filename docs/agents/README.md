@@ -97,3 +97,24 @@ The dashboard has no write controls or arbitrary file-serving route. Continue po
 ## Second-wave continuation
 
 After the first-wave acceptance, A dispatches B/P1-02 (source/outbox persistence only) and E/P2-02 (development-only fixture intake/review screens) from an exact new baseline. Resume their existing conversations by pointing them to `docs/agents/resume/B-P1-02.md` and `docs/agents/resume/E-P2-02.md` in the primary checkout. These files supersede first-wave task/resource defaults and include new branch/worktree/private database instructions. Accepted first-wave worktrees remain frozen. D remains on standby pending a bounded persistence/worker assignment; no extra session is launched by board dispatch.
+
+## Continuous coordination watcher
+
+Start **one** shared watcher with `bun run agents:watch` under Node 26.11.1. It polls every 30 seconds and remains running until Ctrl+C/SIGTERM. It needs no open browser or extra model/harness. From an older linked checkout that does not yet contain this script, run `node /absolute/path/to/primary/scripts/watch.ts` under the pinned Node runtime. Git-common-directory discovery and RELAY_COORD_DIR select the same shared store across all harnesses.
+
+Useful commands:
+
+```sh
+bun run agents:watch
+bun run agents:watch --status
+bun run agents:watch --once
+bun run agents:watch --interval 15 --stale-minutes 20 --unanswered-minutes 5
+```
+
+The watcher publishes an atomic 0600 heartbeat/summary at `.relay-coordination/monitor/latest.json` and up to 200 change records under `monitor/events/`. Records contain task states, counts, message IDs and attention summaries, without duplicating message bodies. It observes board updates plus primary task cards/STATUS. It records one baseline, then changes or threshold transitions rather than logging every unchanged poll. On restart it compares with the last observation, including messages received while stopped. Read errors retain the last successful data with an explicit error; recovery clears that error. Generated files remain ignored and outside Docker build contexts.
+
+Attention includes every unanswered question/request (overdue after five minutes), unclaimed assignments, owner-reported blockers, ready handoffs awaiting A, and active work with no progress report for 20 minutes. These thresholds are configurable observations, not deadlines or proof that an agent stopped. Task-report age uses the latest status, then claim, then assignment timestamp. Answer the original thread with the existing CLI; the watcher notices the answer on its next poll. It does not generate replies/reminders, mutate task state, write tracked STATUS, execute messages, inspect private conversations, launch agents or wake stopped harnesses. Agents must continue reporting progress and reading their inbox at the normal checkpoints.
+
+The dashboard shows watcher health, last-check time and attention items separately from its own five-second board refresh. A missing/stopped/stale/error watcher never prevents the dashboard reading the board directly. A heartbeat becomes stale after two polling intervals plus five seconds. CLI `--status` includes this computed health. A healthy watcher heartbeat establishes only monitor freshness, never harness liveness.
+
+A shared exclusive lock prevents duplicate watchers. A definitely dead PID's lock can be recovered at startup; a live or inaccessible PID is never reclaimed based on age. Graceful stop marks the observation stopped and releases its lock. PID reuse is handled conservatively as a live owner. If a crash leaves the short-lived recovery.lock, inspect its recorded PID and verify it is no longer running before removing that monitor-owned recovery file; never delete task claims or a live watcher lock to unblock startup. This is a local foreground process, not an OS login/reboot service.

@@ -285,3 +285,21 @@ select {
   width: 100%;
   min-width: 0;
 }
+
+.monitor {
+  margin-bottom: 28px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: white;
+}
+.monitor .section-heading {
+  margin-bottom: 8px;
+}
+.watch-alert {
+  font-size: 12px;
+  padding: 10px 12px;
+  border-left: 3px solid #bd9053;
+  background: #faf6ec;
+  overflow-wrap: anywhere;
+}
