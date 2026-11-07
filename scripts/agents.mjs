@@ -182,7 +182,7 @@ export async function main(args = process.argv.slice(2)) {
   if (command === "prompt") {
     const agent = lane(rest[0]);
     const base = new URL("../docs/agents/", import.meta.url);
-    return `${await readFile(new URL("COMMON.md", base), "utf8")}\n${await readFile(new URL(`prompts/${agent}.md`, base), "utf8")}`;
+    return `${await readFile(new URL("BOOTSTRAP.md", base), "utf8")}\n${await readFile(new URL("COMMON.md", base), "utf8")}\n${await readFile(new URL(`prompts/${agent}.md`, base), "utf8")}`;
   }
   const valid = [
     "init",

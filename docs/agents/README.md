@@ -29,14 +29,11 @@ Tracked docs contain durable decisions, scope and accepted milestone status. Liv
 bun run agents assign --agent A --task P1-01 --owner B --ref HEAD --text 'Wave 1: identity/tenancy slice in P1-01 only'
 bun run agents assign --agent A --task P2-01 --owner D --ref HEAD --text 'Wave 1: deterministic extraction/eval slice only'
 bun run agents assign --agent A --task P2-00 --owner E --ref HEAD --text 'Wave 1: visual foundation only'
-git worktree add -b agents/B-P1-01 ../volunteer-relay-B HEAD
-git worktree add -b agents/D-P2-01 ../volunteer-relay-D HEAD
-git worktree add -b agents/E-P2-00 ../volunteer-relay-E HEAD
 ```
 
-Use the assignment's exact baseCommit for each worktree if HEAD changed between commands. B uses a distinct database such as `relay_b_p1_01`; every PostgreSQL test suite gets a separate test database. Do not have workers start the same Compose project/ports or reset a shared database; A provisions shared infrastructure and workers isolate database names, ports and private test attachments as needed.
+Workers create/resume their own linked worktree from the assignment's exact baseCommit using docs/agents/BOOTSTRAP.md. Setup may start before assignment using primary HEAD, but application work waits for dispatch/baseline verification. B provisions its own Compose PostgreSQL project on port 55431, development database relay_b_p1_01 and separate relay_b_p1_01_test; D needs no database/provider for its first slice; E previews on port 3103. Each worker creates ignored local environment/attachment/setup files. Do not start the same Compose project/ports or reset a shared database.
 
-3. Open the chosen harness in each worktree. To obtain the **full copy/paste initial prompt**, run `bun run agents prompt B` (or A–F) and give that output to the session. This concatenates COMMON.md and the lane prompt. Do not assume a particular harness's implicit instruction loader. No harness-specific command flags or cross-harness agent APIs are required. C/F prompts are ready but remain standby until assigned. The kit does not itself start any harness, worktree or application worker.
+3. Open each chosen harness in the primary checkout or its already-created worker worktree; its prompt tells it to create/resume its own worktree. To obtain the **full copy/paste initial prompt**, run `bun run agents prompt B` (or A–F) and give that output to the session. This concatenates BOOTSTRAP.md, COMMON.md and the lane prompt. Do not assume a particular harness's implicit instruction loader. No harness-specific command flags or cross-harness agent APIs are required. C/F prompts are ready but remain standby until assigned. The kit does not itself start any harness, worktree or application worker.
 4. Workers install with `bun install --frozen-lockfile`, read board/inbox/card, and claim from their linked worktree:
 
 ```sh
@@ -83,4 +80,4 @@ Design references: [Git linked worktrees](https://git-scm.com/docs/git-worktree)
 
 ## Prepared worker launch prompts
 
-For the current three-worker setup, copy the entire contents of `docs/agents/launch/B.md`, `D.md` or `E.md` into the corresponding harness session. These snapshots include the shared and lane-specific instructions plus concrete local startup paths and commands. They work unchanged across shell-capable harnesses; choose any harness for any lane. A remains the existing coordinator session. Board assignments and linked worktrees must be dispatched/prepared before application work starts; the prompt reports availability and waits if either is missing. The startup snapshots reference orchestration baseline `99d4f98`; subsequent board assignments/current tracked rules take precedence.
+For the current three-worker setup, copy the entire contents of `docs/agents/launch/B.md`, `D.md` or `E.md` into the corresponding harness session. These snapshots include the shared and lane-specific instructions plus concrete local startup paths and commands. They work unchanged across shell-capable harnesses; choose any harness for any lane. A remains the existing coordinator session. Workers prepare their own branch/worktree, tools, dependencies, ignored local settings and task-private resources; only A dispatches assignments. They may complete setup before dispatch and wait only to start application code. Exact board baseCommit/current tracked rules take precedence.

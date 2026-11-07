@@ -344,6 +344,7 @@ it("provides all six full prompts and supports multiline files without shell int
     for (const agent of ["A", "B", "C", "D", "E", "F"]) {
       const prompt = cli(root, "prompt", agent);
       expect(prompt.code).toBe(0);
+      expect(prompt.output).toContain("Worker self-service setup");
       expect(prompt.output).toContain("Shared agent operating prompt");
       expect(prompt.output).toContain(`Lane ${agent}`);
     }
