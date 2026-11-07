@@ -85,15 +85,23 @@
   position: fixed;
   top: 0.5rem;
   left: 0.5rem;
-  transform: translateY(-200%);
+  clip-path: inset(50%);
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  white-space: nowrap;
   background: white;
   color: #196c5b;
-  padding: 0.75rem;
-  border: 2px solid currentColor;
+  padding: 0;
+  border: 0;
   z-index: 10;
 }
 .skip:focus {
-  transform: none;
+  clip-path: none;
+  width: auto;
+  height: auto;
+  padding: 0.75rem;
+  border: 2px solid currentColor;
 }
 .volunteerHeader {
   display: flex;
