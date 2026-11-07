@@ -1,7 +1,21 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-// Caller owns pool lifecycle. Tenant repositories and schema arrive in P1.
+import * as schema from "./schema/index.ts";
+
+export type Database = ReturnType<typeof createDatabase>["db"];
+
+// Caller owns pool lifecycle. Domain tables and tenant repositories land with
+// P1-02; this slice provides the auth/tenancy schema and its readers.
 export function createDatabase(connectionString: string) {
   const pool = new Pool({ connectionString });
-  return { db: drizzle(pool), close: () => pool.end() };
+  return {
+    db: drizzle(pool, { schema }),
+    close: () => pool.end(),
+  };
 }
+
+export { and, eq, sql } from "drizzle-orm";
+export * from "./migrations.ts";
+export * from "./repositories/memberships.ts";
+export * as schema from "./schema/index.ts";
+export * from "./seed-data.ts";
