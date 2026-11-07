@@ -58,7 +58,11 @@ export type RevisionInsertOutcome =
         | "external-message"
         | "attachment-identity";
     }
-  | { kind: "invalid-target"; field: "author-membership" | "reply-source" };
+  | { kind: "invalid-target"; field: "author-membership" | "reply-source" }
+  | {
+      kind: "invalid-envelope";
+      reason: "self-reply" | "predecessor" | "unspecified";
+    };
 
 /**
  * Storage port for source persistence. The implementation owns transactionality

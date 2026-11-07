@@ -1,5 +1,5 @@
 CREATE TABLE "outbox_event" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" text NOT NULL,
 	"organization_id" text NOT NULL,
 	"type" text NOT NULL,
 	"aggregate_id" text NOT NULL,
@@ -10,6 +10,7 @@ CREATE TABLE "outbox_event" (
 	"occurred_at" timestamp with time zone NOT NULL,
 	"dispatched_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "outbox_event_organization_id_id_pk" PRIMARY KEY("organization_id","id"),
 	CONSTRAINT "outbox_event_type_check" CHECK ("outbox_event"."type" in ('source.received'))
 );
 --> statement-breakpoint
@@ -76,7 +77,7 @@ CREATE TABLE "source_revision" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "source_revision_organization_id_source_id_revision_pk" PRIMARY KEY("organization_id","source_id","revision"),
 	CONSTRAINT "source_revision_channel_check" CHECK ("source_revision"."channel" in ('web', 'import', 'telegram')),
-	CONSTRAINT "source_revision_sequence_check" CHECK (("source_revision"."revision" = 1 and "source_revision"."replaces_revision" is null) or ("source_revision"."revision" > 1 and "source_revision"."replaces_revision" = "source_revision"."revision" - 1)),
+	CONSTRAINT "source_revision_sequence_check" CHECK (("source_revision"."revision" = 1 and "source_revision"."replaces_revision" is null) or ("source_revision"."revision" > 1 and "source_revision"."replaces_revision" is not null and "source_revision"."replaces_revision" = "source_revision"."revision" - 1)),
 	CONSTRAINT "source_revision_reply_check" CHECK ("source_revision"."reply_to_source_id" is null or "source_revision"."reply_to_source_id" <> "source_revision"."source_id")
 );
 --> statement-breakpoint
@@ -87,7 +88,7 @@ ALTER TABLE "source_attachment" ADD CONSTRAINT "source_attachment_revision_fk" F
 ALTER TABLE "source_attachment" ADD CONSTRAINT "source_attachment_identity_fk" FOREIGN KEY ("organization_id","source_id","attachment_id") REFERENCES "public"."source_attachment_identity"("organization_id","source_id","attachment_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "source_attachment_identity" ADD CONSTRAINT "source_attachment_identity_source_fk" FOREIGN KEY ("organization_id","source_id") REFERENCES "public"."source"("organization_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "source_author" ADD CONSTRAINT "source_author_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "source_author" ADD CONSTRAINT "source_author_current_membership_id_member_id_fk" FOREIGN KEY ("current_membership_id") REFERENCES "public"."member"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "source_author" ADD CONSTRAINT "source_author_current_membership_fk" FOREIGN KEY ("organization_id","current_membership_id") REFERENCES "public"."member"("organization_id","id") ON DELETE SET NULL ("current_membership_id") ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "source_revision" ADD CONSTRAINT "source_revision_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "source_revision" ADD CONSTRAINT "source_revision_source_fk" FOREIGN KEY ("organization_id","source_id") REFERENCES "public"."source"("organization_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "source_revision" ADD CONSTRAINT "source_revision_author_reference_fk" FOREIGN KEY ("organization_id","author_membership_id") REFERENCES "public"."source_author"("organization_id","membership_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -104,4 +105,5 @@ END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
 CREATE TRIGGER source_revision_immutable BEFORE UPDATE ON "source_revision" FOR EACH ROW EXECUTE FUNCTION relay_reject_evidence_update();--> statement-breakpoint
-CREATE TRIGGER source_attachment_identity_immutable BEFORE UPDATE ON "source_attachment_identity" FOR EACH ROW EXECUTE FUNCTION relay_reject_evidence_update();
+CREATE TRIGGER source_attachment_identity_immutable BEFORE UPDATE ON "source_attachment_identity" FOR EACH ROW EXECUTE FUNCTION relay_reject_evidence_update();--> statement-breakpoint
+CREATE TRIGGER source_attachment_links_immutable BEFORE UPDATE ON "source_attachment" FOR EACH ROW EXECUTE FUNCTION relay_reject_evidence_update();

@@ -78,7 +78,11 @@ export type RevisionInsertOutcomeRecord =
         | "external-message"
         | "attachment-identity";
     }
-  | { kind: "invalid-target"; field: "author-membership" | "reply-source" };
+  | { kind: "invalid-target"; field: "author-membership" | "reply-source" }
+  | {
+      kind: "invalid-envelope";
+      reason: "self-reply" | "predecessor" | "unspecified";
+    };
 
 export interface SourceStoreRecord {
   insertRevision(
@@ -112,6 +116,27 @@ function pgErrorField(
 function referenceTarget(error: unknown): "reply-source" | null {
   const constraint = pgErrorField(error, "constraint");
   if (constraint === "source_revision_reply_fk") return "reply-source";
+  return null;
+}
+
+// Constraint failures are mapped to bounded outcomes; driver detail (which can
+// contain row values, including source text) never becomes a public failure.
+function checkViolationOutcome(
+  error: unknown,
+): RevisionInsertOutcomeRecord | null {
+  const constraint = pgErrorField(error, "constraint") ?? "";
+  if (constraint.includes("reply_check"))
+    return { kind: "invalid-envelope", reason: "self-reply" };
+  if (constraint.includes("sequence_check"))
+    return { kind: "conflict", reason: "revision" };
+  if (
+    constraint.includes("attachment") ||
+    constraint.includes("channel_check") ||
+    constraint.includes("bytes_check") ||
+    constraint.includes("mime_check") ||
+    constraint.includes("digest_check")
+  )
+    return { kind: "invalid-envelope", reason: "unspecified" };
   return null;
 }
 
@@ -279,6 +304,22 @@ async function ensureAuthorAnchor(
     });
 }
 
+// A revision > 1 must name exactly its immediate predecessor; a first revision
+// must not name one. Missing or wrong predecessors are conflicts, never effects.
+function assertPredecessor(revision: StoredRevisionRecord): void {
+  const isFirst = revision.revision === 1;
+  const expected = revision.revision - 1;
+  if (isFirst) {
+    if (revision.replacesRevision !== null)
+      throw new OutcomeRollback({ kind: "conflict", reason: "revision" });
+    return;
+  }
+  if (revision.replacesRevision === null)
+    throw new OutcomeRollback({ kind: "conflict", reason: "revision" });
+  if (revision.replacesRevision !== expected)
+    throw new OutcomeRollback({ kind: "conflict", reason: "revision" });
+}
+
 // Enforces the sequential revision chain and stable channel/author identity.
 async function assertRevisionChain(
   tx: Tx,
@@ -303,6 +344,7 @@ async function assertRevisionChain(
       throw new OutcomeRollback({ kind: "conflict", reason: "revision" });
     return;
   }
+  // The latest stored revision must be exactly the named predecessor.
   if (latest !== expectedPrevious)
     throw new OutcomeRollback({ kind: "conflict", reason: "revision" });
 
@@ -500,8 +542,9 @@ export function createSourceStore(db: Database): SourceStoreRecord {
       if (locked.rows.length === 0)
         throw new Error("source identity row missing after upsert");
 
-      await ensureAuthorAnchor(tx, revision);
-
+      // Classify an existing idempotency key BEFORE any new-target validation:
+      // a still-authorized caller replaying an accepted envelope must get the
+      // original receipt even if the historical author has since left.
       const existingRow = await existingRevisionForKey(tx, revision);
       if (existingRow) {
         const stored = toRevisionRecord(
@@ -520,6 +563,9 @@ export function createSourceStore(db: Database): SourceStoreRecord {
         );
       }
 
+      // New acceptance: the mapped author must exist in the source tenant now.
+      await ensureAuthorAnchor(tx, revision);
+      assertPredecessor(revision);
       await assertRevisionChain(tx, revision);
       await ensureAttachmentIdentities(tx, revision);
 
@@ -543,7 +589,13 @@ export function createSourceStore(db: Database): SourceStoreRecord {
           const field = referenceTarget(error);
           if (field) return { kind: "invalid-target", field };
         }
-        throw error;
+        if (code === "23514") {
+          const mapped = checkViolationOutcome(error);
+          if (mapped) return mapped;
+        }
+        // Unexpected storage failure: a fixed message with no driver cause, so
+        // no envelope text or PostgreSQL detail can reach the caller.
+        throw new Error("source storage failure");
       }
     },
 

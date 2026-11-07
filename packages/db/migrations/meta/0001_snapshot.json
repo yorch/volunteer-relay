@@ -1,5 +1,5 @@
 {
-  "id": "3bdfc80a-d7e3-4400-a11b-3700d6159652",
+  "id": "97480977-aca6-451e-a514-774252cdbd26",
   "prevId": "84c3c1b4-21c3-4625-a8b9-87f11202c988",
   "version": "7",
   "dialect": "postgresql",
@@ -724,7 +724,7 @@
         "id": {
           "name": "id",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true
         },
         "organization_id": {
@@ -869,7 +869,12 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "outbox_event_organization_id_id_pk": {
+          "name": "outbox_event_organization_id_id_pk",
+          "columns": ["organization_id", "id"]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
@@ -1131,12 +1136,12 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "source_author_current_membership_id_member_id_fk": {
-          "name": "source_author_current_membership_id_member_id_fk",
+        "source_author_current_membership_fk": {
+          "name": "source_author_current_membership_fk",
           "tableFrom": "source_author",
           "tableTo": "member",
-          "columnsFrom": ["current_membership_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": ["organization_id", "current_membership_id"],
+          "columnsTo": ["organization_id", "id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1432,7 +1437,7 @@
         },
         "source_revision_sequence_check": {
           "name": "source_revision_sequence_check",
-          "value": "(\"source_revision\".\"revision\" = 1 and \"source_revision\".\"replaces_revision\" is null) or (\"source_revision\".\"revision\" > 1 and \"source_revision\".\"replaces_revision\" = \"source_revision\".\"revision\" - 1)"
+          "value": "(\"source_revision\".\"revision\" = 1 and \"source_revision\".\"replaces_revision\" is null) or (\"source_revision\".\"revision\" > 1 and \"source_revision\".\"replaces_revision\" is not null and \"source_revision\".\"replaces_revision\" = \"source_revision\".\"revision\" - 1)"
         },
         "source_revision_reply_check": {
           "name": "source_revision_reply_check",

@@ -184,47 +184,67 @@ export function createSourceRepository({
         occurredAt: now(),
       };
 
-      const outcome = await store.insertRevision(
-        {
-          organizationId: envelope.organizationId,
-          sourceId: envelope.sourceId,
-          revision: envelope.revision,
-          channel: envelope.channel,
-          channelIdentity: envelope.channelIdentity,
-          externalMessageId: envelope.externalMessageId,
-          idempotencyKey: envelope.idempotencyKey,
-          authorExternalIdentity: envelope.author.externalIdentity,
-          authorMembershipId: envelope.author.membershipId,
-          occurredAt: envelope.occurredAt
-            ? new Date(envelope.occurredAt)
-            : null,
-          receivedAt: new Date(envelope.receivedAt),
-          timezone: envelope.timezone,
-          text: envelope.text,
-          originalMediaType: envelope.original.mediaType,
-          originalPayload: envelope.original.payload,
-          replyToSourceId: envelope.replyToSourceId,
-          replacesRevision: envelope.replacesRevision,
-          canonicalDigest: digest,
-          // The exact validated envelope is preserved for evidence reads.
-          envelope,
-          // Stored as the first acceptance correlation; a replay returns this.
+      let outcome: Awaited<ReturnType<SourceStore["insertRevision"]>>;
+      try {
+        outcome = await store.insertRevision(
+          {
+            organizationId: envelope.organizationId,
+            sourceId: envelope.sourceId,
+            revision: envelope.revision,
+            channel: envelope.channel,
+            channelIdentity: envelope.channelIdentity,
+            externalMessageId: envelope.externalMessageId,
+            idempotencyKey: envelope.idempotencyKey,
+            authorExternalIdentity: envelope.author.externalIdentity,
+            authorMembershipId: envelope.author.membershipId,
+            occurredAt: envelope.occurredAt
+              ? new Date(envelope.occurredAt)
+              : null,
+            receivedAt: new Date(envelope.receivedAt),
+            timezone: envelope.timezone,
+            text: envelope.text,
+            originalMediaType: envelope.original.mediaType,
+            originalPayload: envelope.original.payload,
+            replyToSourceId: envelope.replyToSourceId,
+            replacesRevision: envelope.replacesRevision,
+            canonicalDigest: digest,
+            // The exact validated envelope is preserved for evidence reads.
+            envelope,
+            // Stored as the first acceptance correlation; a replay returns this.
+            correlationId,
+            attachments: envelope.attachments.map((attachment) => ({
+              id: attachment.id,
+              storageKey: attachment.storageKey,
+              sha256: attachment.sha256,
+              mimeType: attachment.mimeType,
+              bytes: attachment.bytes,
+            })),
+          },
+          event,
+        );
+      } catch {
+        // Storage failures surface as a bounded retryable error; driver detail
+        // (which can contain source text) is never attached.
+        return failure(
+          "DEPENDENCY_UNAVAILABLE",
+          "Source storage is unavailable",
           correlationId,
-          attachments: envelope.attachments.map((attachment) => ({
-            id: attachment.id,
-            storageKey: attachment.storageKey,
-            sha256: attachment.sha256,
-            mimeType: attachment.mimeType,
-            bytes: attachment.bytes,
-          })),
-        },
-        event,
-      );
+          true,
+        );
+      }
 
       if (outcome.kind === "conflict")
         return failure(
           "CONFLICT",
           conflictMessage(outcome.reason),
+          correlationId,
+        );
+      if (outcome.kind === "invalid-envelope")
+        return failure(
+          "VALIDATION",
+          outcome.reason === "self-reply"
+            ? "A source cannot reply to itself"
+            : "Source envelope cannot be stored",
           correlationId,
         );
       if (outcome.kind === "invalid-target")

@@ -25,7 +25,7 @@ const permissionsByRole: Record<Role, string[]> = {
 
 function authorization(): AuthorizationService {
   return {
-    async resolve(userId, organization, correlationId) {
+    async resolve(_userId, _organization, correlationId) {
       return {
         ok: false,
         error: {

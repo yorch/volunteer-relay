@@ -44,14 +44,19 @@ export const sourceAuthor = pgTable(
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
     membershipId: text("membership_id").notNull(),
-    currentMembershipId: text("current_membership_id").references(
-      () => member.id,
-      { onDelete: "set null" },
-    ),
+    // Composite relation so a pointer cannot name another tenant's member; the
+    // migration narrows ON DELETE SET NULL to this column only, so deletion
+    // clears the pointer without touching organization_id.
+    currentMembershipId: text("current_membership_id"),
     createdAt,
   },
   (table) => [
     primaryKey({ columns: [table.organizationId, table.membershipId] }),
+    foreignKey({
+      name: "source_author_current_membership_fk",
+      columns: [table.organizationId, table.currentMembershipId],
+      foreignColumns: [member.organizationId, member.id],
+    }).onDelete("set null"),
   ],
 );
 
@@ -95,9 +100,11 @@ export const sourceRevision = pgTable(
       "source_revision_channel_check",
       sql`${table.channel} in ('web', 'import', 'telegram')`,
     ),
+    // A nullable predecessor on revision > 1 would evaluate to NULL and pass a
+    // bare equality check, so non-nullness is part of the constraint.
     check(
       "source_revision_sequence_check",
-      sql`(${table.revision} = 1 and ${table.replacesRevision} is null) or (${table.revision} > 1 and ${table.replacesRevision} = ${table.revision} - 1)`,
+      sql`(${table.revision} = 1 and ${table.replacesRevision} is null) or (${table.revision} > 1 and ${table.replacesRevision} is not null and ${table.replacesRevision} = ${table.revision} - 1)`,
     ),
     check(
       "source_revision_reply_check",
@@ -220,7 +227,9 @@ export const sourceAttachment = pgTable(
 export const outboxEvent = pgTable(
   "outbox_event",
   {
-    id: text("id").primaryKey(),
+    // Event identity is organization-scoped: the same event id may exist in
+    // another tenant without colliding.
+    id: text("id").notNull(),
     organizationId: text("organization_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
@@ -235,6 +244,7 @@ export const outboxEvent = pgTable(
     createdAt,
   },
   (table) => [
+    primaryKey({ columns: [table.organizationId, table.id] }),
     check("outbox_event_type_check", sql`${table.type} in ('source.received')`),
     uniqueIndex("outbox_event_aggregate_unique").on(
       table.organizationId,

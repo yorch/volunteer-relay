@@ -883,3 +883,258 @@ describe("same identity across tenants", () => {
     expect(errorOf(harborOnlyId).code).toBe("NOT_FOUND");
   });
 });
+
+describe("revision lineage (review corrections)", () => {
+  it("rejects a null predecessor on a later revision as CONFLICT", async () => {
+    const volunteer = await context("user-mira", organizationId, "corr-null");
+    await repository.accept(volunteer, envelope());
+
+    const nullPredecessor = await repository.accept(
+      volunteer,
+      envelope({ revision: 2, idempotencyKey: "idem-null-pred" }),
+    );
+    const error = errorOf(nullPredecessor);
+    expect(error.code).toBe("CONFLICT");
+    expect(error.message).toBe(
+      "Source revision is not the next revision for this source",
+    );
+    expect((await counts()).revisions).toBe(1);
+
+    // The database constraint also rejects a NULL predecessor, not only equality.
+    await expect(
+      db.execute(
+        sql`insert into source_revision
+              (organization_id, source_id, revision, channel, channel_identity,
+               external_message_id, idempotency_key, author_external_identity,
+               received_at, timezone, text_body, original_media_type,
+               original_payload, canonical_digest, envelope, correlation_id)
+            values (${organizationId}, 'source-test-1', 2, 'web', 'web-tidepath',
+                    'external-null', 'idem-null-db', 'Mira', now(), 'UTC', 'text',
+                    'text/plain', 'text', 'digest', '{}'::jsonb, 'corr-db')`,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("rejects a wrong or skipped predecessor as CONFLICT", async () => {
+    const volunteer = await context("user-mira", organizationId, "corr-wrong");
+    await repository.accept(volunteer, envelope());
+    await repository.accept(
+      volunteer,
+      envelope({
+        revision: 2,
+        replacesRevision: 1,
+        idempotencyKey: "idem-r2",
+      }),
+    );
+
+    const skipped = await repository.accept(
+      volunteer,
+      envelope({
+        revision: 4,
+        replacesRevision: 3,
+        idempotencyKey: "idem-r4",
+      }),
+    );
+    expect(errorOf(skipped).code).toBe("CONFLICT");
+
+    const wrong = await repository.accept(
+      volunteer,
+      envelope({
+        revision: 3,
+        replacesRevision: 1,
+        idempotencyKey: "idem-r3-wrong",
+      }),
+    );
+    expect(errorOf(wrong).code).toBe("CONFLICT");
+    expect((await counts()).revisions).toBe(2);
+  });
+});
+
+describe("typed sanitized storage failures", () => {
+  it("maps a self-reply to VALIDATION without leaking source text", async () => {
+    const volunteer = await context("user-mira", organizationId, "corr-self");
+    const source = envelope({
+      replyToSourceId: "source-test-1",
+      sourceId: "source-test-1",
+      text: "SECRET-SYNTHETIC-SOURCE-TEXT",
+    });
+
+    const result = await repository.accept(volunteer, source);
+    const error = errorOf(result);
+    expect(error.code).toBe("VALIDATION");
+    expect(error.message).toBe("A source cannot reply to itself");
+    expect(error.retryable).toBe(false);
+
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain("SECRET-SYNTHETIC-SOURCE-TEXT");
+    expect(serialized.toLowerCase()).not.toContain("violates");
+    expect(serialized.toLowerCase()).not.toContain("constraint");
+    expect((await counts()).revisions).toBe(0);
+  });
+
+  it("keeps a generic retryable failure free of driver detail", async () => {
+    const volunteer = await context("user-mira", organizationId, "corr-driver");
+    // A store that throws a driver-shaped error must not surface its message.
+    const throwingStore = {
+      async insertRevision() {
+        throw Object.assign(new Error("secret driver detail SECRET-TEXT"), {
+          code: "XX000",
+          detail: "Key (text)=(SECRET-TEXT)",
+        });
+      },
+      async findRevision() {
+        return null;
+      },
+    };
+    const isolated = createSourceRepository({
+      authorization,
+      store: throwingStore,
+    });
+    const result = await isolated.accept(volunteer, envelope());
+    const error = errorOf(result);
+    expect(error.code).toBe("DEPENDENCY_UNAVAILABLE");
+    expect(error.retryable).toBe(true);
+    expect(JSON.stringify(result)).not.toContain("SECRET-TEXT");
+  });
+});
+
+describe("authorized replay after the historical author left", () => {
+  it("returns the original receipt to staff while denying the removed author", async () => {
+    const volunteer = await context(
+      "user-mira",
+      organizationId,
+      "corr-original",
+    );
+    const source = envelope();
+    expect((await repository.accept(volunteer, source)).ok).toBe(true);
+
+    await db
+      .delete(member)
+      .where(
+        and(
+          eq(member.organizationId, organizationId),
+          eq(member.id, "tidepath-mira"),
+        ),
+      );
+
+    // Still-authorized staff replaying the identical envelope gets the receipt.
+    const staff = await context(
+      "user-rae",
+      organizationId,
+      "corr-staff-replay",
+    );
+    const replay = await repository.accept(staff, source);
+    expect(replay).toEqual({
+      ok: true,
+      value: {
+        sourceId: "source-test-1",
+        revision: 1,
+        status: "received",
+        correlationId: "corr-original",
+      },
+    });
+
+    // A revoked caller is still denied, and a new mapped-author acceptance fails.
+    expect(errorOf(await repository.accept(volunteer, source)).code).toBe(
+      "FORBIDDEN",
+    );
+    const newSource = envelope({
+      sourceId: "source-after-removal",
+      externalMessageId: "external-after",
+      idempotencyKey: "idem-after",
+    });
+    expect(errorOf(await repository.accept(staff, newSource)).code).toBe(
+      "VALIDATION",
+    );
+    expect((await counts()).revisions).toBe(1);
+  });
+});
+
+describe("tenant-scoped identity hardening", () => {
+  it("rejects a live author pointer that names another tenant's membership", async () => {
+    await expect(
+      db.execute(
+        sql`insert into source_author (organization_id, membership_id, current_membership_id)
+            values (${organizationId}, 'cross-tenant-pointer', 'harbor-nico')`,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("allows the same outbox event id in two tenants", async () => {
+    const tidepath = await context("user-rae", organizationId, "corr-outbox-a");
+    const harbor = await context(
+      "user-nico",
+      otherOrganizationId,
+      "corr-outbox-b",
+    );
+    await repository.accept(
+      tidepath,
+      envelope({
+        sourceId: "source-outbox-a",
+        externalMessageId: "external-outbox-a",
+        idempotencyKey: "idem-outbox-a",
+      }),
+    );
+    await repository.accept(
+      harbor,
+      envelope({
+        organizationId: otherOrganizationId,
+        sourceId: "source-outbox-b",
+        externalMessageId: "external-outbox-b",
+        idempotencyKey: "idem-outbox-b",
+        author: { externalIdentity: "Nico", membershipId: "harbor-nico" },
+      }),
+    );
+
+    // Event identity is organization-scoped, so one id can exist per tenant.
+    // The accept above already produced one event per revision; replace those
+    // rows (outbox rows are mutable, unlike evidence) to reuse a single id.
+    await db.execute(
+      sql`delete from outbox_event where aggregate_id like 'source-outbox-%'`,
+    );
+    const shared = "evt:shared-identity";
+    const aggregates = [
+      { organization: organizationId, aggregate: "source-outbox-a" },
+      { organization: otherOrganizationId, aggregate: "source-outbox-b" },
+    ];
+    for (const { organization, aggregate } of aggregates) {
+      await db.execute(
+        sql`insert into outbox_event
+              (organization_id, id, type, aggregate_id, aggregate_revision, payload,
+               actor, correlation_id, occurred_at)
+            values (${organization}, ${shared}, 'source.received', ${aggregate}, 1,
+                    '{}'::jsonb, '{"kind":"system","service":"worker"}'::jsonb,
+                    'corr-manual', now())`,
+      );
+    }
+    const rows = await db.execute(
+      sql`select organization_id from outbox_event where id = ${shared} order by organization_id`,
+    );
+    expect(rows.rows.length).toBe(2);
+  });
+
+  it("rejects rewrites of attachment revision links", async () => {
+    const volunteer = await context("user-mira", organizationId, "corr-links");
+    await repository.accept(
+      volunteer,
+      envelope({
+        attachments: [
+          {
+            id: "attachment-link",
+            organizationId,
+            storageKey: "private/link.png",
+            sha256: "a".repeat(64),
+            mimeType: "image/png",
+            bytes: 12,
+          },
+        ],
+      }),
+    );
+
+    await expect(
+      db.execute(
+        sql`update source_attachment set revision = revision where source_id = 'source-test-1'`,
+      ),
+    ).rejects.toThrow();
+  });
+});
