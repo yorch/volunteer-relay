@@ -36,3 +36,7 @@ Read [AGENTS.md](AGENTS.md), [status](docs/STATUS.md), [contracts](docs/CONTRACT
 ## Design reference
 
 The [interactive prototype](design/reference/prototype.html) is a standalone visual reference, not an implemented product workflow. Read its [usage notes](design/reference/README.md) and the [review/phase map](docs/design/prototype-review.md) before translating it. E starts with P2-00 visual primitives, then implements screens through the scoped task cards and existing phase gates.
+
+## Running multiple agents
+
+Start with one coordinator and three workers (B data/auth, D extraction, E UI). The [operating kit](docs/agents/README.md) provides shared guidelines, six copy/paste prompts, task dispatch/worktree setup, and a local question/progress board across harnesses. `bun run agents init`, `bun run agents prompt A`, and `bun run agents board` work without additional dependencies. Setup does not launch agents or implement later phases.

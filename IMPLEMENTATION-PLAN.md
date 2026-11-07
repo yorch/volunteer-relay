@@ -225,7 +225,7 @@ Production-capable baseline means single-host operational readiness with documen
 
 ## 9. Parallel-agent execution plan
 
-Use a coordinator/integrator and up to five implementation agents. This is a plan for later implementation; no agents are executing application work yet. Smaller teams combine lanes rather than changing contracts.
+Use a coordinator/integrator and up to five implementation agents. Start with four active sessions: A coordinator plus B identity/domain, D extraction/evals and E UI foundation. Keep C/F as standby lanes initially; rotate them in as tasks become unblocked or a lane completes. Revisit concurrency after two accepted slices based on review backlog, rework and blocked time. The harness-neutral operating kit, six startup prompts, local board and recovery protocol are in `docs/agents/README.md` (ADR 0004). This setup does not launch agents or implement later phases; dispatch uses explicit task assignments. Smaller teams combine lanes sequentially rather than changing contracts.
 
 | Agent lane | Owned areas | Primary deliverables | Dependencies |
 |---|---|---|---|

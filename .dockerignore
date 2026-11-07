@@ -5,3 +5,4 @@ node_modules
 **/dist
 .env
 .env.*
+.relay-coordination

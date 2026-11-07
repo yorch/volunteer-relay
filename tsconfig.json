@@ -20,6 +20,7 @@
     "apps/worker/**/*.ts",
     "fixtures/**/*.ts",
     "tests/**/*.ts",
-    "vitest.config.ts"
+    "vitest.config.ts",
+    "scripts/**/*.test.ts"
   ]
 }

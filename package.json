@@ -21,7 +21,8 @@
     "test": "node node_modules/vitest/vitest.mjs run",
     "verify": "node scripts/run.mjs verify",
     "db:migrate": "node packages/db/src/migrate.ts",
-    "db:seed": "node packages/db/src/seed.ts"
+    "db:seed": "node packages/db/src/seed.ts",
+    "agents": "node scripts/agents.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.6",

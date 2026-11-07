@@ -1,6 +1,6 @@
 # Milestone status
 
-Updated 2026-11-07. Coordinator A owns this file. Current assignment: archive/review the user-supplied prototype and integrate its handoff into the plan. No later application implementation is authorized; task cards remain queued handoffs.
+Updated 2026-11-07. Coordinator A owns this file. Current assignment: P0-06 completed, harness-neutral multi-agent operating kit ready. Later application task cards remain queued; no application agent sessions were launched by this setup.
 
 | Milestone | Status                          | Evidence / remaining gate                                                                                                                                                       |
 | --------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -40,3 +40,9 @@ Preserved design/reference/prototype.html as submitted, with usage notes, ADR 00
 Source review and Node 26 stubbed-DOM execution covered all seven page-render functions. Reproduced shared-visit undercount, first-session reset aliasing and selection/filter inconsistency; duration defaults and role/tenant gaps are documented. Browser host unavailable: actual visual/responsive/accessibility verification remains a UI acceptance dependency. The reference path alone is excluded from Biome to preserve its original bytes; production translations remain subject to all checks. No live integrations or browser acceptance are claimed by this commit.
 
 Prototype handoff verification: `bun run verify` passed (Biome, generated Next route types, strict type checks, six existing tests, web/worker builds); `git diff --check` passed. Application code, dependencies and lockfile are unchanged. Temporary review server stopped.
+
+## Agent orchestration setup — 2026-11-07
+
+A owns P0-06. Recommended initial concurrency: A + B(P1-01) + D(P2-01) + E(P2-00), with C/F standby and later rotation. Added docs/agents common/lane prompts, operating instructions, ADR 0004 and a Node-only local CLI for assignment, exclusive claim, progress, threaded questions/answers, ready handoffs and coordinator acceptance. Live board state is ignored and shared across linked worktrees; durable scope/decisions remain tracked. Product contracts, dependencies, fixtures and migrations are unchanged. Verification passed; no application assignments have been issued.
+
+P0-06 verification: `bun run verify` passed with four test files / eleven tests (including five coordination scenarios), strict type checks, Biome and web/worker builds. Temporary Git repositories/worktrees verified a concurrent claim race, shared discovery, threaded answers, one active lane assignment, worktree/owner checks, dirty handoff rejection, accepted-commit ancestry and abandoned-task archive/reassignment. `bun install --frozen-lockfile` made no changes. Real local init/board/inbox commands succeeded with an empty board; Git ignores the store and Docker excludes it. No real application task was assigned, no provider was called, and no external messages were sent.

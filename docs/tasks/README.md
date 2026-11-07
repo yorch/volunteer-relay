@@ -21,3 +21,7 @@ P1-02 follows P1-01 and stays in B's lane because both own database files. One o
 The user-supplied reference is frozen at design/reference/prototype.html; read docs/design/prototype-review.md before UI work. E starts P2-00 independently on the narrow paths in that card, then P2-02 consumes its foundation for M2 inbox/volunteer review. P3-04 owns import/photo screens (M3), P5-03 owns need-board screens (basic M2, delivery/deadlines M5), and P6-01 owns ledger/report screens (basic M2 ledger, full M6 reporting). These E cards are sequential by default; any split needs A-assigned owners and non-overlapping paths. They do not expand the current implementation scope.
 
 B supplies domain services/query definitions, C intake, D extraction and F delivery. A lands missing query/lifecycle/upload/edit contracts and routes before E wires them. No lane implements reporting math or auth in UI to compensate for a missing service. P2-02 remains fixture-backed until its named prerequisites land; later screens cannot skip milestone gates because a reference button already exists.
+
+## Dispatch and communication
+
+See docs/agents/README.md and P0-06 for the harness-neutral operating kit. A starts with B(P1-01), D(P2-01) and E(P2-00); C/F are standby/rotation lanes. Local board assignments record exact baseline commits and task slices. Workers claim in isolated worktrees and post progress/questions/handoffs there; A alone updates tracked milestone/task status after acceptance. A task card existing is not an automatic assignment.

@@ -4,7 +4,11 @@ if (process.versions.node !== "26.11.1")
 import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
-    include: ["packages/**/*.test.ts", "fixtures/**/*.test.ts"],
+    include: [
+      "packages/**/*.test.ts",
+      "fixtures/**/*.test.ts",
+      "scripts/**/*.test.ts",
+    ],
     environment: "node",
   },
 });
