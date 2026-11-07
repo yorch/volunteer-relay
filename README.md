@@ -40,3 +40,7 @@ The [interactive prototype](design/reference/prototype.html) is a standalone vis
 ## Running multiple agents
 
 Start with one coordinator and three workers (B data/auth, D extraction, E UI). The [operating kit](docs/agents/README.md) provides shared guidelines, six copy/paste prompts, task dispatch/worktree setup, and a local question/progress board across harnesses. `bun run agents init`, `bun run agents prompt A`, and `bun run agents board` work without additional dependencies. Setup does not launch agents or implement later phases.
+
+## Browser smoke checks
+
+A provides the shared Chromium runner; E owns product UI specs. After `bun run test:e2e:install`, run `bun run test:e2e` for the current browser suite at 1440/1024/390/320px. These checks run separately from `bun run verify`. See tests/e2e/README.md for isolated ports, preview reuse and the limits of baseline smoke coverage.

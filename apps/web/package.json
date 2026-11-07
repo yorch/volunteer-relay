@@ -9,6 +9,8 @@
     "better-auth": "1.7.18",
     "@relay/config": "workspace:*",
     "@relay/contracts": "workspace:*",
-    "@relay/db": "workspace:*"
-  }
+    "@relay/db": "workspace:*",
+    "@relay/domain": "workspace:*"
+  },
+  "type": "module"
 }

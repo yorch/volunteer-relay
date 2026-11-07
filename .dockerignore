@@ -7,3 +7,6 @@ node_modules
 .env.*
 .relay-coordination
 **/.relay-local
+**/test-results
+**/playwright-report
+**/next-env.d.ts

@@ -9,3 +9,5 @@ Official references consulted: [Next installation](https://nextjs.org/docs/app/g
 Infrastructure uses PostgreSQL 18.1 and Mailpit 1.27.10, with registry tags verified before Compose startup. This is a local-only topology. Dependency upgrades require repeating metadata/peer checks, frozen installation, Node-runtime verification, tests, builds and Compose smoke checks.
 
 A Node 26 import/construction smoke check loaded Better Auth, its Drizzle adapter, Drizzle and pg successfully. Better Auth correctly reported the missing user/session/account/verification tables because Phase 0 intentionally has no auth schema. This is expected and is not a passing authentication test; P1-01 must generate and validate those tables before enabling auth routes.
+
+First-wave tooling addition: @playwright/test 1.65.0 was checked through npm engine metadata (Node >=20) and official Playwright configuration/browser documentation before pinning. A adds it as the previously accepted small-browser-suite default, with Chromium-only viewport smoke and explicit Node 26 guards. Browser binaries are installed with the matching package CLI. Product UI acceptance remains a separate E handoff.

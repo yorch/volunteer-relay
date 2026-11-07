@@ -1,3 +1,19 @@
-# Browser boundary
+# Browser verification
 
-Playwright is the accepted planning default; installation and product smoke flows arrive with the first authenticated workflow. No browser acceptance gate is claimed at M0.
+A owns the root Playwright package/config/runner and platform smoke tests. E owns `tests/e2e/ui/**` within its assigned card. Browser smoke is separate from root Vitest and does not prove product authentication, tenant isolation, extraction or UI acceptance.
+
+Under Node 26.11.1:
+
+```sh
+bun install --frozen-lockfile
+bun run test:e2e:install
+bun run test:e2e
+```
+
+Playwright 1.65.0 requires Node >=20; the actual process is guarded at 26.11.1. The managed localhost dev server defaults to port 3190; set PLAYWRIGHT_PORT to a free per-worktree port. Existing servers are not reused unless you deliberately set PLAYWRIGHT_REUSE_SERVER=true (disabled in CI). If an owned Next dev preview is already running in the same worktree, stop it first or point the test port at it and opt into reuse; Next shares its dev output/lock inside that worktree. Never stop/reuse another worker's server implicitly. Avoid simultaneous build/typegen/dev tasks sharing .next in one worktree.
+
+Projects cover Chromium viewport widths 1440/1024/390/320. These are viewport/emulation checks, not Firefox/WebKit/native-device coverage. `bun run test:e2e --list` lists cases without launching Chromium. E can add specs under its owned test path and filter with `bun run test:e2e tests/e2e/ui/foundation` after the specs exist. Failure traces/screenshots and the HTML report are ignored by Git and Docker; use synthetic data only.
+
+The platform baseline checks browser startup, root page rendering, no uncaught page errors, horizontal fit, and actual Node server health. It does not certify visual contrast, keyboard flows or the prototype translation; E must supply that evidence with its component slice. Official configuration/browser guidance: https://playwright.dev/docs/test-configuration and https://playwright.dev/docs/browsers.
+
+Next 16.4.5 dev also generates its managed apps/web/AGENTS.md and rewrites next-env.d.ts between dev/build/typegen modes. The managed instructions are committed once; next-env.d.ts is intentionally untracked/ignored per the installed Next TypeScript guide. Root typecheck generates route/environment types before tsc, so fresh checkouts do not need that generated file committed.
