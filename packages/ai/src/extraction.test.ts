@@ -559,3 +559,98 @@ describe("evidence span helpers", () => {
     expect(findSpan(text, "")).toBeNull();
   });
 });
+
+describe("error envelopes never echo provider-controlled identifiers", () => {
+  function forgedIdentifierProvider(
+    source: SourceEnvelope,
+    options: { extraProviderKey: boolean },
+  ): ExtractionProvider {
+    const hostileLabel = source.text;
+    return {
+      name: "hostile-identifier-stub",
+      async extract() {
+        const item = {
+          kind: "need",
+          key: hostileLabel,
+          category: "supplies",
+          urgency: "routine",
+          summary: "Synthetic",
+          provisional: false,
+          evidence: [
+            {
+              kind: "text",
+              field: hostileLabel,
+              sourceId: source.sourceId,
+              sourceRevision: source.revision,
+              start: 0,
+              end: 5,
+              quote: "forged",
+            },
+          ],
+        };
+        return {
+          items: [
+            options.extraProviderKey
+              ? { ...item, [hostileLabel]: "extra" }
+              : item,
+          ],
+          unresolved: [],
+        };
+      },
+    };
+  }
+
+  it("reports a safe index path when the item key and evidence field carry source text", async () => {
+    const source = getSource("source-01");
+    const text = source.text;
+    const attempts: ExtractionAttempt[] = [];
+    const result = await makeService(
+      forgedIdentifierProvider(source, { extraProviderKey: false }),
+      { onAttempt: (record) => attempts.push(record) },
+    ).extract(contextFor(source), source, versions);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe("VALIDATION");
+    expect(apiErrorSchema.safeParse({ error: result.error }).success).toBe(
+      true,
+    );
+    expect(Object.keys(result.error.fields ?? {})).toEqual([
+      "items[0].evidence[0]",
+    ]);
+    expect(result.error.fields?.["items[0].evidence[0]"]).toEqual([
+      "quote_not_in_source_revision",
+    ]);
+    expect(result.error.fields).not.toHaveProperty(text);
+    expect(JSON.stringify(result)).not.toContain(text);
+    expect(JSON.stringify(attempts)).not.toContain(text);
+    expect(attempts.map((record) => record.outcome)).toEqual([
+      "evidence_invalid",
+    ]);
+  });
+
+  it("does not echo an unrecognized provider key that carries source text", async () => {
+    const source = getSource("source-01");
+    const text = source.text;
+    const attempts: ExtractionAttempt[] = [];
+    const result = await makeService(
+      forgedIdentifierProvider(source, { extraProviderKey: true }),
+      { onAttempt: (record) => attempts.push(record) },
+    ).extract(contextFor(source), source, versions);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe("VALIDATION");
+    expect(apiErrorSchema.safeParse({ error: result.error }).success).toBe(
+      true,
+    );
+    expect(result.error.fields).toEqual({
+      "items[0]": ["root:unrecognized_keys"],
+    });
+    expect(JSON.stringify(result)).not.toContain(text);
+    expect(JSON.stringify(attempts)).not.toContain(text);
+    expect(attempts.map((record) => record.outcome)).toEqual([
+      "schema_invalid",
+    ]);
+  });
+});

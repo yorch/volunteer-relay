@@ -59,6 +59,61 @@ function failure(
 }
 
 /**
+ * Contract field names that may appear in a reported validation path. Error
+ * envelopes never echo provider-controlled identifiers: a model-supplied item
+ * key or evidence label can contain arbitrary source text, so only array
+ * positions and known schema field names are allowed through.
+ */
+const SAFE_PATH_SEGMENTS: ReadonlySet<string> = new Set([
+  "schemaVersion",
+  "organizationId",
+  "sourceId",
+  "sourceRevision",
+  "runId",
+  "modelVersion",
+  "promptVersion",
+  "policyVersion",
+  "items",
+  "unresolved",
+  "evidence",
+  "field",
+  "reason",
+  "kind",
+  "key",
+  "activityKey",
+  "activityKind",
+  "localDate",
+  "datePrecision",
+  "beneficiaryReference",
+  "membershipId",
+  "durationMinutes",
+  "category",
+  "urgency",
+  "summary",
+  "provisional",
+  "targetId",
+  "expectedRevision",
+  "start",
+  "end",
+  "quote",
+  "attachmentId",
+  "observation",
+]);
+const NUMERIC_SEGMENT = /^\d+$/;
+
+function safeIssuePath(path: readonly PropertyKey[]): string {
+  if (path.length === 0) return "root";
+  return path
+    .map((segment) => {
+      if (typeof segment === "number") return String(segment);
+      if (typeof segment !== "string") return "*";
+      if (NUMERIC_SEGMENT.test(segment)) return segment;
+      return SAFE_PATH_SEGMENTS.has(segment) ? segment : "*";
+    })
+    .join(".");
+}
+
+/**
  * Concrete ExtractionService over an untrusted provider.
  *
  * Every provider payload is schema-validated against the frozen contract and
@@ -153,10 +208,8 @@ export function createExtractionService(
               `Extraction item ${index} failed schema validation.`,
               false,
               {
-                [`items[${index}]`]: parsed.error.issues.map((issue) =>
-                  issue.path.length === 0
-                    ? issue.code
-                    : `${issue.path.join(".")}:${issue.code}`,
+                [`items[${index}]`]: parsed.error.issues.map(
+                  (issue) => `${safeIssuePath(issue.path)}:${issue.code}`,
                 ),
               },
             );
@@ -190,10 +243,8 @@ export function createExtractionService(
             "Extraction proposal failed contract validation.",
             false,
             {
-              proposal: validated.error.issues.map((issue) =>
-                issue.path.length === 0
-                  ? issue.code
-                  : `${issue.path.join(".")}:${issue.code}`,
+              proposal: validated.error.issues.map(
+                (issue) => `${safeIssuePath(issue.path)}:${issue.code}`,
               ),
             },
           );
@@ -210,7 +261,8 @@ export function createExtractionService(
           });
           const fields: Record<string, string[]> = {};
           for (const violation of violations) {
-            const key = `${violation.itemKey}.${violation.field}`;
+            // Positions only: item keys and evidence labels are provider input.
+            const key = `items[${violation.itemIndex}].evidence[${violation.evidenceIndex}]`;
             fields[key] = [...(fields[key] ?? []), violation.reason];
           }
           return failure(

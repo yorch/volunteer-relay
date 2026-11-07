@@ -339,7 +339,7 @@ function boundaryProblems(
     problems.push("missing_policy_version");
   for (const violation of verifyProposalEvidence(proposal, source))
     problems.push(
-      `evidence:${violation.itemKey}.${violation.field}:${violation.reason}`,
+      `evidence:items[${violation.itemIndex}].evidence[${violation.evidenceIndex}]:${violation.reason}`,
     );
   return problems;
 }
