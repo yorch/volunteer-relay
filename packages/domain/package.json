@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./auth": "./auth/src/index.ts"
+    "./auth": "./auth/src/index.ts",
+    "./core": "./core/src/sources/index.ts"
   },
   "dependencies": {
     "@relay/contracts": "workspace:*"
