@@ -9,7 +9,10 @@ import { defineConfig } from "vitest/config";
 //     --config packages/db/vitest.integration.config.ts
 export default defineConfig({
   test: {
-    include: ["tests/integration/auth/**/*.test.ts"],
+    include: [
+      "tests/integration/auth/**/*.test.ts",
+      "tests/integration/domain/**/*.test.ts",
+    ],
     environment: "node",
     testTimeout: 30_000,
     hookTimeout: 60_000,

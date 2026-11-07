@@ -14,8 +14,9 @@ export function createDatabase(connectionString: string) {
   };
 }
 
-export { and, eq, sql } from "drizzle-orm";
+export { and, desc, eq, sql } from "drizzle-orm";
 export * from "./migrations.ts";
 export * from "./repositories/memberships.ts";
+export * from "./repositories/sources.ts";
 export * as schema from "./schema/index.ts";
 export * from "./seed-data.ts";
