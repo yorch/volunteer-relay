@@ -367,3 +367,50 @@ it("provides all six full prompts and supports multiline files without shell int
     unlinkSync(note);
   });
 });
+
+it.each(["squash", "rebase"])(
+  "records equivalent %s integration and rejects unrelated changes",
+  async (strategy) => {
+    await fixture(({ root, b }) => {
+      assign(root);
+      ok(b, ...claim);
+      writeFileSync(join(b, "example.txt"), "Synthetic source change\n");
+      git(b, "add", ".");
+      git(b, "commit", "-qm", "feat(test): add synthetic source");
+      const source = ok(b, ...ready).commit;
+      writeFileSync(join(root, "other.txt"), "Concurrent coordinator change\n");
+      git(root, "add", ".");
+      git(root, "commit", "-qm", "chore(test): add coordinator change");
+      const base = git(root, "rev-parse", "HEAD");
+      const options = ["--strategy", strategy, "--integration-base", base];
+      expect(cli(root, ...accept, ...options).code).toBe(1);
+      if (strategy === "squash") {
+        git(root, "merge", "--squash", source);
+        git(root, "commit", "-qm", "feat(test): integrate synthetic source");
+      } else {
+        git(root, "cherry-pick", source);
+      }
+      expect(cli(root, ...accept).code).toBe(1);
+      const accepted = ok(root, ...accept, ...options);
+      expect(accepted.sourceCommit).toBe(source);
+      expect(accepted.strategy).toBe(strategy);
+      expect(accepted.integrationBase).toBe(base);
+      expect(accepted.commit).not.toBe(source);
+    });
+  },
+);
+
+it("rejects merge commits even when handoff ancestry is preserved", async () => {
+  await fixture(({ root, b }) => {
+    const base = assign(root).baseCommit;
+    ok(b, ...claim);
+    writeFileSync(join(b, "example.txt"), "Synthetic source change\n");
+    git(b, "add", ".");
+    git(b, "commit", "-qm", "feat(test): add synthetic source");
+    const source = ok(b, ...ready).commit;
+    git(root, "merge", "--no-ff", "-m", "Synthetic forbidden merge", source);
+    const result = cli(root, ...accept, "--integration-base", base);
+    expect(result.code).toBe(1);
+    expect(result.error).toContain("must not introduce merge commits");
+  });
+});

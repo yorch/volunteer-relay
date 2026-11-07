@@ -32,7 +32,7 @@ git -C "$RELAY_PRIMARY" worktree add -b "$RELAY_BRANCH" "$RELAY_WORKTREE" "$RELA
 
 If the branch already exists but is not checked out anywhere, inspect it, confirm it contains the assigned baseline, and attach it with `git -C "$RELAY_PRIMARY" worktree add "$RELAY_WORKTREE" "$RELAY_BRANCH"`. If the expected path already is the matching registered worktree, resume it. Verify its branch, Git common directory, `git status --short`, and `git merge-base --is-ancestor "$RELAY_BASE" HEAD`. Preserve all existing changes; do not force-add, reset, delete, prune or repurpose a path/branch checked out by another session. Report a genuine ownership/path collision to A. Never switch branches in the primary checkout to prepare your task.
 
-Run subsequent commands from your worktree. When dispatch arrives after setup, read the assignment again and verify its exact baseCommit. If the branch needs a newer baseline, integrate that approved A commit from a clean worker branch (`git merge --ff-only <baseCommit>` for an untouched setup branch); do not discard existing work to force a match.
+Run subsequent commands from your worktree. When dispatch arrives after setup, read the assignment again and verify its exact baseCommit. If the branch needs a newer baseline, integrate that approved A commit from a clean worker branch (`git merge --ff-only <baseCommit>` for an untouched setup branch); for a diverged branch, coordinate a rebase of your own clean branch onto that approved commit. Never create a merge commit or discard existing work to force a match.
 
 ## 3. Install dependencies and create private configuration
 

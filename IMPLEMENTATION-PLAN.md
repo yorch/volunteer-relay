@@ -11,6 +11,8 @@ The product must demonstrate one fictional week end to end: hours counted once, 
 
 Full scope includes authentication, organization isolation, web intake, imports, Telegram, photos, structured AI extraction, deduplication, corrections, review, configurable automation, assignment and escalation, in-app/Telegram/email notifications, reporting, audit history, and single-host operations. Audio, inventory, counseling records, clinical assessment, WhatsApp integration, resource procurement, and autonomous emergency response are outside this release.
 
+Integration policy: follow AGENTS.md for Conventional Commits and linear history. A chooses rebase plus fast-forward or squash per branch; no new merge commits. Existing history is preserved.
+
 ## 2. Confirmed decisions and planning defaults
 
 | Area | Decision | Status |

@@ -62,11 +62,13 @@ For multiline handoffs write a local ignored/temp text file and use `--file /abs
 bun run agents status --agent B --task P1-01 --state ready --commit HEAD --file /tmp/B-handoff.md
 ```
 
-Ready requires the current committed HEAD and a clean claimed worktree. After ready, freeze that slice. A reviews, merges preserving worker commit ancestry, runs the real relevant checks, then records acceptance from a clean integration checkout:
+Ready requires the current committed HEAD and a clean claimed worktree. After ready, freeze that slice. A reviews, selects rebase plus fast-forward or squash according to AGENTS.md, runs the real relevant checks, then records acceptance from a clean integration checkout. Never create a merge commit. Default acceptance checks handoff ancestry and rejects merge commits in the integration range:
 
 ```sh
 bun run agents accept --agent A --task P1-01 --commit HEAD --file /tmp/A-integration-checks.md
 ```
+
+For rewritten commits, save main's exact tip before integration and pass `--strategy squash` or `--strategy rebase` with `--integration-base <saved-SHA>` to accept. The tool records the source SHA, resulting SHA, strategy and integration base, and compares aggregate binary diffs against the source branch's common ancestor with that base. Squash requires one resulting commit. The comparison is deliberately strict: if concurrent edits change patch context or conflict resolution changes behavior, request a refreshed worker handoff rather than bypassing the check. Use `--integration-base` for fast-forward acceptance too when recording the precise integration range. These checks establish change mapping, not correctness; A still reviews and tests.
 
 The tool never merges, pushes, invokes a provider, modifies application contracts, or runs commands from a message. A must update tracked task/milestone status separately. If A requests changes before acceptance, the worker posts working status, commits revisions and produces a new ready handoff.
 

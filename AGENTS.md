@@ -14,6 +14,12 @@ Each task uses an isolated branch/worktree and its own database. Workers self-pr
 
 Handoff must list allowed paths changed, interfaces, migrations, dependencies, environment variables, commands/results, unresolved issues and next integration dependency. Coordinator checks tenant isolation, authorization, idempotency, optimistic revisions and evidence provenance before merge. Do not spawn agents unless requested by the user or an assigned task explicitly delegates work.
 
+## Git history and commits
+
+Keep integration history linear. Never create merge commits, including when updating a worker branch. A chooses rebase followed by fast-forward integration for a branch with useful, focused commits, or squash integration for a branch with WIP, fixups or noisy intermediate history. Use `git merge --ff-only` for fast-forward integration or `git merge --squash` followed by a commit for squash integration; never use plain `git merge` or `--no-ff`. Rebase only your own clean branch onto an approved A baseline, coordinating any change to a submitted handoff. Never rewrite another agent's branch or shared/published history without explicit authorization. Existing history is preserved; this policy applies to new work.
+
+Use Conventional Commits: `type(scope): imperative description` (scope optional). Types: feat, fix, docs, refactor, perf, test, build, ci, chore and revert. Mark breaking changes with `!` and a `BREAKING CHANGE:` footer explaining the impact. Every retained commit, including a squash commit or review fix, must follow this format. A records the integration strategy, original ready SHA and resulting integration SHA; rewritten commits require verified change equivalence before acceptance. If integration needs substantive conflict resolution, request a refreshed worker handoff and review it again.
+
 ## Invariants
 
 Tenant context is resolved by the server; a parsed organization ID grants no authority. Tenant-owned relations use organization-scoped keys. Revalidate current membership at human-authorized job/callback execution. Persist source and outbox atomically. Jobs and effects must tolerate replay; never claim exactly-once external delivery. Approved contribution minutes form the reporting ledger; unknown is null, not zero. Preserve source revisions and evidence. No face recognition, arbitrary message URL fetching, tool execution or sensitive source text in logs. Tests use controlled adapters; live provider checks are opt-in. Phase gates in the plan remain mandatory.

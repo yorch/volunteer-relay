@@ -170,7 +170,7 @@ const help = `Harness-neutral local coordination (Node 26.11.1)
   agents send --agent D --to B|all --kind question|answer|update|handoff|request [--task P2-01] [--reply-to UUID] --text "Message"
   agents inbox --agent B [--unanswered true] [--task P1-01]
   agents board
-  agents accept --agent A --task P1-01 --commit HEAD --text "Integration checks"
+  agents accept --agent A --task P1-01 --commit HEAD --text "Integration checks" [--strategy ff|rebase|squash --integration-base SHA]
   agents release --agent A --task P1-01 --text "Old session stopped; reason"
 Use --file path instead of --text for multiline notes. JSON output except prompt/help.
 RELAY_COORD_DIR overrides the shared ignored store. No daemon, auto-merge or auto-execution.`;
@@ -367,7 +367,75 @@ export async function main(args = process.argv.slice(2)) {
       ["rev-parse", "--verify", `${o.commit}^{commit}`],
       ctx.root,
     );
-    git(["merge-base", "--is-ancestor", status.commit, commit], ctx.root);
+    ensure(
+      commit === git(["rev-parse", "HEAD"], ctx.root),
+      "Accept current integration HEAD only",
+    );
+    const strategy = o.strategy || "ff";
+    ensure(
+      ["ff", "rebase", "squash"].includes(strategy),
+      "Unknown integration strategy",
+    );
+    ensure(
+      strategy === "ff" || o["integration-base"],
+      "Rewritten integration requires --integration-base before integration",
+    );
+    const integrationBase = git(
+      [
+        "rev-parse",
+        "--verify",
+        `${o["integration-base"] || assignment.baseCommit}^{commit}`,
+      ],
+      ctx.root,
+    );
+    git(
+      ["merge-base", "--is-ancestor", assignment.baseCommit, integrationBase],
+      ctx.root,
+    );
+    git(["merge-base", "--is-ancestor", integrationBase, commit], ctx.root);
+    ensure(
+      git(
+        ["rev-list", "--merges", `${integrationBase}..${commit}`],
+        ctx.root,
+      ) === "",
+      "Integration must not introduce merge commits",
+    );
+    if (strategy === "ff") {
+      git(["merge-base", "--is-ancestor", status.commit, commit], ctx.root);
+    } else {
+      const sourceBase = git(
+        ["merge-base", status.commit, integrationBase],
+        ctx.root,
+      );
+      const diff = (base, tip) =>
+        git(
+          [
+            "diff",
+            "--binary",
+            "--full-index",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--no-renames",
+            base,
+            tip,
+            "--",
+          ],
+          ctx.root,
+        );
+      const sourceDiff = diff(sourceBase, status.commit);
+      ensure(
+        sourceDiff && sourceDiff === diff(integrationBase, commit),
+        "Integrated changes differ from ready handoff; refresh and review handoff",
+      );
+      if (strategy === "squash")
+        ensure(
+          git(
+            ["rev-list", "--count", `${integrationBase}..${commit}`],
+            ctx.root,
+          ) === "1",
+          "Squash integration requires one resulting commit",
+        );
+    }
     ensure(
       git(["status", "--porcelain"], ctx.root) === "",
       "Integration worktree must be clean",
@@ -376,6 +444,9 @@ export async function main(args = process.argv.slice(2)) {
       agent,
       task: id,
       commit,
+      sourceCommit: status.commit,
+      strategy,
+      integrationBase,
       at: new Date().toISOString(),
       text: await text(o),
     };
