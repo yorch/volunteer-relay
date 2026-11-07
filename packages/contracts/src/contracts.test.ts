@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import { sources } from "../../../fixtures/sources.ts";
 import {
   extractionProposalSchema,
+  reviewDecisionSchema,
+  reviewOutcomeSchema,
+  reviewQueueEntrySchema,
   sourceEnvelopeSchema,
   tenantContextSchema,
+  webSourceSubmissionSchema,
 } from "./index.ts";
 
 describe("frozen boundary validation", () => {
@@ -80,6 +84,98 @@ describe("frozen boundary validation", () => {
         ...proposal,
         items: [{ ...proposal.items[0], durationMinutes: 1.5 }],
       }).success,
+    ).toBe(false);
+  });
+});
+
+describe("second-wave additive UI contracts", () => {
+  it("keeps tenant and source authority out of the text submission body", () => {
+    const valid = {
+      schemaVersion: 1,
+      idempotencyKey: "synthetic-key",
+      text: "  A synthetic update  ",
+    };
+    expect(webSourceSubmissionSchema.parse(valid)).toEqual(valid);
+    for (const extra of [
+      { organizationId: "other" },
+      { membershipId: "other" },
+      { attachments: [] },
+    ]) {
+      expect(
+        webSourceSubmissionSchema.safeParse({ ...valid, ...extra }).success,
+      ).toBe(false);
+    }
+    expect(
+      webSourceSubmissionSchema.safeParse({ ...valid, text: " \n\t" }).success,
+    ).toBe(false);
+    expect(
+      webSourceSubmissionSchema.safeParse({ ...valid, text: "a".repeat(20000) })
+        .success,
+    ).toBe(true);
+    expect(
+      webSourceSubmissionSchema.safeParse({
+        ...valid,
+        text: "😀".repeat(10001),
+      }).success,
+    ).toBe(false);
+  });
+
+  it("preserves the existing accept/reject decision and positive optimistic revision", () => {
+    const command = {
+      runId: "synthetic-run",
+      expectedRevision: 4,
+      idempotencyKey: "synthetic-review",
+      decision: "accept",
+      reason: "",
+    };
+    expect(reviewDecisionSchema.parse(command)).toEqual(command);
+    expect(
+      reviewDecisionSchema.safeParse({ ...command, decision: "edit" }).success,
+    ).toBe(false);
+    expect(
+      reviewDecisionSchema.safeParse({ ...command, expectedRevision: 0 })
+        .success,
+    ).toBe(false);
+    expect(
+      reviewDecisionSchema.safeParse({ ...command, edits: {} }).success,
+    ).toBe(false);
+    expect(reviewOutcomeSchema.parse({ revision: 5 })).toEqual({ revision: 5 });
+    expect(reviewOutcomeSchema.safeParse({ revision: 1.5 }).success).toBe(
+      false,
+    );
+  });
+
+  it("pairs only the same tenant/source revision while retaining an independent review revision", () => {
+    const source = sources[0];
+    if (!source) throw new Error("Synthetic source fixture missing");
+    const proposal = {
+      schemaVersion: 1,
+      organizationId: source.organizationId,
+      sourceId: source.sourceId,
+      sourceRevision: source.revision,
+      runId: "synthetic-run",
+      modelVersion: "synthetic",
+      promptVersion: "1",
+      policyVersion: "1",
+      items: [],
+      unresolved: [],
+    };
+    const entry = { schemaVersion: 1, source, proposal, revision: 4 };
+    expect(reviewQueueEntrySchema.parse(entry).revision).toBe(4);
+    for (const patch of [
+      { organizationId: "other-org" },
+      { sourceId: "other-source" },
+      { sourceRevision: source.revision + 1 },
+    ]) {
+      expect(
+        reviewQueueEntrySchema.safeParse({
+          ...entry,
+          proposal: { ...proposal, ...patch },
+        }).success,
+      ).toBe(false);
+    }
+    expect(
+      reviewQueueEntrySchema.safeParse({ ...entry, revision: 0 }).success,
     ).toBe(false);
   });
 });

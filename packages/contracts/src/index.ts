@@ -304,17 +304,66 @@ export interface ExtractionService {
     versions: { model: string; prompt: string; policy: string },
   ): Promise<Result<ExtractionProposal>>;
 }
+// Text-only browser command; tenant, author, source identity and timestamps
+// are resolved by the future authenticated server adapter, never this body.
+export const webSourceSubmissionSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    idempotencyKey: id,
+    text: z
+      .string()
+      .min(1)
+      .refine((text) => text.length <= 20000, "Text exceeds the size limit")
+      .refine((text) => text.trim().length > 0, "Text is required"),
+  })
+  .strict();
+export type WebSourceSubmission = z.infer<typeof webSourceSubmissionSchema>;
+
+// Names the existing wire shape without changing ReviewService's API.
+export const reviewDecisionSchema = z
+  .object({
+    runId: id,
+    expectedRevision: z.number().int().positive(),
+    idempotencyKey: id,
+    decision: z.enum(["accept", "reject"]),
+    reason: z.string(),
+  })
+  .strict();
+export type ReviewDecision = z.infer<typeof reviewDecisionSchema>;
+export const reviewOutcomeSchema = z
+  .object({ revision: z.number().int().positive() })
+  .strict();
+export type ReviewOutcome = z.infer<typeof reviewOutcomeSchema>;
+
+// An authorized staff projection, not a browser-supplied authority or a
+// persistence command. revision is the review aggregate revision.
+export const reviewQueueEntrySchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    source: sourceEnvelopeSchema,
+    proposal: extractionProposalSchema,
+    revision: z.number().int().positive(),
+  })
+  .strict()
+  .superRefine((entry, ctx) => {
+    if (
+      entry.source.organizationId !== entry.proposal.organizationId ||
+      entry.source.sourceId !== entry.proposal.sourceId ||
+      entry.source.revision !== entry.proposal.sourceRevision
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Source/proposal identity mismatch",
+      });
+    }
+  });
+export type ReviewQueueEntry = z.infer<typeof reviewQueueEntrySchema>;
+
 export interface ReviewService {
   decide(
     context: TenantContext,
-    command: {
-      runId: string;
-      expectedRevision: number;
-      idempotencyKey: string;
-      decision: "accept" | "reject";
-      reason: string;
-    },
-  ): Promise<Result<{ revision: number }>>;
+    command: ReviewDecision,
+  ): Promise<Result<ReviewOutcome>>;
 }
 export interface CandidateRepository {
   find(
