@@ -1,6 +1,6 @@
 # Milestone status
 
-Updated 2026-11-07. Coordinator A owns this file. Current assignment: Phase 0 only; later task cards are queued handoffs, not authorization to implement them now.
+Updated 2026-11-07. Coordinator A owns this file. Current assignment: archive/review the user-supplied prototype and integrate its handoff into the plan. No later application implementation is authorized; task cards remain queued handoffs.
 
 | Milestone | Status                          | Evidence / remaining gate                                                                                                                                                       |
 | --------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -32,3 +32,11 @@ A (current coordinator) completed P0-01 through P0-03. Later tasks are unclaimed
 - GitHub Actions is configured with matching quality/build gates and a Compose smoke job; hosted CI has not been run from this local commit.
 
 Oracle totals are independent expected results, not a claim that a product extraction/reporting pipeline exists. Minimal color PNGs only validate attachment integrity and unknown-evidence behavior. M1–M7 gates remain unfulfilled.
+
+## Prototype reference handoff — 2026-11-07
+
+Preserved design/reference/prototype.html as submitted, with usage notes, ADR 0003 and docs/design/prototype-review.md. A owns this reference/planning integration. E's next independent task is P2-00 (visual foundation), followed by the updated P2-02; P3-04, P5-03 and P6-01 map later screens to their original phase/service gates. Contracts, package dependencies, canonical fixtures and application behavior are unchanged.
+
+Source review and Node 26 stubbed-DOM execution covered all seven page-render functions. Reproduced shared-visit undercount, first-session reset aliasing and selection/filter inconsistency; duration defaults and role/tenant gaps are documented. Browser host unavailable: actual visual/responsive/accessibility verification remains a UI acceptance dependency. The reference path alone is excluded from Biome to preserve its original bytes; production translations remain subject to all checks. No live integrations or browser acceptance are claimed by this commit.
+
+Prototype handoff verification: `bun run verify` passed (Biome, generated Next route types, strict type checks, six existing tests, web/worker builds); `git diff --check` passed. Application code, dependencies and lockfile are unchanged. Temporary review server stopped.

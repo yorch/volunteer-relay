@@ -4,6 +4,8 @@ Read IMPLEMENTATION-PLAN.md, docs/STATUS.md, docs/CONTRACTS.md and your docs/tas
 
 Use Node 26.11.1 for all application processes, scripts and tests. Bun 1.4.1 installs with `bun install --frozen-lockfile` and dispatches root scripts. Never use Bun application APIs or `bun test`. TypeScript strict; Biome and Vitest only. No ESLint or Prettier. Run `bun run verify` before handoff. Never commit secrets or real people/source evidence. All fixtures are synthetic; expected results must be independently authored, not copied from implementation output.
 
+UI work starts with `docs/design/prototype-review.md` and P2-00. Treat `design/reference/prototype.html` as read-only visual input; preserve the plan, canonical contracts and independent fixture oracle as the source of behavioral truth. Do not port its demo storage, counters, duration defaults or unrestricted navigation.
+
 ## Ownership protocol
 
 Coordinator A exclusively owns packages/contracts, packages/config, root manifests/lockfile/config, CI, infra, scripts and worker entrypoint. B owns database schema/migration ordering, auth business logic and core domain. C owns intake/inbound Telegram. D owns AI and domain reconciliation. E owns UI page composition. F owns notifications and acceptance harnesses. A task's allowed paths narrow these lanes. Do not edit another lane's files. Propose a contract/dependency/environment change in your handoff; A lands it first and updates consumers. No agent may redefine shared entities locally. Additive changes also require coordinator review and contract tests. Breaking wire changes require a new schema version.

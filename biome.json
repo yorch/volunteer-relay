@@ -12,7 +12,8 @@
       "!**/dist",
       "!**/next-env.d.ts",
       "!bun.lock",
-      "!IMPLEMENTATION-PLAN.md"
+      "!IMPLEMENTATION-PLAN.md",
+      "!design/reference/prototype.html"
     ]
   },
   "formatter": {

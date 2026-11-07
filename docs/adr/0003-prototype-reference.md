@@ -1,0 +1,7 @@
+# ADR 0003 — Prototype as a visual reference
+
+Accepted 2026-11-07. Preserve the user-supplied `design/reference/prototype.html` as a stable, standalone design reference. It informs visual hierarchy, component patterns, responsive intent and copy. Canonical behavior, tenant authorization, ledger semantics, source evidence, events/errors and service boundaries remain defined by IMPLEMENTATION-PLAN.md and packages/contracts. The reference is neither a fixture oracle nor executable application architecture.
+
+E translates the visual language into reusable accessible React components through P2-00, then phased screen tasks. Do not embed the HTML in Next.js, copy its localStorage/inline-handler business logic, install dependencies because it imports fonts, or regenerate expected totals from its sample counters. A alone approves shared contract/dependency/environment changes; B owns persistence/auth/domain; C intake; D extraction; F delivery. Later screen integrations keep their original milestone dependencies.
+
+Preserve this exact HTML path outside Biome checking, with all application translations still subject to normal checks. This narrow archival exception avoids altering the submitted artifact; known lint/accessibility and behavioral gaps are recorded in docs/design/prototype-review.md. No implementation or security standard is relaxed for production code. Browser visual review was blocked by the unavailable browser host and must occur before translated UI acceptance.

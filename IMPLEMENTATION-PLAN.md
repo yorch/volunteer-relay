@@ -86,6 +86,14 @@ Use pg-boss for durable work and schedules; use a transactional outbox to avoid 
 
 Private attachments live on a persistent shared volume, outside public web assets. Only authenticated, tenant-authorized routes stream them. Local disk is suitable for one host; retain an interface for future object storage. Include disk capacity monitoring, backup, file type/size restrictions, and metadata stripping for derived images.
 
+### Design reference and UI implementation authority
+
+The user-supplied interactive reference is `design/reference/prototype.html`. Its visual direction, source/proposal hierarchy, needs ownership board and volunteer form guide UI work. Read `docs/design/prototype-review.md` and ADR 0003 for the review and phase map. Preserve the standalone HTML as a reference; do not embed it in the app or port its localStorage arrays, inline handlers, assumed durations, sample counters or unrestricted navigation. The plan, canonical contracts and independent fixture oracle govern behavior and correctness.
+
+E owns one shared visual foundation through P2-00, independently of B/C/D/F service implementation; dependency additions and role-aware layout wiring remain A/B-coordinated. P2-02 consumes it for fixture-backed mobile intake and staff review, integrating with real services at M2. P3-04 adds import/photo UI at M3. P5-03 adds a basic needs board at M2 only once B's tenant-aware lifecycle services and A's contracts exist, then delivery/deadline/escalation surfaces at M5. P6-01 adds the basic ledger at M2 and approved-query reports/CSV at M6. M4 reconciliation, correction and automation behavior is reflected in the review UI only after corresponding B/D services and A contract extensions land. Overview composes those authorized queries rather than inventing aggregate logic.
+
+UI acceptance includes actual desktop/tablet/mobile review, accessible labels/contrast/focus, loading/error/empty/unknown/provisional states, selection consistency under filters, role-specific navigation and matching domain/report totals. The prototype's JavaScript behavior was inspected in a stubbed DOM; browser visual verification was blocked by the unavailable host and remains required for translated UI. A supplies the planned Playwright runner before browser acceptance is claimed. This reference intake is planning/design work only and does not implement or complete any M1–M7 workflow.
+
 ## 5. Domain model and invariants
 
 | Entity | Important fields and rules |

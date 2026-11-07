@@ -32,3 +32,7 @@ Use either host web/worker or container web/worker to avoid port conflicts. If a
 `bun run check`, `typecheck`, `test` and `build` are separate CI gates. `bun run verify` runs all four. Type checking generates Next route types first, so it works before the first build in a clean checkout. `bun run format` applies Biome fixes. `bun run dev:web` and `dev:worker` start individual applications. `bun run db:migrate` and `db:seed` are explicit no-ops until B lands the first schema. No demo accounts are created. Unit tests run without network secrets. PostgreSQL integration and browser suites will get separate commands when implemented; empty placeholder directories do not imply coverage.
 
 Read [AGENTS.md](AGENTS.md), [status](docs/STATUS.md), [contracts](docs/CONTRACTS.md), [architecture decisions](docs/adr/0001-foundation.md), [compatibility evidence](docs/adr/0002-compatibility.md) and [task map](docs/tasks/README.md) before contributing. The manual fixture oracle is in `fixtures/expected-results.json`; expected results must never be regenerated from product output. Shared interface, manifest and environment changes are coordinator-owned.
+
+## Design reference
+
+The [interactive prototype](design/reference/prototype.html) is a standalone visual reference, not an implemented product workflow. Read its [usage notes](design/reference/README.md) and the [review/phase map](docs/design/prototype-review.md) before translating it. E starts with P2-00 visual primitives, then implements screens through the scoped task cards and existing phase gates.

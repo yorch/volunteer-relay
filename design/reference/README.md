@@ -1,0 +1,9 @@
+# Volunteer Relay design reference
+
+`prototype.html` is the user-supplied interactive design reference, preserved as submitted. It is an archival input for visual direction and workflow discussion, not application code, a domain model, a fixture oracle, or evidence that a milestone is complete. Do not copy its embedded JavaScript into Next.js or serve it from apps/web/public. Use only fictional input. Its sample names and organizations are illustrative and separate from the canonical synthetic benchmark.
+
+Open it in a browser for exploration. It uses browser localStorage (`relayMessages`, `relayNeeds`) and requests DM Sans/Manrope styles from Google Fonts; internet/font availability can affect appearance. Photo selection only displays a filename; clarification and intake are simulations. CSV export is illustrative. Reset demo mutates only this prototype's local keys and has a known first-session reset defect; clearing those two keys restores the initial sample. Never store real reports or credentials here.
+
+The source is excluded by one exact path from Biome to preserve the supplied reference, including its inline scripts and formatting. Application code and all future translated components remain fully checked. The two generic-font fallback lint errors and other prototype diagnostics are recorded in the review; this is not a production-code lint exception.
+
+Read [review and phase map](../../docs/design/prototype-review.md), [reference decision](../../docs/adr/0003-prototype-reference.md), and [UI foundation task](../../docs/tasks/P2-00.md). E owns translation of the design language; A coordinates interfaces/dependencies and integration. The plan and shared contracts take precedence for behavior and authorization. Reference changes require a separate reviewed change so the design input stays stable while implementation agents work.
