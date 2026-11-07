@@ -1,0 +1,11 @@
+{
+  "name": "@relay/worker",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": {
+    "@relay/config": "workspace:*",
+    "@relay/contracts": "workspace:*",
+    "@relay/db": "workspace:*"
+  }
+}

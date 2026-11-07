@@ -1,0 +1,11 @@
+# ADR 0002 — Exact dependency and runtime pins
+
+Accepted 2026-11-07. Node 26.11.1 is locally installed and is the common process runtime; Bun 1.4.1 is the package manager. The Node image is pinned to its verified multi-platform registry digest in infra/Dockerfile. Package manifests pin exact versions and bun.lock records the resolved graph; CI and images use frozen installs.
+
+Before selecting pins, queried npm registry `version`, `engines` and `peerDependencies`. Next 16.4.5 requires Node >=20.9 and supports React 19; selected React/DOM 19.3.1. Vitest 5.1.0 explicitly permits >=26. Better Auth 1.7.18 permits Next 16, React 19, pg 8, Drizzle ^0.45.2 and drizzle-kit >=0.31.4. Selected Drizzle 0.45.4, pg 8.23.1 and drizzle-kit 0.31.11. TypeScript 7.0.2, Biome 2.6.6 and Zod 4.6.7 are verified by actual checks, not by metadata alone. Installation produced no peer mismatch warnings. Native Linux dependencies are installed within images, never copied from macOS node_modules.
+
+Official references consulted: [Next installation](https://nextjs.org/docs/app/getting-started/installation), [Vitest requirements](https://vitest.dev/guide/), [Better Auth Drizzle adapter](https://better-auth.com/docs/adapters/drizzle), [Node 26 release](https://nodejs.org/en/blog/release/v26.0.0). Registry metadata is authoritative for the selected exact package versions; do not assume documentation for an unpinned latest version proves compatibility. Auth schema generation and live database integration remain M1 gates; successful M0 imports/builds do not claim completed auth integration.
+
+Infrastructure uses PostgreSQL 18.1 and Mailpit 1.27.10, with registry tags verified before Compose startup. This is a local-only topology. Dependency upgrades require repeating metadata/peer checks, frozen installation, Node-runtime verification, tests, builds and Compose smoke checks.
+
+A Node 26 import/construction smoke check loaded Better Auth, its Drizzle adapter, Drizzle and pg successfully. Better Auth correctly reported the missing user/session/account/verification tables because Phase 0 intentionally has no auth schema. This is expected and is not a passing authentication test; P1-01 must generate and validate those tables before enabling auth routes.

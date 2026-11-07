@@ -1,0 +1,37 @@
+name: baseline
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.1
+      - run: node -e 'if(process.versions.node!=="26.11.1")process.exit(1)'
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      - run: bun run typecheck
+      - run: bun run test
+      - run: bun run build
+      - run: bun run db:migrate && bun run db:seed
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose up --build -d --wait
+      - run: curl --fail --retry 10 --retry-delay 3 --retry-connrefused http://localhost:3000/api/health
+      - run: docker compose exec -T postgres psql -U relay -d relay -c 'select 1'
+      - run: >-
+          docker compose exec -T worker node --input-type=module -e
+          'const {createDatabase}=await import("./packages/db/src/index.ts");
+          const {db,close}=createDatabase(process.env.DATABASE_URL);
+          try { await db.execute("select 1"); } finally { await close(); }'
+      - run: docker compose exec -T worker node -e 'if(process.versions.node!=="26.11.1")process.exit(1)'
+      - if: always()
+        run: docker compose logs && docker compose down

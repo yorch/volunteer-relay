@@ -1,0 +1,36 @@
+{
+  "name": "volunteer-relay",
+  "private": true,
+  "license": "MIT",
+  "packageManager": "bun@1.4.1",
+  "engines": {
+    "node": "26.11.1"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "node scripts/run.mjs dev",
+    "dev:web": "node scripts/run.mjs web",
+    "dev:worker": "node --watch apps/worker/src/index.ts",
+    "build": "node scripts/run.mjs build",
+    "typecheck": "node scripts/run.mjs typecheck",
+    "check": "node node_modules/@biomejs/biome/bin/biome check .",
+    "format": "node node_modules/@biomejs/biome/bin/biome check --write .",
+    "test": "node node_modules/vitest/vitest.mjs run",
+    "verify": "node scripts/run.mjs verify",
+    "db:migrate": "node packages/db/src/migrate.ts",
+    "db:seed": "node packages/db/src/seed.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.6",
+    "@types/node": "26.6.6",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  },
+  "type": "module"
+}

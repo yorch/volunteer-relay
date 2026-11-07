@@ -1,0 +1,346 @@
+{
+  "oracleVersion": 1,
+  "authorship": "Manual narrative oracle, separate from any extractor or report implementation. Approval assumptions: staff accepts explicit facts and correction under either automation policy.",
+  "cases": [
+    {
+      "sourceId": "source-01",
+      "scenario": "shared-visit",
+      "expected": "One visit; Mira 60 and Sol 60 minutes before correction"
+    },
+    {
+      "sourceId": "source-02",
+      "scenario": "duplicate-participant",
+      "expected": "Link existing Sol contribution; no additional minutes"
+    },
+    {
+      "sourceId": "source-03",
+      "scenario": "duplicate-report",
+      "expected": "Link existing Mira contribution; no additional minutes"
+    },
+    {
+      "sourceId": "source-04",
+      "scenario": "correction",
+      "expected": "Mira becomes 90; preserve prior revision; Sol stays 60"
+    },
+    {
+      "sourceId": "source-05",
+      "scenario": "unknown-duration",
+      "expected": "One pending contribution; null minutes; excluded from approved totals"
+    },
+    {
+      "sourceId": "source-06",
+      "scenario": "spanish-need",
+      "expected": "Routine supplies need, evidence in Spanish"
+    },
+    {
+      "sourceId": "source-07",
+      "scenario": "urgent-provisional",
+      "expected": "Urgent provisional food need in staff queue"
+    },
+    {
+      "sourceId": "source-08",
+      "scenario": "injection",
+      "expected": "No authorized action; no ledger minutes"
+    },
+    {
+      "sourceId": "source-09",
+      "scenario": "second-tenant",
+      "expected": "One Harbor visit; Nico 30 approved minutes"
+    },
+    {
+      "sourceId": "source-10",
+      "scenario": "explicit",
+      "expected": "One Harbor visit; Nico 45 approved minutes"
+    },
+    {
+      "sourceId": "source-11",
+      "scenario": "explicit",
+      "expected": "One distinct supply activity; 15 approved minutes"
+    },
+    {
+      "sourceId": "source-12",
+      "scenario": "explicit",
+      "expected": "One distinct supply activity; 15 approved minutes"
+    },
+    {
+      "sourceId": "source-13",
+      "scenario": "explicit",
+      "expected": "One distinct supply activity; 15 approved minutes"
+    },
+    {
+      "sourceId": "source-14",
+      "scenario": "explicit",
+      "expected": "One distinct supply activity; 15 approved minutes"
+    },
+    {
+      "sourceId": "source-15",
+      "scenario": "explicit",
+      "expected": "One distinct supply activity; 15 approved minutes"
+    },
+    {
+      "sourceId": "source-16",
+      "scenario": "explicit",
+      "expected": "One distinct supply activity; 15 approved minutes"
+    },
+    {
+      "sourceId": "source-17",
+      "scenario": "explicit",
+      "expected": "One distinct supply activity; 15 approved minutes"
+    },
+    {
+      "sourceId": "source-18",
+      "scenario": "explicit",
+      "expected": "One distinct supply activity; 15 approved minutes"
+    },
+    {
+      "sourceId": "source-19",
+      "scenario": "explicit",
+      "expected": "One distinct supply activity; 15 approved minutes"
+    },
+    {
+      "sourceId": "source-20",
+      "scenario": "explicit",
+      "expected": "One distinct supply activity; 15 approved minutes"
+    },
+    {
+      "sourceId": "source-21",
+      "scenario": "explicit",
+      "expected": "One distinct supply activity; 15 approved minutes"
+    },
+    {
+      "sourceId": "source-22",
+      "scenario": "explicit",
+      "expected": "One distinct supply activity; 15 approved minutes"
+    },
+    {
+      "sourceId": "source-23",
+      "scenario": "explicit",
+      "expected": "One distinct supply activity; 15 approved minutes"
+    },
+    {
+      "sourceId": "source-24",
+      "scenario": "explicit",
+      "expected": "One distinct supply activity; 15 approved minutes"
+    },
+    {
+      "sourceId": "source-25",
+      "scenario": "explicit",
+      "expected": "One distinct supply activity; 15 approved minutes"
+    },
+    {
+      "sourceId": "source-26",
+      "scenario": "photo-only",
+      "expected": "Visible color only; no identity, hours or activity inferred"
+    },
+    {
+      "sourceId": "source-27",
+      "scenario": "photo-only",
+      "expected": "Visible color only; no identity, hours or activity inferred"
+    },
+    {
+      "sourceId": "source-28",
+      "scenario": "photo-only",
+      "expected": "Visible color only; no identity, hours or activity inferred"
+    }
+  ],
+  "finalApproved": {
+    "tidepath": {
+      "activities": 11,
+      "contributions": 12,
+      "volunteerMinutes": 300,
+      "pendingUnknownDuration": 1,
+      "routineNeeds": 1,
+      "urgentProvisionalNeeds": 1
+    },
+    "harbor": {
+      "activities": 7,
+      "contributions": 7,
+      "volunteerMinutes": 150
+    }
+  },
+  "arithmetic": {
+    "tidepath": "90 + 60 + (10 * 15) = 300; one shared visit plus ten supply activities",
+    "harbor": "30 + 45 + (5 * 15) = 150"
+  },
+  "policies": ["review-all", "validated-auto-record"],
+  "urgentSourceIds": ["source-07"],
+  "limitations": "Tiny synthetic color PNGs exercise attachment boundaries only; realistic synthetic scene-photo extraction benchmarks remain a later fixture task.",
+  "finalLedger": [
+    {
+      "organizationId": "tidepath",
+      "activityKey": "visit-T-01",
+      "membershipId": "tidepath-mira",
+      "durationMinutes": 90,
+      "status": "approved",
+      "sourceIds": ["source-01", "source-03", "source-04"]
+    },
+    {
+      "organizationId": "tidepath",
+      "activityKey": "visit-T-01",
+      "membershipId": "tidepath-sol",
+      "durationMinutes": 60,
+      "status": "approved",
+      "sourceIds": ["source-01", "source-02"]
+    },
+    {
+      "organizationId": "tidepath",
+      "activityKey": "visit-T-02",
+      "membershipId": "tidepath-luz",
+      "durationMinutes": null,
+      "status": "pending",
+      "sourceIds": ["source-05"]
+    },
+    {
+      "organizationId": "harbor",
+      "activityKey": "visit-H-01",
+      "membershipId": "harbor-nico",
+      "durationMinutes": 30,
+      "status": "approved",
+      "sourceIds": ["source-09"]
+    },
+    {
+      "organizationId": "harbor",
+      "activityKey": "visit-H-02",
+      "membershipId": "harbor-nico",
+      "durationMinutes": 45,
+      "status": "approved",
+      "sourceIds": ["source-10"]
+    },
+    {
+      "organizationId": "tidepath",
+      "activityKey": "supply-B-11",
+      "membershipId": "tidepath-luz",
+      "durationMinutes": 15,
+      "status": "approved",
+      "sourceIds": ["source-11"]
+    },
+    {
+      "organizationId": "tidepath",
+      "activityKey": "supply-B-12",
+      "membershipId": "tidepath-luz",
+      "durationMinutes": 15,
+      "status": "approved",
+      "sourceIds": ["source-12"]
+    },
+    {
+      "organizationId": "tidepath",
+      "activityKey": "supply-B-13",
+      "membershipId": "tidepath-luz",
+      "durationMinutes": 15,
+      "status": "approved",
+      "sourceIds": ["source-13"]
+    },
+    {
+      "organizationId": "tidepath",
+      "activityKey": "supply-B-14",
+      "membershipId": "tidepath-luz",
+      "durationMinutes": 15,
+      "status": "approved",
+      "sourceIds": ["source-14"]
+    },
+    {
+      "organizationId": "tidepath",
+      "activityKey": "supply-B-15",
+      "membershipId": "tidepath-luz",
+      "durationMinutes": 15,
+      "status": "approved",
+      "sourceIds": ["source-15"]
+    },
+    {
+      "organizationId": "tidepath",
+      "activityKey": "supply-B-16",
+      "membershipId": "tidepath-luz",
+      "durationMinutes": 15,
+      "status": "approved",
+      "sourceIds": ["source-16"]
+    },
+    {
+      "organizationId": "tidepath",
+      "activityKey": "supply-B-17",
+      "membershipId": "tidepath-luz",
+      "durationMinutes": 15,
+      "status": "approved",
+      "sourceIds": ["source-17"]
+    },
+    {
+      "organizationId": "tidepath",
+      "activityKey": "supply-B-18",
+      "membershipId": "tidepath-luz",
+      "durationMinutes": 15,
+      "status": "approved",
+      "sourceIds": ["source-18"]
+    },
+    {
+      "organizationId": "tidepath",
+      "activityKey": "supply-B-19",
+      "membershipId": "tidepath-luz",
+      "durationMinutes": 15,
+      "status": "approved",
+      "sourceIds": ["source-19"]
+    },
+    {
+      "organizationId": "tidepath",
+      "activityKey": "supply-B-20",
+      "membershipId": "tidepath-luz",
+      "durationMinutes": 15,
+      "status": "approved",
+      "sourceIds": ["source-20"]
+    },
+    {
+      "organizationId": "harbor",
+      "activityKey": "supply-B-21",
+      "membershipId": "harbor-nico",
+      "durationMinutes": 15,
+      "status": "approved",
+      "sourceIds": ["source-21"]
+    },
+    {
+      "organizationId": "harbor",
+      "activityKey": "supply-B-22",
+      "membershipId": "harbor-nico",
+      "durationMinutes": 15,
+      "status": "approved",
+      "sourceIds": ["source-22"]
+    },
+    {
+      "organizationId": "harbor",
+      "activityKey": "supply-B-23",
+      "membershipId": "harbor-nico",
+      "durationMinutes": 15,
+      "status": "approved",
+      "sourceIds": ["source-23"]
+    },
+    {
+      "organizationId": "harbor",
+      "activityKey": "supply-B-24",
+      "membershipId": "harbor-nico",
+      "durationMinutes": 15,
+      "status": "approved",
+      "sourceIds": ["source-24"]
+    },
+    {
+      "organizationId": "harbor",
+      "activityKey": "supply-B-25",
+      "membershipId": "harbor-nico",
+      "durationMinutes": 15,
+      "status": "approved",
+      "sourceIds": ["source-25"]
+    }
+  ],
+  "expectedNeeds": [
+    {
+      "sourceId": "source-06",
+      "organizationId": "tidepath",
+      "category": "supplies",
+      "urgency": "routine",
+      "provisional": false
+    },
+    {
+      "sourceId": "source-07",
+      "organizationId": "tidepath",
+      "category": "food",
+      "urgency": "urgent",
+      "provisional": true
+    }
+  ]
+}
