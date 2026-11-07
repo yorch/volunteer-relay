@@ -1,17 +1,17 @@
 # Milestone status
 
-Updated 2026-11-07. Coordinator A owns this file. Current assignment: coordinator A integrating reviewed first-wave handoffs; D accepted, B combined/database verification passed, E visual handoff under review. B/P1-01, D/P2-01 and E/P2-00 are assigned at 467e206; claims/progress live on the local board.
+Updated 2026-11-07. Coordinator A owns this file. Current assignment: first-wave coordinator integration complete; B auth/tenant, D provider-free extraction and E visual foundation slices are reviewed and verified. Full M1/M2 workflows remain in progress. B/P1-01, D/P2-01 and E/P2-00 are assigned at 467e206; claims/progress live on the local board.
 
-| Milestone | Status                          | Evidence / remaining gate                                                                                                                                                       |
-| --------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| M0        | Complete — engineering baseline | Frozen install, Biome, strict type checks, 6 Vitest tests, Next/worker builds and local Compose smoke passed under Node 26.11.1. Contracts v1 reviewed/frozen by coordinator A. |
-| M1        | In progress — B/P1-01 claimed   | Identity/tenant persistence implementation underway; no acceptance gate passed yet.                                                                                             |
-| M2        | Preparation — D/E assigned      | Provider-free extraction and visual foundation only; reviewed workflow/live smoke still pending.                                                                                |
-| M3        | Not started                     | Imports, photos, Telegram                                                                                                                                                       |
-| M4        | Not started                     | Reconciliation and policy gates                                                                                                                                                 |
-| M5        | Not started                     | Delivery and escalation                                                                                                                                                         |
-| M6        | Not started                     | Reports against independent oracle                                                                                                                                              |
-| M7        | Not started                     | Production operations and release                                                                                                                                               |
+| Milestone | Status                                           | Evidence / remaining gate                                                                                                                                                       |
+| --------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M0        | Complete — engineering baseline                  | Frozen install, Biome, strict type checks, 6 Vitest tests, Next/worker builds and local Compose smoke passed under Node 26.11.1. Contracts v1 reviewed/frozen by coordinator A. |
+| M1        | In progress — P1-01 slice verified               | Auth/tenant schema and authorization factories integrated; public sign-in/reset/invitation/org-switcher/demo flows remain open.                                                 |
+| M2        | Preparation — extraction/UI foundations verified | Provider-free adapter and visual primitives integrated; actual reviewed workflow/live model gate remain open.                                                                   |
+| M3        | Not started                                      | Imports, photos, Telegram                                                                                                                                                       |
+| M4        | Not started                                      | Reconciliation and policy gates                                                                                                                                                 |
+| M5        | Not started                                      | Delivery and escalation                                                                                                                                                         |
+| M6        | Not started                                      | Reports against independent oracle                                                                                                                                              |
+| M7        | Not started                                      | Production operations and release                                                                                                                                               |
 
 ## Current blockers and limits
 
@@ -19,7 +19,7 @@ Integration now includes auth/tenant schema, migration/credential-free synthetic
 
 ## Ownership
 
-A (current coordinator) completed P0-01 through P0-03. B/P1-01 and D/P2-01 implementation slices are reviewed/integrated; E/P2-00 remains under review; remaining tasks are unclaimed. Owners claim isolated worktrees and report status through A. No parallel database resets or shared contract edits.
+A (current coordinator) completed P0-01 through P0-03. B/P1-01, D/P2-01 and E/P2-00 implementation slices are reviewed/integrated; remaining tasks are unclaimed. Owners claim isolated worktrees and report status through A. No parallel database resets or shared contract edits.
 
 ## Validation evidence
 
@@ -66,3 +66,5 @@ D/P2-01 accepted at 1b95923 after source/evidence/privacy review, independent ho
 E submitted e4ae7b3 with presentation primitives/shells, synthetic development-only preview and 12 UI viewport cases; A is reviewing it separately. No full M1/M2 milestone is closed and no next worker task is automatically started.
 
 Coordinator also excluded newly generated .pi/tasks runtime logs from Git/Biome and Docker contexts; project configuration files remain unaffected. These are local harness task artifacts, not source code or coordination authority.
+
+E/P2-00 handoff e4ae7b3 is now integrated with B/D. Coordinator `bun run verify` passed 57 tests plus lint/types/Next/worker builds on all three slices. The actual Chromium suite passed 16/16 (four baseline + twelve UI cases), and an independent production server check confirmed /dev/foundation and its volunteer variant return 404 with no specimen content while health reports Node 26.11.1. A spot-checked generated desktop staff and narrow mobile volunteer screenshots; this is not full screen-reader/native-device/a11y certification. No authored files were changed outside the owners' slices. Formal task acceptance is recorded on the local board; no next task is automatically dispatched.
