@@ -1,0 +1,27 @@
+# A disposition — P1-02-01 at e96a851
+
+R report: 244fc2a9-491a-4d5b-ae3f-dcfa89faa316. Base 692dce9797e008345a3dce3765936d7bd780e427; candidate e96a851ca51b9d84f3c0c8cd06f6b9b3d31339a3. **Request changes; not accepted.** A inspected the predecessor predicate and application check, replay ordering and driver-error boundary against R's PostgreSQL reproductions. Findings are not resolved merely by passing the original 53 integration tests.
+
+B retains P1-02 ownership. This revision remains source/outbox only. No proposals, ledger, queue/dispatch, HTTP routes, reporting or provider work.
+
+## Required corrections
+
+1. **Predecessor lineage (P2):** explicit `replaces_revision IS NOT NULL` for every revision >1, equality with revision-1 in database and application validation, and exact sequential latest revision checks. Missing/wrong/stale/gapped predecessor on an otherwise structurally valid edit returns CONFLICT, with no effects. Retain the existing shared SourceEnvelope wire shape; do not change contracts locally.
+2. **Authorized replay after historical-author removal (P2):** authenticate/revalidate the CURRENT CALLER first. Then classify an existing idempotency key/digest before new-target author/reply validation. A still-authorized staff member replaying the identical accepted envelope gets the original receipt/correlation with no effects even if the historical author left. A revoked caller remains FORBIDDEN. New acceptance with a mapped author still requires that membership to exist in the source tenant. These are distinct cases; do not weaken live caller checks.
+3. **Safe typed failures (reported P3; required boundary fix):** wrong predecessor, self-reply and residual constraint/driver errors must not escape with PostgreSQL detail/cause containing source text or the envelope. Return bounded Result errors with appropriate VALIDATION/CONFLICT or safe DEPENDENCY_UNAVAILABLE for transient/unexpected storage failures. Do not log/attach raw driver errors to public failures. Add independent negative assertions for Result shape, no effects and absence of synthetic source text in serialized errors. No internal retry subsystem is required.
+4. **Historical live-pointer tenant relation (P3):** enforce same-tenant consistency in the database while retaining membership deletion -> pointer NULL and unchanged immutable historical identity. A accepts a composite FK with column-specific SET NULL or an equivalent database constraint/trigger. No single-column cross-tenant-pointer exception is granted. Neither the pointer nor author anchor grants authority.
+5. **Outbox identity (P3):** use organization-scoped outbox event identity/primary key; keep the tenant/revision FK and aggregate uniqueness. Existing deterministic event-ID generation remains unchanged. This makes the key consistent before future consumer contracts; consumer deduplication is scoped by organization + eventId + handler name.
+6. **Attachment revision links (part of P3):** extend evidence UPDATE protection to the revision-association rows, so links cannot be moved/rewritten. Preserve legitimate organization/source cleanup cascades. Add a direct invalid-update regression.
+7. **New test warnings (P3):** remove the introduced unused-parameter warnings; do not weaken Biome rules.
+
+## Explicitly deferred/accepted limitation
+
+DELETE by a database-owning administrator is outside SourceRepository's API; no normal source delete/update port is authorized. Do not add a naive DELETE trigger that breaks legitimate organization/source cascades. Privilege-separated runtime/administrative roles and operational retention/deletion policy remain production-hardening work. Record this as a residual privileged-writer limitation, not a claim of tamper-proof/append-only storage against a DB owner. Preserve current application behavior and evidence UPDATE safeguards.
+
+## Migration and private verification
+
+Migration 0001 is not merged or deployed; correcting its SQL/schema/generated metadata in place is approved **only for this unmerged migration**, with B retaining generation/order ownership. Migration 0000 stays unchanged. Do not pretend an already-applied private 0001 received the edits: use a NEW private revision-2 database pair (suggested relay_b_p1_02_r2 and relay_b_p1_02_r2_test in B's existing private cluster), apply 0000+corrected 0001 from clean databases, seed/migrate twice and rerun unchanged auth plus expanded domain tests. Preserve earlier databases as evidence; no shared or another agent's database reset.
+
+Tests must separately cover null/wrong predecessors, self-reply, staff replay after author removal, revoked-caller replay, malicious cross-tenant live pointers, repeated outbox IDs in distinct tenants, immutable attachment associations, rollback/concurrent replay and sanitized driver failure paths. Keep expected outcomes independently authored. Run current combined root verify after rebasing B's OWN clean branch onto A's approved baseline; no merge commits, no edits to accepted P1-01 or R checkouts.
+
+Return a new clean ready handoff with exact SHA, updated migration notes/private DBs and actual commands/results. A issues R a fresh exact-tip follow-up brief; the old review request is already answered. R should not silently review a moving B branch. A's pending public @relay/domain/core export request is recorded for later integration, not permission for B to change manifests. E's fixture UI integration does not change this source-only revision scope.

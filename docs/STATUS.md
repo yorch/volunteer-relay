@@ -1,6 +1,6 @@
 # Milestone status
 
-Updated 2026-11-07. Coordinator A owns this file. Current assignment: A/P1-03 boundaries/dispatch complete; B/P1-02 (source/outbox slice) and E/P2-02 (development-only fixture UI) are assigned at 2be16fd; B and E have submitted ready handoffs. R has B source/outbox review assigned; A/P2-04 is reviewing E fixture UI. All first-wave slices are accepted. D is on standby; full M1/M2 gates remain open. Live claims/progress are on the local board.
+Updated 2026-11-07. Coordinator A owns this file. Current assignment: A/P1-03 boundaries/dispatch complete; B/P1-02 (source/outbox slice) and E/P2-02 (development-only fixture UI) are assigned at 2be16fd; E fixture UI is accepted at 41e7462. R completed B source/outbox review with required changes; A/P1-04 has scoped B's revision. All first-wave slices are accepted. D is on standby; full M1/M2 gates remain open. Live claims/progress are on the local board.
 
 | Milestone | Status                                           | Evidence / remaining gate                                                                                                                                                       |
 | --------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -112,3 +112,9 @@ Node 26.11.1 bun run verify passed 70 tests plus Biome, strict types and builds.
 ## Review-queue checkpoint — 2026-11-07
 
 B/P1-02 is ready at e96a851; E/P2-02 is ready at 879afc5. Both remain unaccepted. A is taking P2-04 to independently verify/integrate E's scoped fixture screens while R's exact-commit source/outbox review request is pending. R's review checkout exists; a board progress report has been requested without inferring model activity. No additional implementation lanes are activated while these handoffs need review. B/E stay frozen unless a targeted revision is requested. D/C/F remain standby; existing phase gates remain open.
+
+## Second-wave review disposition — 2026-11-07
+
+A completed P2-04: E/P2-02 accepted at exact rebased commit 41e7462 from 879afc5, integrated with fast-forward history. A-owned checkout passed frozen install, root verify (70 tests plus lint/types/build), all 44 Chromium tests at 1440/1024/390/320 and production Node 26.11.1 health/404 checks for inbox, query variant and volunteer previews with no fixture/form markers. Screenshots inspected; own production process stopped. Fixture presentation only; no M1/M2 gate closure.
+
+R returned request-changes report 244fc2a9 for B/e96a851. A inspected the relevant source/migration paths and accepted the independently reproduced predecessor-lineage and replay-after-author-removal findings, plus safe-error and tenant/key/provenance corrections. The exact item dispositions and new private-database/migration guidance are tracked in docs/agents/reviews/P1-02-01-disposition.md (A/P1-04). B must revise before a fresh exact-tip review; it remains unaccepted. Database-owner DELETE remains an explicitly documented privileged-writer limitation until hardening; naive cascade-breaking DELETE triggers are not requested. E/D/C/F have no new implementation assignment while this critical-path correction is pending.
