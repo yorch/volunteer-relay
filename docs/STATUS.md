@@ -1,12 +1,12 @@
 # Milestone status
 
-Updated 2026-11-07. Coordinator A owns this file. Current assignment: P0-06 completed, harness-neutral multi-agent operating kit ready. Later application task cards remain queued; no application agent sessions were launched by this setup.
+Updated 2026-11-07. Coordinator A owns this file. Current assignment: coordinator A dispatched the first wave and completed P0-08 shared browser tooling; worker implementation/handoffs remain in progress. B/P1-01, D/P2-01 and E/P2-00 are assigned at 467e206; claims/progress live on the local board.
 
 | Milestone | Status                          | Evidence / remaining gate                                                                                                                                                       |
 | --------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | M0        | Complete — engineering baseline | Frozen install, Biome, strict type checks, 6 Vitest tests, Next/worker builds and local Compose smoke passed under Node 26.11.1. Contracts v1 reviewed/frozen by coordinator A. |
-| M1        | Not started                     | Identity, tenant isolation and persistence                                                                                                                                      |
-| M2        | Not started                     | First reviewed extraction; real provider smoke required                                                                                                                         |
+| M1        | In progress — B/P1-01 claimed   | Identity/tenant persistence implementation underway; no acceptance gate passed yet.                                                                                             |
+| M2        | Preparation — D/E assigned      | Provider-free extraction and visual foundation only; reviewed workflow/live smoke still pending.                                                                                |
 | M3        | Not started                     | Imports, photos, Telegram                                                                                                                                                       |
 | M4        | Not started                     | Reconciliation and policy gates                                                                                                                                                 |
 | M5        | Not started                     | Delivery and escalation                                                                                                                                                         |
@@ -19,7 +19,7 @@ No provider credentials or public endpoint are needed for M0. No business tables
 
 ## Ownership
 
-A (current coordinator) completed P0-01 through P0-03. Later tasks are unclaimed. Owners claim isolated worktrees and report status through A. No parallel database resets or shared contract edits.
+A (current coordinator) completed P0-01 through P0-03. First-wave B/P1-01, D/P2-01 and E/P2-00 are assigned; remaining tasks are unclaimed. Owners claim isolated worktrees and report status through A. No parallel database resets or shared contract edits.
 
 ## Validation evidence
 
@@ -50,3 +50,9 @@ P0-06 verification: `bun run verify` passed with four test files / eleven tests 
 ## Self-service worker bootstrap — 2026-11-07
 
 Updated worker launch prompts and the canonical CLI prompt output to include complete self-service setup: safe branch/worktree creation/resume, pinned tool activation/install, board discovery, ignored private environment/secrets/attachments, B-only private PostgreSQL development/test databases, D's provider-free setup, E's isolated preview port, baseline verification and claim/handoff steps. Workers may prepare environments before dispatch; A retains assignment/shared-interface ownership. No application harness is launched by updating these instructions. `bun run verify` passed (eleven tests, Biome, strict type checks, web/worker builds). All embedded shell blocks passed zsh syntax checks; the Node environment generator was exercised in a temporary directory and verified for distinct DB URLs, secret generation, 0600 file mode, attachment-directory creation and preservation of an existing file on resume. No real worker worktrees or database services were created by this prompt update.
+
+## First-wave dispatch — 2026-11-07
+
+A published B/P1-01, D/P2-01 and E/P2-00 assignments at exact baseline 467e2060cba3e34d9e4989c5b3cd8c9888b119b8 and sent startup updates. All three linked worktrees exist. M1/M2 acceptance remains open: assignment is not completion. D's first slice is approved as a package-owned, provider-free adapter/evaluator with independently authored injected responses; matching algorithms remain deferred. A owns P0-08 browser runner setup to unblock E; no edits to worker-owned components/domain files.
+
+P0-08 local verification: Playwright 1.65.0 engine metadata permits Node >=20; matching Chromium binaries installed successfully. Four actual Chromium baseline viewport tests passed under Node 26.11.1 (1440/1024/390/320), separate from eleven existing unit/coordination tests. B's workspace dependency and auth subpath request is approved: web declares @relay/domain and the domain package exports @relay/domain/auth at ./auth/src/index.ts; B must supply its owned barrel/implementation before auth is wired into main. Role CHECKs, live-role/removal semantics and human-permission denial for system actors were confirmed; invitation role validation and full M1 gates remain open. Next-generated environment declarations are untracked/ignored per installed Next documentation so browser runs do not dirty handoff worktrees.

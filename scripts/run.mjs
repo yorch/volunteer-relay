@@ -18,7 +18,20 @@ const run = (args) =>
   });
 const next = ["apps/web/node_modules/next/dist/bin/next"];
 const mode = process.argv[2];
-if (mode === "web") await run([...next, "dev", "apps/web"]);
+if (mode === "e2e:web") {
+  const port = Number(process.env.PLAYWRIGHT_PORT ?? "3190");
+  if (!Number.isInteger(port) || port < 1024 || port > 65535)
+    throw new Error("Invalid PLAYWRIGHT_PORT");
+  await run([
+    ...next,
+    "dev",
+    "apps/web",
+    "--hostname",
+    "127.0.0.1",
+    "--port",
+    String(port),
+  ]);
+} else if (mode === "web") await run([...next, "dev", "apps/web"]);
 else if (mode === "dev")
   await Promise.all([
     run([...next, "dev", "apps/web"]),
