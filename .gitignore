@@ -9,3 +9,6 @@ coverage/
 .DS_Store
 .relay-coordination/
 .relay-local/
+test-results/
+playwright-report/
+apps/web/next-env.d.ts

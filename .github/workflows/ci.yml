@@ -35,3 +35,17 @@ jobs:
       - run: docker compose exec -T worker node -e 'if(process.versions.node!=="26.11.1")process.exit(1)'
       - if: always()
         run: docker compose logs && docker compose down
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.1
+      - run: bun install --frozen-lockfile
+      - run: node node_modules/@playwright/test/cli.js install --with-deps chromium
+      - run: bun run test:e2e
