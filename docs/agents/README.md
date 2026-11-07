@@ -83,3 +83,13 @@ Design references: [Git linked worktrees](https://git-scm.com/docs/git-worktree)
 ## Prepared worker launch prompts
 
 For the current three-worker setup, copy the entire contents of `docs/agents/launch/B.md`, `D.md` or `E.md` into the corresponding harness session. These snapshots include the shared and lane-specific instructions plus concrete local startup paths and commands. They work unchanged across shell-capable harnesses; choose any harness for any lane. A remains the existing coordinator session. Workers prepare their own branch/worktree, tools, dependencies, ignored local settings and task-private resources; only A dispatches assignments. They may complete setup before dispatch and wait only to start application code. Exact board baseCommit/current tracked rules take precedence.
+
+## Live local dashboard
+
+Run `bun run agents:dashboard` under Node 26.11.1 and open **http://127.0.0.1:4310**. Set `RELAY_DASHBOARD_PORT` to an unused port if necessary. The server binds only to loopback; use the printed 127.0.0.1 URL. Stop it with Ctrl+C. It uses no extra dependencies and is separate from the product web application.
+
+The HTML page automatically refreshes every five seconds. It shows all task cards, unscoped illustrative roadmap items from IMPLEMENTATION-PLAN.md, live assignments/claims/status/acceptance, all board messages with reply context, unanswered questions/requests and the full milestone notes. Filter by agent, phase, state or text. Refresh does not reload the page or close expanded details. When disconnected, it retains the last snapshot and clearly reports it as stale.
+
+Task cards and milestone notes come from the primary checkout even when launched in a linked worker worktree; the live board uses its existing shared Git-common-directory discovery or RELAY_COORD_DIR override. Accepted board records take precedence over worker status. A task's completed/accepted column may represent a bounded slice; milestone gates and remaining limitations still apply. Unscoped roadmap items have no invented owner and cannot be treated as assignments. Recorded progress does not establish that a harness is currently running.
+
+The dashboard has no write controls or arbitrary file-serving route. Continue posting updates/questions/answers with the existing CLI; they appear automatically. Only card/STATUS edits and explicit board reports are shown—private harness conversations are not collected. Messages render as plain text. Local coordination notes remain on this machine and must not contain secrets. First access uses the existing board initialization if the store is absent; the dashboard never changes task status, executes messages or launches agents.

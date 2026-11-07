@@ -221,6 +221,7 @@ export async function main(args = process.argv.slice(2)) {
     );
     return {
       store: ctx.store,
+      messages: all,
       tasks,
       unanswered: all.filter(
         (m) => ["question", "request"].includes(m.kind) && !answered.has(m.id),

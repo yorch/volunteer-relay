@@ -21,7 +21,7 @@
     "fixtures/**/*.ts",
     "tests/**/*.ts",
     "vitest.config.ts",
-    "scripts/**/*.test.ts",
+    "scripts/**/*.ts",
     "playwright.config.ts"
   ]
 }
