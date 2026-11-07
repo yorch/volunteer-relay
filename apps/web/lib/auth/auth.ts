@@ -57,7 +57,7 @@ export function createAuth({ db, secret, baseURL }: AuthDependencies) {
     baseURL,
     database: drizzleAdapter(db, { provider: "pg", schema }),
     emailAndPassword: { enabled: true },
-    plugins: [organization({ roles })],
+    plugins: [organization({ ac: access, roles })],
   });
 }
 

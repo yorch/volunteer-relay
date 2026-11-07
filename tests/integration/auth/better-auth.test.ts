@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { type Auth, createAuth } from "../../../apps/web/lib/auth/auth.ts";
 import {
   type Database,
   eq,
@@ -12,53 +13,11 @@ import {
   resetAuthTables,
 } from "./support.ts";
 
-// apps/web/package.json has no "type": "module", so the root NodeNext project
-// would compile that module as CommonJS and reject its ESM imports.
-// apps/web/tsconfig still type-checks the real module; here it is loaded
-// through a narrow structural boundary instead of a static import.
-interface TestAuthApi {
-  api: {
-    signUpEmail(input: {
-      body: { email: string; password: string; name: string };
-      returnHeaders: true;
-    }): Promise<{
-      headers: Headers;
-      response: { user: { id: string; email: string } };
-    }>;
-    getSession(input: { headers: Headers }): Promise<{
-      user: { id: string; email: string };
-    } | null>;
-    createOrganization(input: {
-      body: { name: string; slug: string };
-      headers: Headers;
-    }): Promise<{ id: string } | null>;
-    createInvitation(input: {
-      body: { email: string; role: string; organizationId: string };
-      headers: Headers;
-    }): Promise<unknown>;
-  };
-}
-
-type CreateAuth = (deps: {
-  db: unknown;
-  secret: string;
-  baseURL: string;
-}) => TestAuthApi;
-
-async function loadCreateAuth(): Promise<CreateAuth> {
-  const moduleUrl = new URL(
-    "../../../apps/web/lib/auth/auth.ts",
-    import.meta.url,
-  );
-  const module = (await import(moduleUrl.href)) as { createAuth: CreateAuth };
-  return module.createAuth;
-}
-
 const { account, invitation, member, session, user } = schema;
 
 let db: Database;
 let close: () => Promise<void>;
-let auth: TestAuthApi;
+let auth: Auth;
 
 const password = "synthetic-password-1";
 
@@ -96,7 +55,6 @@ beforeAll(async () => {
   const opened = await openTestDatabase();
   db = opened.db;
   close = opened.close;
-  const createAuth = await loadCreateAuth();
   auth = createAuth({
     db,
     secret: "integration-test-secret-".padEnd(40, "x"),
@@ -191,7 +149,7 @@ describe("Better Auth against the generated schema", () => {
     // The plugin's own default role "member" is outside the contract. The
     // request type no longer offers it, and forcing the string through is
     // stopped by the database check constraint rather than stored.
-    const outOfContractRole = "member";
+    const outOfContractRole = "member" as unknown as "volunteer";
     await expectDatabaseRejection(
       () =>
         auth.api.createInvitation({
