@@ -414,3 +414,95 @@ it("rejects merge commits even when handoff ancestry is preserved", async () => 
     expect(result.error).toContain("must not introduce merge commits");
   });
 });
+
+it("supports a reusable reviewer inbox and threaded findings without implementation ownership", async () => {
+  await fixture(({ root, b }) => {
+    const request = ok(
+      root,
+      "send",
+      "--agent",
+      "A",
+      "--to",
+      "R",
+      "--kind",
+      "request",
+      "--task",
+      "P1-01",
+      "--text",
+      "Review exact synthetic base/tip in the tracked brief",
+    );
+    const inbox = ok(root, "inbox", "--agent", "R", "--unanswered", "true");
+    expect(inbox.map((m: { id: string }) => m.id)).toEqual([request.id]);
+    ok(
+      root,
+      "send",
+      "--agent",
+      "R",
+      "--to",
+      "A",
+      "--kind",
+      "update",
+      "--task",
+      "P1-01",
+      "--text",
+      "Independent review started; no task claimed",
+    );
+    expect(
+      cli(
+        root,
+        "assign",
+        "--agent",
+        "A",
+        "--owner",
+        "R",
+        "--task",
+        "P1-01",
+        "--ref",
+        "HEAD",
+        "--text",
+        "Forbidden reviewer ownership",
+      ).code,
+    ).toBe(1);
+    assign(root);
+    expect(cli(b, "claim", "--agent", "R", "--task", "P1-01").code).toBe(1);
+    expect(
+      cli(
+        root,
+        "accept",
+        "--agent",
+        "R",
+        "--task",
+        "P1-01",
+        "--commit",
+        "HEAD",
+        "--text",
+        "Forbidden reviewer acceptance",
+      ).code,
+    ).toBe(1);
+    ok(
+      root,
+      "send",
+      "--agent",
+      "R",
+      "--to",
+      "A",
+      "--kind",
+      "answer",
+      "--reply-to",
+      request.id,
+      "--text",
+      "No actionable findings; exact SHA and limits recorded",
+    );
+    expect(ok(root, "inbox", "--agent", "R", "--unanswered", "true")).toEqual(
+      [],
+    );
+    const board = ok(root, "board");
+    expect(board.tasks[0].assignment.owner).toBe("B");
+    expect(board.tasks[0].claim).toBeNull();
+  });
+  const prompt = cli(process.cwd(), "prompt", "R");
+  expect(prompt.code).toBe(0);
+  expect(prompt.output).toContain("reusable review coordinator");
+  expect(prompt.output).toContain("Fresh contexts and bounded sub-reviews");
+  expect(prompt.output).not.toContain("# Worker self-service setup");
+});
