@@ -1,11 +1,11 @@
 # Milestone status
 
-Updated 2026-11-07. Coordinator A owns this file. Current assignment: A/P1-03 boundaries/dispatch complete; B/P1-02 (source/outbox slice) and E/P2-02 (development-only fixture UI) are assigned at 2be16fd; E fixture UI is accepted at 41e7462. B source/outbox is accepted at 237942b from final eb4cc50 after R/A verification; A/P1-05 is finalizing the public core export and next authentication dispatch. All first-wave slices are accepted. D is on standby; full M1/M2 gates remain open. Live claims/progress are on the local board.
+Updated 2026-11-07. Coordinator A owns this file. Current assignment: B/P1-06 authentication lifecycle/session-tenant work is assigned at bcd87b9 after source/outbox acceptance at 237942b. E fixture UI is accepted at 41e7462. R completed the source review and stands by for the next exact-tip request. D/C/F are standby; full M1/M2 gates remain open. Live claims/progress are on the local board.
 
 | Milestone | Status                                           | Evidence / remaining gate                                                                                                                                                       |
 | --------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | M0        | Complete — engineering baseline                  | Frozen install, Biome, strict type checks, 6 Vitest tests, Next/worker builds and local Compose smoke passed under Node 26.11.1. Contracts v1 reviewed/frozen by coordinator A. |
-| M1        | In progress — P1-01 slice verified               | Auth/tenant schema and authorization factories integrated; public sign-in/reset/invitation/org-switcher/demo flows remain open.                                                 |
+| M1        | In progress — P1-01 slice verified               | Auth/tenant and source/outbox persistence verified; auth lifecycle/UI, demo and core ledger/need transitions remain open.                                                 |
 | M2        | Preparation — extraction/UI foundations verified | Provider-free adapter and visual primitives integrated; actual reviewed workflow/live model gate remain open.                                                                   |
 | M3        | Not started                                      | Imports, photos, Telegram                                                                                                                                                       |
 | M4        | Not started                                      | Reconciliation and policy gates                                                                                                                                                 |
@@ -19,7 +19,7 @@ Integration now includes auth/tenant and source/outbox schema/repositories, migr
 
 ## Ownership
 
-A (current coordinator) completed P0-01 through P0-03. B/P1-01, D/P2-01 and E/P2-00 implementation slices are reviewed/integrated; remaining tasks are unclaimed. Owners claim isolated worktrees and report status through A. No parallel database resets or shared contract edits.
+A (current coordinator) completed P0-01 through P0-03. B/P1-01 and source/outbox P1-02, D/P2-01 and E/P2-00/P2-02 slices are reviewed/integrated. B/P1-06 is assigned; other future tasks are unclaimed. Owners claim isolated worktrees and report status through A. No parallel database resets or shared contract edits.
 
 ## Validation evidence
 
@@ -134,3 +134,8 @@ R/P1-02-03 report e9f12f20 at exact eb4cc50 found no actionable issues within te
 A rebased its own integration copy onto documentation-only current main with tested runtime/tooling code unchanged, fast-forwarded to 237942b and recorded exact source/result equivalence on the board. Original B/reviewer branches are preserved. Migrations 0000 and corrected 0001_sleepy_triathlon are now accepted and immutable for later work. The core public subpath is exposed by A metadata change; no dependency upgrade, HTTP/source route, system actor authority, queue consumer or proposal/ledger/need behavior was added. DB-owner DELETE and least privilege remain explicitly documented hardening limits. Full M1/M2 gates stay open. P1-06 is the prepared next B authentication lifecycle/session-tenant assignment, to be dispatched at the committed verified baseline.
 
 Final main-branch check after the public core export: frozen install unchanged, actual web-consumer imports of @relay/domain/core and @relay/db resolved, and bun run verify passed 91 tests/lint/types/builds. A's private PostgreSQL project was stopped without removing its volume; independent artifacts and databases are retained. No additional product browser run was needed for the backend/export-only change; E's 44-case browser gate remains recorded separately.
+
+
+## Authentication dispatch — 2026-11-07
+
+B/P1-06 is assigned at exact baseline bcd87b96bddc78db2f6f20d36937d53651bb0f03. A sent the new resume-file path and explicit resource/scope boundaries. B must use a new branch/worktree/private DB pair and send the factory/mail callback/session-helper proposal before its first code handoff; accepted source/reviewer checkouts and migrations are preserved. Only controlled auth lifecycle/server adapters are assigned, with no HTTP/UI/live-mail or ledger/worker scope. R received source acceptance and standby notice. A/P1-05 is complete; initial claim/activity is confirmed separately by the board.
