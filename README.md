@@ -1,6 +1,6 @@
 # Volunteer Relay
 
-Multi-organization volunteer operations, currently **Phase 0 only**. This baseline contains contracts, synthetic fixtures and runnable web/worker skeletons. Authentication, domain tables, extraction and volunteer workflows are future tasks. MIT licensed.
+Multi-organization volunteer operations, currently **foundation and first implementation slices**. This baseline contains contracts, synthetic fixtures, web/worker skeletons, an auth/tenant persistence slice and a provider-free extraction/evaluation slice. Public authentication routes/UI, the contribution ledger and volunteer workflows remain future work. MIT licensed.
 
 ## Local setup
 
@@ -29,7 +29,7 @@ Use either host web/worker or container web/worker to avoid port conflicts. If a
 
 ## Commands and boundaries
 
-`bun run check`, `typecheck`, `test` and `build` are separate CI gates. `bun run verify` runs all four. Type checking generates Next route types first, so it works before the first build in a clean checkout. `bun run format` applies Biome fixes. `bun run dev:web` and `dev:worker` start individual applications. `bun run db:migrate` and `db:seed` are explicit no-ops until B lands the first schema. No demo accounts are created. Unit tests run without network secrets. PostgreSQL integration and browser suites will get separate commands when implemented; empty placeholder directories do not imply coverage.
+`bun run check`, `typecheck`, `test` and `build` are separate CI gates. `bun run verify` runs all four. Type checking generates Next route types first, so it works before the first build in a clean checkout. `bun run format` applies Biome fixes. `bun run dev:web` and `dev:worker` start individual applications. `bun run db:migrate` applies the ordered auth/tenant schema using an explicit DATABASE_URL. `bun run db:seed` adds idempotent synthetic tenants/users/memberships with no password/account rows. No usable demo credentials are created. Unit tests run without network secrets. `bun run test:integration` uses the package-owned PostgreSQL config and requires an explicitly separate TEST_DATABASE_URL ending in _test; it never falls back to DATABASE_URL. Run it with configured environment variables or directly with Node --env-file. Browser checks run separately as described below.
 
 Read [AGENTS.md](AGENTS.md), [status](docs/STATUS.md), [contracts](docs/CONTRACTS.md), [architecture decisions](docs/adr/0001-foundation.md), [compatibility evidence](docs/adr/0002-compatibility.md) and [task map](docs/tasks/README.md) before contributing. The manual fixture oracle is in `fixtures/expected-results.json`; expected results must never be regenerated from product output. Shared interface, manifest and environment changes are coordinator-owned.
 

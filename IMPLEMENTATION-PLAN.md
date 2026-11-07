@@ -1,7 +1,7 @@
 # Volunteer Relay — Full Implementation Plan
 
 Date: November 7, 2026. Working name, subject to change.
-Status: implementation-ready planning baseline; no application code has been built.
+Status: implementation plan; foundation and first implementation slices are built. Current milestone gates and acceptance evidence are tracked in docs/STATUS.md.
 
 ## 1. Outcome and scope
 

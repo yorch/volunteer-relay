@@ -1,3 +1,11 @@
-# Integration boundary
+# PostgreSQL integration verification
 
-No product integration tests are implemented in Phase 0. CI's Compose job verifies infrastructure startup and PostgreSQL connectivity. Task owners add PostgreSQL-backed suites here with dedicated databases and an explicit command; root Vitest currently selects only package/fixture unit tests. Never reset a shared database.
+Root Vitest/verify remains database-free. Auth/tenant PostgreSQL suites are selected explicitly by `bun run test:integration` or:
+
+```sh
+node --env-file=.env.local node_modules/vitest/vitest.mjs run --config packages/db/vitest.integration.config.ts
+```
+
+Set DATABASE_URL for development migration/seed operations and a distinct TEST_DATABASE_URL whose database name ends in `_test`. The suite applies migrations and truncates only its test database auth tables. Never point it at another worktree's resources, a shared database or a production server. See docs/agents/BOOTSTRAP.md for creating private development/test databases. CI uses a dedicated PostgreSQL service job; the ordinary quality job has no database dependency.
+
+Coverage includes tenant-scoped membership lookups, multi-membership roles, revocation/live role changes, constraints, idempotent no-password synthetic seeds and real Better Auth session/organization/role permissions. This is not full M1 UI/reset/invitation/audit acceptance and does not cover future ledger/outbox entities.

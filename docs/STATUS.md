@@ -1,6 +1,6 @@
 # Milestone status
 
-Updated 2026-11-07. Coordinator A owns this file. Current assignment: coordinator A dispatched the first wave and completed P0-08 shared browser tooling; worker implementation/handoffs remain in progress. B/P1-01, D/P2-01 and E/P2-00 are assigned at 467e206; claims/progress live on the local board.
+Updated 2026-11-07. Coordinator A owns this file. Current assignment: coordinator A integrating reviewed first-wave handoffs; D accepted, B combined/database verification passed, E visual handoff under review. B/P1-01, D/P2-01 and E/P2-00 are assigned at 467e206; claims/progress live on the local board.
 
 | Milestone | Status                          | Evidence / remaining gate                                                                                                                                                       |
 | --------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -15,17 +15,17 @@ Updated 2026-11-07. Coordinator A owns this file. Current assignment: coordinato
 
 ## Current blockers and limits
 
-No provider credentials or public endpoint are needed for M0. No business tables, authentication routes, migrations, seeds, queue handlers or workflows exist. Migration/seed commands explicitly report no operations. Production hosting, realistic scene-photo benchmarks and live model checks belong to later milestones. Contracts v1 are frozen for the scoped independent starts. Future additions/changes require coordinator review and versioned schemas before dependent consumers are implemented. See docs/tasks/README.md for parallel starts and dependencies.
+Integration now includes auth/tenant schema, migration/credential-free synthetic seed tooling, tenant authorization factories and a provider-free extraction/evaluator slice. Public sign-in/invitation/reset routes/UI, organization switching, ledger/outbox, worker processing and live model checks remain incomplete. No real model credentials or public endpoint were needed for these slices. Root quality checks remain database-free; PostgreSQL integration and browser suites are explicit separate gates. Full M1/M2 milestone acceptance remains open.
 
 ## Ownership
 
-A (current coordinator) completed P0-01 through P0-03. First-wave B/P1-01, D/P2-01 and E/P2-00 are assigned; remaining tasks are unclaimed. Owners claim isolated worktrees and report status through A. No parallel database resets or shared contract edits.
+A (current coordinator) completed P0-01 through P0-03. B/P1-01 and D/P2-01 implementation slices are reviewed/integrated; E/P2-00 remains under review; remaining tasks are unclaimed. Owners claim isolated worktrees and report status through A. No parallel database resets or shared contract edits.
 
 ## Validation evidence
 
 - Fresh temporary checkout: `bun install --frozen-lockfile` and `bun run verify` both passed without existing node_modules or .next output. Type checking generates Next route types before tsc. Container build also installed from a clean dependency filesystem.
 - `bun run verify` using Node 26.11.1: Biome with no warnings, strict root/web type checks, 3 test files / 6 tests, production Next build and Node worker artifact.
-- `bun run db:migrate` / `bun run db:seed`: explicit no-ops, no schema or demo accounts introduced.
+- At M0, `db:migrate` / `db:seed` were explicit no-ops. P1-01 now supplies real auth/tenant migrations and credential-free synthetic seeds; current verification is recorded below.
 - `docker compose up --build -d --wait`: both images built. Default host port 5432 was occupied by an existing service; made ports configurable and repeated startup with POSTGRES=59432, WEB=59300, MAILPIT UI=5925, SMTP=59125. Existing services were untouched.
 - Compose web health: `{status:"ok",service:"web",runtime:"26.11.1"}`; worker readiness reports Node 26.11.1. Drizzle/pg `select 1` returns 1; database identifies as PostgreSQL 18.1. Local Compose uses Next dev with matching development environment; container image builds verify the production bundle.
 - Built worker started and terminated cleanly on SIGTERM. Temporary stack stopped after verification; persistent named volumes retained.
@@ -58,3 +58,11 @@ A published B/P1-01, D/P2-01 and E/P2-00 assignments at exact baseline 467e2060c
 P0-08 local verification: Playwright 1.65.0 engine metadata permits Node >=20; matching Chromium binaries installed successfully. Four actual Chromium baseline viewport tests passed under Node 26.11.1 (1440/1024/390/320), separate from eleven existing unit/coordination tests. B's workspace dependency and auth subpath request is approved: web declares @relay/domain and the domain package exports @relay/domain/auth at ./auth/src/index.ts; B must supply its owned barrel/implementation before auth is wired into main. Role CHECKs, live-role/removal semantics and human-permission denial for system actors were confirmed; invitation role validation and full M1 gates remain open. Next-generated environment declarations are untracked/ignored per installed Next documentation so browser runs do not dirty handoff worktrees.
 
 First handoff review: B submitted c0e28cc and D submitted 24f8e08; neither is accepted yet. A reproduced a privacy regression in D's validation envelope: provider-controlled item/evidence labels could copy raw source text into error field keys. D received a targeted revision request with a regression case and safe indexed-path requirement. B received the tested workspace dependency/export metadata and A is adding web's explicit ESM declaration for clean typed auth imports. E is working and has proposed FoundationPreview; A delegated only a development-gated synthetic preview page in its card so E can use the browser runner without editing production routes.
+
+## Coordinator integration checkpoint — 2026-11-07
+
+D/P2-01 accepted at 1b95923 after source/evidence/privacy review, independent hostile-identifier reproduction and a merged verify pass (38 tests). It is provider-free, with no real extraction accuracy or M2 gate claimed. B/P1-01 revised handoff 26e4a12 was then merged with history preserved. Combined `bun run verify` passed 8 files / 57 tests, Biome, strict types and Next/worker builds. A separately ran migration twice, seed twice (2/5/6 then 0/0/0) and the PostgreSQL suite (3 files / 24 tests) on its own relay-a-review project, port 59530, databases relay_a_review and relay_a_review_test. Worker databases were untouched. The quality CI job no longer invokes database commands without a database; an explicit PostgreSQL 18.1 migration/seed/integration job and test:integration script now cover them. CI YAML parsed locally; hosted CI was not run.
+
+E submitted e4ae7b3 with presentation primitives/shells, synthetic development-only preview and 12 UI viewport cases; A is reviewing it separately. No full M1/M2 milestone is closed and no next worker task is automatically started.
+
+Coordinator also excluded newly generated .pi/tasks runtime logs from Git/Biome and Docker contexts; project configuration files remain unaffected. These are local harness task artifacts, not source code or coordination authority.

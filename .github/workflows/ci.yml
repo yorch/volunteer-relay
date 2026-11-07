@@ -19,7 +19,6 @@ jobs:
       - run: bun run typecheck
       - run: bun run test
       - run: bun run build
-      - run: bun run db:migrate && bun run db:seed
   compose:
     runs-on: ubuntu-latest
     steps:
@@ -49,3 +48,41 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: node node_modules/@playwright/test/cli.js install --with-deps chromium
       - run: bun run test:e2e
+
+  postgres-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.1-bookworm
+        env:
+          POSTGRES_USER: relay
+          POSTGRES_PASSWORD: relay
+          POSTGRES_DB: relay_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U relay -d relay_ci"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://relay:relay@127.0.0.1:5432/relay_ci
+      TEST_DATABASE_URL: postgres://relay:relay@127.0.0.1:5432/relay_ci_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.1
+      - run: bun install --frozen-lockfile
+      - run: >-
+          node --input-type=module -e
+          'import {createDatabase} from "./packages/db/src/index.ts";
+          const {db,close}=createDatabase(process.env.DATABASE_URL);
+          try { await db.execute("CREATE DATABASE relay_ci_test"); } finally { await close(); }'
+      - run: bun run db:migrate
+      - run: bun run db:seed
+      - run: bun run db:migrate && bun run db:seed
+      - run: bun run test:integration
