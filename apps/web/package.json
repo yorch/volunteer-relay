@@ -11,5 +11,6 @@
     "@relay/contracts": "workspace:*",
     "@relay/db": "workspace:*",
     "@relay/domain": "workspace:*"
-  }
+  },
+  "type": "module"
 }
