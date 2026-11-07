@@ -3,6 +3,7 @@ import type {
   SourceEnvelope,
   TenantContext,
 } from "@relay/contracts";
+import { apiErrorSchema } from "@relay/contracts";
 import { describe, expect, it } from "vitest";
 import { createSourceRepository } from "./source-repository.ts";
 import type {
@@ -431,5 +432,67 @@ describe("get: evidence access rules", () => {
     expect(system.ok).toBe(false);
     if (system.ok) throw new Error("expected failure");
     expect(system.error.code).toBe("FORBIDDEN");
+  });
+});
+
+describe("get: read-store failure boundary", () => {
+  it("returns a safe retryable Result instead of rejecting with driver detail", async () => {
+    const sentinel = "SECRET-PRIVATE-DETAIL";
+    const throwingStore = {
+      async insertRevision(): Promise<never> {
+        throw new Error("unused in this test");
+      },
+      async findRevision(): Promise<never> {
+        throw Object.assign(new Error(sentinel), {
+          code: "57P01",
+          detail: `Key (text)=(${sentinel})`,
+        });
+      },
+    };
+    const repository = createSourceRepository({
+      authorization: authorization(),
+      store: throwingStore,
+    });
+
+    // Staff context with successful authorization reaches the store.
+    const result = await repository.get(context("owner"), "source-01", 1);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected failure");
+    expect(result.error.code).toBe("DEPENDENCY_UNAVAILABLE");
+    expect(result.error.retryable).toBe(true);
+    expect(result.error.correlationId).toBe("corr-owner");
+    expect(result.error.message).toBe("Source evidence is unavailable");
+
+    // The failure is a schema-valid API error and leaks nothing.
+    expect(apiErrorSchema.safeParse({ error: result.error }).success).toBe(
+      true,
+    );
+    expect(JSON.stringify(result)).not.toContain(sentinel);
+    expect(JSON.stringify(result)).not.toContain("57P01");
+  });
+
+  it("keeps ordinary NOT_FOUND and denial behaviour unchanged", async () => {
+    const { store } = fakeStore({ kind: "conflict", reason: "revision" });
+    const repository = createSourceRepository({
+      authorization: authorization(),
+      store,
+    });
+
+    const missing = await repository.get(context("owner"), "source-01", 3);
+    expect(missing.ok).toBe(false);
+    if (missing.ok) throw new Error("expected failure");
+    expect(missing.error.code).toBe("NOT_FOUND");
+    expect(apiErrorSchema.safeParse({ error: missing.error }).success).toBe(
+      true,
+    );
+
+    const reader = await repository.get(
+      context("report-reader"),
+      "source-01",
+      1,
+    );
+    expect(reader.ok).toBe(false);
+    if (reader.ok) throw new Error("expected failure");
+    expect(reader.error.code).toBe("FORBIDDEN");
   });
 });

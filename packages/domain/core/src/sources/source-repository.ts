@@ -282,11 +282,23 @@ export function createSourceRepository({
           correlationId,
         );
 
-      const stored = await store.findRevision({
-        organizationId: context.organizationId,
-        sourceId,
-        revision,
-      });
+      // A read-store failure must not escape the Result boundary with driver
+      // detail; it becomes a fixed retryable dependency error.
+      let stored: Awaited<ReturnType<SourceStore["findRevision"]>>;
+      try {
+        stored = await store.findRevision({
+          organizationId: context.organizationId,
+          sourceId,
+          revision,
+        });
+      } catch {
+        return failure(
+          "DEPENDENCY_UNAVAILABLE",
+          "Source evidence is unavailable",
+          correlationId,
+          true,
+        );
+      }
       if (!stored)
         return failure("NOT_FOUND", "Source revision not found", correlationId);
 
