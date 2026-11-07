@@ -1,0 +1,13 @@
+.stack {
+  display: grid;
+  gap: 1rem;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.muted {
+  color: var(--relay-muted);
+}
