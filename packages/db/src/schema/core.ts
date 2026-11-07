@@ -47,6 +47,14 @@ export const sourceAuthor = pgTable(
     // Composite relation so a pointer cannot name another tenant's member; the
     // migration narrows ON DELETE SET NULL to this column only, so deletion
     // clears the pointer without touching organization_id.
+    //
+    // TOOLING NOTE: Drizzle Kit 0.31.11 cannot express a column-specific
+    // composite SET NULL (its schema emits a plain ON DELETE SET NULL for every
+    // column). Migration 0001 is therefore hand-corrected to
+    // `ON DELETE SET NULL (current_membership_id)` and MUST keep that form when
+    // regenerated; a plain SET NULL would also attempt to null organization_id
+    // and fail the not-null constraint. The catalog regression in
+    // tests/integration/domain/source-author-pointer.test.ts pins this.
     currentMembershipId: text("current_membership_id"),
     createdAt,
   },
