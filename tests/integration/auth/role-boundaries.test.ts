@@ -163,17 +163,31 @@ describe("custom app permissions per contract role", () => {
     // Owner administers members, invitations and organization settings.
     expect(
       await allowed(people.owner, {
-        organization: ["update"],
-        member: ["create"],
-        invitation: ["create"],
+        organization: ["update", "delete"],
+        member: ["create", "update", "delete"],
+        invitation: ["create", "cancel"],
       }),
     ).toBe(true);
 
+    // Every administration action is denied to the other three roles; the
+    // domain permissions never widen into member/invitation/organization control.
+    const administration = [
+      { organization: ["update"] },
+      { organization: ["delete"] },
+      { member: ["create"] },
+      { member: ["update"] },
+      { member: ["delete"] },
+      { invitation: ["create"] },
+      { invitation: ["cancel"] },
+    ];
+
     for (const role of ["coordinator", "volunteer", "report-reader"] as const) {
       const person = people[role];
-      expect(await allowed(person, { organization: ["update"] })).toBe(false);
-      expect(await allowed(person, { member: ["create"] })).toBe(false);
-      expect(await allowed(person, { invitation: ["create"] })).toBe(false);
+      for (const permissions of administration)
+        expect(
+          await allowed(person, permissions),
+          `${role} must not hold ${JSON.stringify(permissions)}`,
+        ).toBe(false);
 
       // The domain permissions do not leak into administration endpoints.
       await expectForbidden(
