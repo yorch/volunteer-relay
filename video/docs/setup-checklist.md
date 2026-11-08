@@ -66,8 +66,11 @@ verified with `git check-ignore`.
 2. Create the disposable local database and export `DATABASE_URL`,
    `ATTACHMENT_ROOT`, `BETTER_AUTH_SECRET`, `APP_URL`, `VIDEO_LOCAL_DATABASE_MARKER`.
 3. `node packages/db/src/migrate.ts`.
-4. `bun run video:provision` → identities created/reused, missing passwords stored
-   0600, each role verified against its tenant, second-tenant session verified.
+4. `bun run video:provision` → local writes require the same disposable-database
+   guard as preparation; blank placeholders in `video/.env.local` are filled in
+   place (existing values and emails are preserved), each role is verified against
+   its tenant, the second-tenant session is verified, and the command exits
+   non-zero if any role stays unverified.
 5. `bun run video:prepare` → seed + authored baseline verified.
 6. `bun run video:auth` → per-role storage state.
 7. `bun run video:capture` → footage with checkpoint assertions.

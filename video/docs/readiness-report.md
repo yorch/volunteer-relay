@@ -34,15 +34,44 @@ burned-in captions).
 
 ## Verification results
 
-- `bun run video:verify` — Biome clean (1 warning-level rule in a test), project
-  typecheck clean, **50 video unit tests passing** (manifest schema, frame
-  arithmetic, duration limits, caption grouping/validation/SRT, alignment
-  parsing, cache identity, checkpoint comparison, target guard, env parsing).
+- `bun run video:verify` — Biome clean, project typecheck clean, **68 video unit
+  tests passing** (manifest schema, frame arithmetic, duration limits, caption
+  grouping/validation/SRT, alignment parsing, cache identity and cache-miss
+  planning, binary audio writes, database guard, final-render readiness,
+  checkpoint comparison, target guard, env parsing, argument parsing).
 - `bun run video:validate` — 30 pass, 2 warnings (scratch narration provenance,
   proportional caption provenance), 0 blockers, 1 skip (final render not
   requested).
 - Repository `bun run verify` — see the handoff section; results are recorded in
   the PR description after the gate run.
+
+## Adversarial review hardening
+
+An independent adversarial review of the first PR revision found real defects;
+this revision fixes them:
+
+- Provisioning now shares preparation's disposable-database guard, so public
+  demo-password identities cannot be written to an ordinary or remote database.
+- Provider audio is written as bytes (a UTF-8 text write corrupted MP3 data).
+- Paid narration requests only cache misses and persists each finished scene.
+- A full render is gated on final narration, complete captures, captions and a
+  single origin; scratch audio can no longer become `final.mp4`.
+- Each capture asset records its exact base URL and origin; a subset recapture
+  from another target is refused, and the composition labels every scene from its
+  own asset.
+- Authentication locks the browser context to the allowed origin before the
+  password is typed and writes storage state through a 0600 temporary file in a
+  0700 directory.
+- Supplied or scratch audio invalidates stale provider alignment; captions fall
+  back to labelled proportional phrase timing.
+- Captures publish per successful take; failed takes delete their recordings.
+- `video:provision` fills blank placeholders in place, preserves existing values
+  and fails when a required role stays unverified.
+- `VIDEO_ORGANIZATION_ID` / `VIDEO_SECONDARY_ORGANIZATION_ID` now override the
+  committed scenario for authentication and assertions.
+- S03 displays "Authored demo proposal · no live model call".
+- Env parsing rejects malformed quoting and handles quoted values with trailing
+  comments; `parseArgs` no longer duplicates a flag value as a positional.
 
 ## Known limitations and manual checks remaining
 

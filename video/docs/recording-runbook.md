@@ -100,8 +100,11 @@ bun run video:voice -- --scratch     # timing-only local voice, labelled as such
 ```
 
 The cache key covers text, provider, model, voice, settings, pronunciations and
-output format; unchanged scenes are never regenerated. Pronunciation overrides
-live in `narration/pronunciations.json`.
+output format; only cache misses are requested, each completed scene is persisted
+immediately (so a later failure never re-bills it), and `--force` is required to
+regenerate everything. Supplied or scratch audio deletes any stale provider
+alignment before it is used. Pronunciation overrides live in
+`narration/pronunciations.json`.
 
 Narration is currently **blocked** in this environment (no key). The proof render
 used `--scratch`, so its audio is a labelled local timing voice, not the final
@@ -117,8 +120,11 @@ bun run video:capture -- --scene S04  # one scene from its declared checkpoint
 Each take: fresh 1920×1080 context, per-role storage state, readiness marker,
 checkpoint assertion (`fixtures/expected-results.json`), scripted staff action,
 post-action checkpoint assertion, hold to the scene minimum, then close. The WebM
-is normalised to H.264 yuv420p 30 fps 1920×1080. Markers and origin are written to
-`generated/capture-manifest.json`.
+is normalised to H.264 yuv420p 30 fps 1920×1080 and published with its own
+manifest entry (scene, exact base URL, origin, markers) immediately; failed takes
+delete their temporary recordings. Capturing from a different target while an
+existing manifest is present is refused — remove `generated/captures/` and the
+manifest first, never mix origins.
 
 Scene order and checkpoints:
 
@@ -151,6 +157,11 @@ bun run video:validate
 Frame rules: 30 fps, integer boundaries, scene = `max(minSeconds, narration +
 0.6s tail)` rounded up, capped per scene; the programme is rejected above 180 s.
 Captions are stored per scene and rebased for the proof excerpt.
+
+`video:render` (full, not `--draft`/`--proof`) refuses to start unless narration
+is final (provider or supplied audio, not scratch/absent), every product scene has
+a capture, captions exist and all captures share one base URL. S03 carries an
+on-screen "Authored demo proposal · no live model call" label.
 
 Remotion uses an existing Playwright Chrome Headless Shell when one is cached
 (`REMOTION_BROWSER_EXECUTABLE` overrides). Without one it downloads a browser on

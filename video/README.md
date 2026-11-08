@@ -73,5 +73,13 @@ scratch voice; final duration follows measured narration.
   its action; a failed assertion aborts the take.
 - A render reports missing footage or narration instead of substituting it, and
   the timeline refuses footage shorter than its scene.
+- `video:render` refuses a final render unless narration is final (not scratch or
+  absent), every product scene is captured, captions exist and all footage comes
+  from one origin; a mixed-origin capture set is rejected before capture starts.
+- Paid narration skips cached scenes and persists each completed scene, so a
+  failure never re-bills a finished scene.
+- Authentication locks the browser context to the allowed origin before typing a
+  credential; storage state is written into a private directory through a
+  0600 temporary file.
 - Captions come from provider character alignment; supplied audio without
   alignment is labelled `proportional-phrase`.
