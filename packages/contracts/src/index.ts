@@ -1,4 +1,5 @@
 import { z } from "zod";
+export * from "./product.ts";
 
 export const CONTRACT_VERSION = 1 as const;
 export const needStatusSchema = z.enum([
