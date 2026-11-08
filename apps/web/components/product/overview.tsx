@@ -135,51 +135,56 @@ export function Overview({ snapshot }: { snapshot: WorkspaceSnapshot }) {
             </div>
             <a href="/workspace/inbox">View inbox</a>
           </div>
-          <ul className={styles.list}>
-            {snapshot.queue.length > 0 && (
-              <li className={`${styles.priority} ${styles.sevInfo}`}>
-                <span className={styles.rowIcon} aria-hidden="true">
-                  <Icon name="inbox" size={20} />
-                </span>
-                <div>
-                  <strong>
-                    {snapshot.queue.length} updates awaiting review
-                  </strong>
-                  <span>
-                    Compare the proposed fields with the original evidence.
+          {(snapshot.queue.length > 0 || failed > 0 || urgent > 0) && (
+            <ul className={styles.list}>
+              {snapshot.queue.length > 0 && (
+                <li className={`${styles.priority} ${styles.sevInfo}`}>
+                  <span className={styles.rowIcon} aria-hidden="true">
+                    <Icon name="inbox" size={20} />
                   </span>
-                </div>
-              </li>
-            )}
-            {failed > 0 && (
-              <li className={`${styles.priority} ${styles.sevDanger}`}>
-                <span className={styles.rowIcon} aria-hidden="true">
-                  <Icon name="alert" size={20} />
-                </span>
-                <div>
-                  <strong>
-                    {failed} processing {failed === 1 ? "failure" : "failures"}
-                  </strong>
-                  <span>Inspect the original update and retry processing.</span>
-                </div>
-              </li>
-            )}
-            {urgent > 0 && (
-              <li className={`${styles.priority} ${styles.sevWarn}`}>
-                <span className={styles.rowIcon} aria-hidden="true">
-                  <Icon name="flag" size={20} />
-                </span>
-                <div>
-                  <strong>
-                    {urgent} urgent {urgent === 1 ? "need" : "needs"}
-                  </strong>
-                  <span>
-                    Check ownership and next steps on the needs board.
+                  <div>
+                    <strong>
+                      {snapshot.queue.length} updates awaiting review
+                    </strong>
+                    <span>
+                      Compare the proposed fields with the original evidence.
+                    </span>
+                  </div>
+                </li>
+              )}
+              {failed > 0 && (
+                <li className={`${styles.priority} ${styles.sevDanger}`}>
+                  <span className={styles.rowIcon} aria-hidden="true">
+                    <Icon name="alert" size={20} />
                   </span>
-                </div>
-              </li>
-            )}
-          </ul>
+                  <div>
+                    <strong>
+                      {failed} processing{" "}
+                      {failed === 1 ? "failure" : "failures"}
+                    </strong>
+                    <span>
+                      Inspect the original update and retry processing.
+                    </span>
+                  </div>
+                </li>
+              )}
+              {urgent > 0 && (
+                <li className={`${styles.priority} ${styles.sevWarn}`}>
+                  <span className={styles.rowIcon} aria-hidden="true">
+                    <Icon name="flag" size={20} />
+                  </span>
+                  <div>
+                    <strong>
+                      {urgent} urgent {urgent === 1 ? "need" : "needs"}
+                    </strong>
+                    <span>
+                      Check ownership and next steps on the needs board.
+                    </span>
+                  </div>
+                </li>
+              )}
+            </ul>
+          )}
           {!snapshot.queue.length && !failed && !urgent && (
             <EmptyState icon="check" title="All caught up">
               No urgent work right now.

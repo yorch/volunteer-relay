@@ -430,7 +430,7 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
   };
   if (loading)
     return (
-      <main className={styles.standalone} aria-live="polite" aria-busy="true">
+      <main className={styles.standalone} aria-live="polite">
         <div className={styles.loading}>
           <Skeleton width={48} height={48} />
           <p>Loading workspace…</p>

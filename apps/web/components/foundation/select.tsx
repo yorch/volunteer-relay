@@ -244,7 +244,10 @@ export function Select({
     if (event.defaultPrevented || disabled) return;
     const { key } = event;
     if (!open) {
-      if (["ArrowDown", "ArrowUp", "Enter", " "].includes(key)) {
+      if (key === " " && typeahead.current.text) {
+        event.preventDefault();
+        runTypeahead(key);
+      } else if (["ArrowDown", "ArrowUp", "Enter", " "].includes(key)) {
         event.preventDefault();
         openList();
       } else if (key === "Home" || key === "End") {
@@ -292,7 +295,9 @@ export function Select({
       event.stopPropagation();
       closeList(true);
     } else if (key === "Tab") {
-      setOpen(false);
+      // APG: Tab commits the highlighted option, closes and moves on.
+      if (active >= 0 && !options[active]?.disabled) commit(active);
+      else setOpen(false);
     } else if (isPrintable(event)) {
       event.preventDefault();
       runTypeahead(key);
