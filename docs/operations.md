@@ -1,25 +1,35 @@
 # Single-host operations
 
-This profile is a deployment starting point, not proof of production readiness. It runs Caddy with automatic TLS, a private PostgreSQL 18 database, a one-shot migration, the standalone web server, and the worker. PostgreSQL and attachments have no published ports. Caddy is the only published service. The web and worker run as the image's unprivileged `node` user with read-only root filesystems; writable attachments and Caddy state are named volumes. The initialization container sets their ownership. The database volume and Caddy state must persist across upgrades. Do not use the development Compose file for production.
+This profile is a deployment starting point, not proof of production readiness. It runs Caddy with automatic TLS, a private PostgreSQL 18 database, a one-shot migration and runtime grants, the standalone web server, and the worker. PostgreSQL and attachments have no published ports. Caddy is the only published service. The web and worker run as the image's unprivileged `node` user with read-only root filesystems; writable attachments and Caddy state are named volumes. The initialization container sets their ownership. The database volume and Caddy state must persist across upgrades. Do not use the development Compose file for production.
 
 ## Provision and start
 
 1. Provision a dedicated host with Docker Engine and Compose v2, persistent encrypted storage, monitoring, backups and restricted administrative access. Set DNS for a domain you control to this host and allow inbound TCP 80 and TCP/UDP 443. Caddy needs outbound ACME access. Keep the environment file, Docker socket, volumes and backups private.
 2. Build the `web` and `worker` targets of `infra/Dockerfile` from the same reviewed commit, publish to a trusted registry, and pin the resulting image digests. The build uses Node 26.11.1 and Bun 1.4.1. On restricted networks supply the required trusted proxy CA to networked build steps without disabling TLS verification. Do not include secrets in build arguments or images.
-3. Create a host-only environment file, for example `/etc/volunteer-relay/production.env`, owned by the operator and mode `0600`. Use unique high-entropy credentials; the example below is a template, not usable credentials. `DATABASE_URL` must use the same user, password and database as the PostgreSQL variables, with any URL-special characters percent-encoded. Compose reads the file and the application receives it; keep it out of source control. The Postgres image only applies initial user/password/database variables to a new volume; changing the file alone does not rotate existing credentials.
+3. Create two host-only environment files, owned by the operator and mode `0600`: the operator file `/etc/volunteer-relay/production.env` and the runtime file `/etc/volunteer-relay/runtime.env`. Use unique high-entropy credentials; the examples below are templates, not usable credentials. Compose reads the operator file; web and worker receive only the runtime file. Keep both out of source control. This profile assumes a dedicated PostgreSQL cluster: grants revoke default PUBLIC access to every connectable database. The bootstrap user owns and runs migrations; the separate runtime user must be a new, distinct role without owned objects or role memberships. The Postgres image only applies initial user/password/database variables to a new volume; changing the file alone does not rotate existing credentials.
 
    ```dotenv
    POSTGRES_USER=relay
    POSTGRES_PASSWORD=REPLACE_WITH_URL_SAFE_RANDOM_PASSWORD
    POSTGRES_DB=relay
-   DATABASE_URL=postgres://relay:REPLACE_WITH_URL_SAFE_RANDOM_PASSWORD@postgres:5432/relay
-   BETTER_AUTH_SECRET=REPLACE_WITH_AT_LEAST_32_RANDOM_CHARACTERS
-   NODE_ENV=production
-   DEMO_MODE=false
+   MIGRATION_DATABASE_URL=postgres://relay:REPLACE_WITH_URL_SAFE_RANDOM_PASSWORD@postgres:5432/relay
+   RELAY_RUNTIME_USER=relay_app
+   RELAY_RUNTIME_PASSWORD=REPLACE_WITH_DIFFERENT_URL_SAFE_RANDOM_PASSWORD
+   RELAY_RUNTIME_ENV_FILE=/etc/volunteer-relay/runtime.env
    APP_URL=https://relay.example.org
    RELAY_DOMAIN=relay.example.org
    RELAY_WEB_IMAGE=registry.example.org/relay-web@sha256:REPLACE
    RELAY_WORKER_IMAGE=registry.example.org/relay-worker@sha256:REPLACE
+   ```
+
+   In `/etc/volunteer-relay/runtime.env`:
+
+   ```dotenv
+   DATABASE_URL=postgres://relay_app:REPLACE_WITH_DIFFERENT_URL_SAFE_RANDOM_PASSWORD@postgres:5432/relay
+   BETTER_AUTH_SECRET=REPLACE_WITH_AT_LEAST_32_RANDOM_CHARACTERS
+   NODE_ENV=production
+   DEMO_MODE=false
+   APP_URL=https://relay.example.org
    ATTACHMENT_ROOT=/data/attachments
    SMTP_HOST=mail.example.org
    SMTP_PORT=465
@@ -40,7 +50,7 @@ This profile is a deployment starting point, not proof of production readiness. 
    docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RELAY_ENV_FILE" -f compose.production.yaml ps -a
    ```
 
-   The migration container must exit successfully before web and worker start. Caddy waits for web health. Investigate failed migrations before restarting; do not bypass the gate. Check HTTPS certificate issuance, `/api/health`, sign-in and authorized workflows, worker logs, disk space and backup alerting. Health alone does not prove database connectivity, provider delivery or business workflow correctness. The web and worker have graceful stop periods; allow in-flight work to finish before maintenance.
+   The migration container and subsequent runtime-grants container must exit successfully before web and worker start. The latter grants runtime CRUD on existing public tables and sequences and default privileges for future objects created by the migration owner. It restricts the runtime role to the application database and does not grant schema ownership, superuser, database creation or role creation. Keep migration ownership consistent across upgrades and rerun the grants gate after migration; for extensions or other schemas review grants explicitly. Use URL encoding for special characters in both database URLs. Do not enable SQL statement logging for the role setup because it includes the runtime password. To rotate the runtime password, stop application services, update both files consistently, rerun the grants gate, then restart. Caddy waits for web health. Investigate failed migrations before restarting; do not bypass the gate. Check HTTPS certificate issuance, `/api/health`, sign-in and authorized workflows, worker logs, disk space and backup alerting. Health alone does not prove database connectivity, provider delivery or business workflow correctness. The web and worker have graceful stop periods; allow in-flight work to finish before maintenance.
 
 ## Backup
 
@@ -71,8 +81,8 @@ docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RELAY_ENV_FIL
 COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" RELAY_ENV_FILE="$RELAY_ENV_FILE" infra/production/restore.sh /secure/backups/relay-2026-01-01
 ```
 
-Validate row counts, representative authorization and attachment access in isolation before any cutover. Restore does not automatically start the application. Plan cutover, DNS, secrets and rollback with the operator; do not start Caddy with the production domain in a test project. For upgrades, take and verify a quiesced backup, review migrations and compatibility, deploy pinned matching images, and verify health and workflows. A failed migration blocks startup; rollback may require a tested restore rather than an older image against a newer schema. Never run concurrent migrations or destructive resets against shared data.
+Validate row counts, representative authorization and attachment access in isolation before any cutover. Restore does not automatically start the application. Restore uses the bootstrap identity and omits ACLs; on the isolated target rerun the migration and runtime-grants gates before starting web and worker, so the new cluster obtains its own runtime role and grants. Plan cutover, DNS, secrets and rollback with the operator; do not start Caddy with the production domain in a test project. For upgrades, take and verify a quiesced backup, review migrations and compatibility, deploy pinned matching images, and verify health and workflows. A failed migration blocks startup; rollback may require a tested restore rather than an older image against a newer schema. Never run concurrent migrations or destructive resets against shared data.
 
 ## Evidence and remaining gates
 
-A local synthetic rehearsal used two distinct Compose projects with PostgreSQL 18.1: a row and attachment survived backup and restore, and a second restore was refused for the nonempty target. Compose configuration and shell syntax were checked. Fresh-host image builds and startup, Caddy certificate issuance and renewal, real SMTP/Telegram/OpenAI providers, network egress, monitoring, disaster recovery cutover and production load remain unverified. Complete these gates with appropriate access before public operation; do not infer delivery or acknowledgment from provider acceptance.
+A local synthetic rehearsal used two distinct Compose projects with PostgreSQL 18.1: a row and attachment survived backup and restore, and a second restore was refused for the nonempty target. A separate migrated PostgreSQL rehearsal confirmed runtime CRUD permissions on auth, source and processing tables, denial of table creation and denial of connection to the administrative database. Compose configuration and shell syntax were checked. Fresh-host image builds and startup, Caddy certificate issuance and renewal, real SMTP/Telegram/OpenAI providers, network egress, monitoring, disaster recovery cutover and production load remain unverified. Complete these gates with appropriate access before public operation; do not infer delivery or acknowledgment from provider acceptance.

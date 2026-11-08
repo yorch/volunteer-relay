@@ -27,7 +27,8 @@ services:
     restart: "no"
   migrate:
     image: ${RELAY_WORKER_IMAGE:?Set RELAY_WORKER_IMAGE}
-    env_file: ${RELAY_ENV_FILE:?Set RELAY_ENV_FILE}
+    environment:
+      DATABASE_URL: ${MIGRATION_DATABASE_URL:?Set MIGRATION_DATABASE_URL}
     command: ["node", "packages/db/src/migrate.ts"]
     networks: [private]
     read_only: true
@@ -36,9 +37,29 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
     restart: "no"
+  runtime-grants:
+    image: postgres:18.1-bookworm
+    user: "1000:1000"
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:?Set POSTGRES_DB}
+      RELAY_RUNTIME_USER: ${RELAY_RUNTIME_USER:?Set RELAY_RUNTIME_USER}
+      RELAY_RUNTIME_PASSWORD: ${RELAY_RUNTIME_PASSWORD:?Set RELAY_RUNTIME_PASSWORD}
+    command: ["psql", "-X", "-q", "-v", "ON_ERROR_STOP=1", "-f", "/setup/runtime-grants.sql"]
+    volumes: ["./infra/production/runtime-grants.sql:/setup/runtime-grants.sql:ro"]
+    networks: [private]
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    restart: "no"
   web:
     image: ${RELAY_WEB_IMAGE:?Set RELAY_WEB_IMAGE}
-    env_file: ${RELAY_ENV_FILE:?Set RELAY_ENV_FILE}
+    env_file: ${RELAY_RUNTIME_ENV_FILE:?Set RELAY_RUNTIME_ENV_FILE}
     restart: unless-stopped
     read_only: true
     tmpfs: ["/tmp", "/app/apps/web/.next/cache:uid=1000,gid=1000"]
@@ -47,7 +68,7 @@ services:
     volumes: ["attachments:/data/attachments"]
     networks: [private, edge]
     depends_on:
-      migrate: {condition: service_completed_successfully}
+      runtime-grants: {condition: service_completed_successfully}
       volume-init: {condition: service_completed_successfully}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
@@ -57,7 +78,7 @@ services:
     stop_grace_period: 30s
   worker:
     image: ${RELAY_WORKER_IMAGE:?Set RELAY_WORKER_IMAGE}
-    env_file: ${RELAY_ENV_FILE:?Set RELAY_ENV_FILE}
+    env_file: ${RELAY_RUNTIME_ENV_FILE:?Set RELAY_RUNTIME_ENV_FILE}
     restart: unless-stopped
     read_only: true
     tmpfs: ["/tmp"]
@@ -66,7 +87,7 @@ services:
     volumes: ["attachments:/data/attachments"]
     networks: [private, edge]
     depends_on:
-      migrate: {condition: service_completed_successfully}
+      runtime-grants: {condition: service_completed_successfully}
       volume-init: {condition: service_completed_successfully}
     stop_grace_period: 60s
   caddy:
@@ -93,7 +114,6 @@ services:
     image: postgres:18.1-bookworm
     profiles: [tools]
     user: "1000:1000"
-    env_file: ${RELAY_ENV_FILE:?Set RELAY_ENV_FILE}
     environment:
       PGHOST: postgres
       PGUSER: ${POSTGRES_USER:?Set POSTGRES_USER}
