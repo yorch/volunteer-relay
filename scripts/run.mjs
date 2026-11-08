@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { copyFile, mkdir } from "node:fs/promises";
+import { cp, mkdir } from "node:fs/promises";
 
 if (process.versions.node !== "26.11.1")
   throw new Error(`Use Node 26.11.1; got ${process.versions.node}`);
@@ -40,7 +40,7 @@ else if (mode === "dev")
 else if (mode === "build") {
   await run([...next, "build", "apps/web"]);
   await mkdir("apps/worker/dist", { recursive: true });
-  await copyFile("apps/worker/src/index.ts", "apps/worker/dist/index.ts");
+  await cp("apps/worker/src", "apps/worker/dist", { recursive: true });
 } else if (mode === "typecheck") {
   await run([...next, "typegen", "apps/web"]);
   await run(["node_modules/typescript/bin/tsc", "--noEmit"]);

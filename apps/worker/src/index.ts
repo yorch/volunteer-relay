@@ -12,6 +12,7 @@ import {
   createSmtpTransport,
   createTelegramTransport,
 } from "@relay/notifications";
+import { pollTelegram } from "./telegram.ts";
 
 if (process.versions.node !== "26.11.1")
   throw new Error("Worker requires Node26.11.1");
@@ -63,6 +64,7 @@ const configured = Boolean(
     env.OPENAI_INPUT_MICROUSD_PER_MILLION !== undefined &&
     env.OPENAI_OUTPUT_MICROUSD_PER_MILLION !== undefined,
 );
+const polling = pollTelegram(db, env, () => stopped);
 console.info(
   JSON.stringify({
     service: "worker",
@@ -214,6 +216,7 @@ try {
       });
   }
 } finally {
+  await polling;
   await close();
   console.info(JSON.stringify({ service: "worker", status: "stopped" }));
 }

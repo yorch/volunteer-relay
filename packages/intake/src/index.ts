@@ -715,6 +715,12 @@ const signatures: Array<{
   },
 ];
 
+export function detectedImageMime(bytes: Uint8Array) {
+  return (
+    signatures.find((entry) => entry.check(Buffer.from(bytes)))?.mime ?? null
+  );
+}
+
 export function createPrivateFilesystemBlobStore(
   rootPath: string,
   options: { maxBytes?: number } = {},
@@ -773,3 +779,9 @@ export function createPrivateFilesystemBlobStore(
   };
 }
 export { readPrivateBlob } from "./private-reader.ts";
+
+export {
+  createTelegramIngress,
+  type TelegramIngressDependencies,
+} from "./telegram-ingress.ts";
+export { createTelegramPhotoLoader } from "./telegram-photo.ts";
