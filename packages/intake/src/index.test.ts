@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, symlink } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -196,9 +196,11 @@ describe("intake normalization", () => {
   });
 
   it("writes only bounded image content and rejects fake MIME or escaped roots", async () => {
-    const root = await mkdtemp(join(tmpdir(), "relay-blob-"));
+    // macOS tmpdir is a symlink; the adapter refuses a symlinked root.
+    const root = await realpath(await mkdtemp(join(tmpdir(), "relay-blob-")));
     try {
-      const store = createPrivateFilesystemBlobStore(join(root, "private"), {
+      const store = createPrivateFilesystemBlobStore({
+        root: join(root, "private"),
         maxBytes: 64,
       });
       const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2]);
@@ -214,7 +216,9 @@ describe("intake normalization", () => {
       await expect(store.put(Buffer.alloc(65, 1))).rejects.toThrow("size");
       await symlink(root, join(root, "escape"));
       await expect(
-        createPrivateFilesystemBlobStore(join(root, "escape")).put(png),
+        createPrivateFilesystemBlobStore({ root: join(root, "escape") }).put(
+          png,
+        ),
       ).rejects.toThrow("symlink");
     } finally {
       await rm(root, { recursive: true, force: true });

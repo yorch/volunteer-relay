@@ -3,17 +3,18 @@
   "private": true,
   "version": "0.0.0",
   "dependencies": {
-    "next": "16.4.5",
-    "react": "19.3.1",
-    "react-dom": "19.3.1",
-    "better-auth": "1.7.18",
+    "@relay/blob": "workspace:*",
     "@relay/config": "workspace:*",
     "@relay/contracts": "workspace:*",
     "@relay/db": "workspace:*",
     "@relay/domain": "workspace:*",
     "@relay/intake": "workspace:*",
-    "sharp": "0.35.5",
-    "nodemailer": "10.4.0"
+    "better-auth": "1.7.18",
+    "next": "16.4.5",
+    "nodemailer": "10.4.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "sharp": "0.35.5"
   },
   "type": "module",
   "devDependencies": {

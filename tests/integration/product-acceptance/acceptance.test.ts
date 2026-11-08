@@ -11,15 +11,16 @@ const sharp: typeof import("../../../apps/web/node_modules/sharp/lib/index.js") 
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createAuth } from "../../../apps/web/lib/auth/auth.ts";
 import { createSessionResolver } from "../../../apps/web/lib/auth/session.ts";
-import {
-  createProductExtensions,
-  readPrivateBlob,
-} from "../../../apps/web/lib/product/extensions.ts";
+import { createProductExtensions } from "../../../apps/web/lib/product/extensions.ts";
 import { createProductHandler } from "../../../apps/web/lib/product/http.ts";
 import {
   createDeterministicProvider,
   createExtractionService,
 } from "../../../packages/ai/src/index.ts";
+import {
+  createFilesystemBlobStore,
+  readFilesystemBlob,
+} from "../../../packages/blob/src/index.ts";
 import type {
   SourceEnvelope,
   TenantContext,
@@ -79,9 +80,9 @@ beforeAll(async () => {
     attachments: createAttachmentReader({
       authorization: fixture.authorization,
       metadata: createAttachmentMetadataStore(fixture.db),
-      blobs: { read: (key) => readPrivateBlob(root, key) },
+      blobs: { read: (key) => readFilesystemBlob(root, key) },
     }),
-    root,
+    store: createFilesystemBlobStore({ root }),
     maxBytes: 10485760,
     timezone: async (organizationId) =>
       (

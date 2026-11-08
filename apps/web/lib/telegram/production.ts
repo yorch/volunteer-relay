@@ -1,4 +1,9 @@
 import { randomUUID } from "node:crypto";
+import {
+  createBlobStore,
+  type PrivateBlobStore,
+  withTrackedBlobWrites,
+} from "@relay/blob";
 import { parseEnvironment } from "@relay/config";
 import {
   createDatabase,
@@ -13,14 +18,13 @@ import { createNeedService, createSourceRepository } from "@relay/domain/core";
 import {
   createTelegramIngress,
   createTelegramPhotoLoader,
-  erasePrivateBlob,
   verifyTelegramSecret,
-  withTrackedBlobWrites,
 } from "@relay/intake";
 import sharp from "sharp";
 import { createTenantAuthorization } from "../auth/index.ts";
 
 let opened: ReturnType<typeof createDatabase> | undefined;
+let blobs: PrivateBlobStore | undefined;
 export async function telegramWebhook(request: Request) {
   try {
     const env = parseEnvironment(process.env);
@@ -38,9 +42,11 @@ export async function telegramWebhook(request: Request) {
     )
       return new Response(null, { status: 403 });
     opened ??= createDatabase(env.DATABASE_URL);
+    blobs ??= createBlobStore(env);
     const database = opened.db;
+    const store = blobs;
     return await withTrackedBlobWrites(
-      env.ATTACHMENT_ROOT,
+      store,
       async (note) =>
         database.transaction(async (tx) => {
           const db = tx as unknown as Database,
@@ -76,7 +82,7 @@ export async function telegramWebhook(request: Request) {
             },
             photo: createTelegramPhotoLoader({
               botToken: env.TELEGRAM_BOT_TOKEN ?? "",
-              root: env.ATTACHMENT_ROOT,
+              store,
               maxBytes: env.ATTACHMENT_MAX_BYTES,
               withBlobLock: async (key, put) => {
                 await db.execute(
@@ -107,7 +113,7 @@ export async function telegramWebhook(request: Request) {
         pruneUnreferencedBlob(
           database,
           identity,
-          (key, sha) => erasePrivateBlob(env.ATTACHMENT_ROOT, key, sha),
+          (key, sha) => store.erase(key, sha),
           done,
         ),
     );

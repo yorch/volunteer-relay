@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createBlobStore } from "@relay/blob";
 import { parseEnvironment } from "@relay/config";
 import {
   and,
@@ -23,7 +24,7 @@ import {
   createTenantAuthorization,
 } from "../auth/index.ts";
 import { createProductionAuth } from "../mail/production.ts";
-import { createProductExtensions, readPrivateBlob } from "./extensions.ts";
+import { createProductExtensions } from "./extensions.ts";
 import { createFollowThroughHttp } from "./follow-through.ts";
 import { createProductHandler, productFailure } from "./http.ts";
 import { createOperationsHttp } from "./operations.ts";
@@ -35,6 +36,7 @@ export async function productHandler(request: Request) {
     if (!handler) {
       const env = parseEnvironment(process.env);
       const { db } = createDatabase(env.DATABASE_URL);
+      const blobs = createBlobStore(env);
       const authorization = createTenantAuthorization({ db });
       const auth = createProductionAuth(db);
       const sessions = createSessionResolver({
@@ -53,7 +55,7 @@ export async function productHandler(request: Request) {
       const attachments = createAttachmentReader({
         authorization,
         metadata: createAttachmentMetadataStore(db),
-        blobs: { read: (key) => readPrivateBlob(env.ATTACHMENT_ROOT, key) },
+        blobs: { read: (key) => blobs.read(key) },
       });
       const extended = createProductExtensions({
         db,
@@ -61,14 +63,14 @@ export async function productHandler(request: Request) {
         sources,
         processing,
         attachments,
-        root: env.ATTACHMENT_ROOT,
+        store: blobs,
         maxBytes: env.ATTACHMENT_MAX_BYTES,
         timezone: async (org) =>
           (await createFollowThroughRepository(db).getSettingsInternal(org))
             .timezone,
       });
       const followHttp = createFollowThroughHttp(db, auth, sessions);
-      const operations = createOperationsHttp(db, env.ATTACHMENT_ROOT);
+      const operations = createOperationsHttp(db, blobs);
       const retention = createRetentionHttp(
         db,
         process.env.RETENTION_LEDGER_KEY,

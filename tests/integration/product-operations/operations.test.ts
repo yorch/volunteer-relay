@@ -5,6 +5,7 @@ import {
   createDeterministicProvider,
   createExtractionService,
 } from "../../../packages/ai/src/index.ts";
+import { createFilesystemBlobStore } from "../../../packages/blob/src/index.ts";
 import type {
   SourceEnvelope,
   TenantContext,
@@ -52,7 +53,10 @@ beforeAll(async () => {
     "reader",
   );
   harbor = await context(fixture.authorization, "user-ive", "harbor", "harbor");
-  handler = createOperationsHttp(fixture.db, "/tmp");
+  handler = createOperationsHttp(
+    fixture.db,
+    createFilesystemBlobStore({ root: "/tmp" }),
+  );
   const need = await fixture.needs.create(coordinator, {
     schemaVersion: 1,
     idempotencyKey: "need",

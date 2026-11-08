@@ -1,11 +1,6 @@
 import { createHash } from "node:crypto";
+import { type PrivateBlobStore, withTrackedBlobWrites } from "@relay/blob";
 import { type Database, pruneUnreferencedBlob, sql } from "@relay/db";
-import {
-  createPrivateFilesystemBlobStore,
-  erasePrivateBlob,
-  readPrivateBlob,
-  withTrackedBlobWrites,
-} from "@relay/intake";
 import sharp from "sharp";
 import {
   insertDemoFixtures,
@@ -16,19 +11,18 @@ import { requireDemoProfile } from "./demo.ts";
 
 /** Explicit synthetic product profile. Authentication identities are provisioned separately. */
 export async function seedProductDemo(
-  dependencies: { db: Database; attachmentRoot: string },
+  dependencies: { db: Database; store: PrivateBlobStore },
   args: readonly string[],
   env: Record<string, string | undefined>,
 ): Promise<{ created: boolean; profileVersion: 1 }> {
   requireDemoProfile(args, env);
-  const { db, attachmentRoot } = dependencies;
-  if (!attachmentRoot) throw new Error("Demo attachment root is required");
+  const { db, store } = dependencies;
   try {
     const png = await sharp(Buffer.from(productDemoPhotoSvg)).png().toBuffer();
     const sha256 = createHash("sha256").update(png).digest("hex");
     const storageKey = `${sha256.slice(0, 2)}/${sha256}`;
     return await withTrackedBlobWrites(
-      attachmentRoot,
+      store,
       async (note) =>
         db.transaction(async (tx) => {
           if ((await inspectDemoProfile(tx)) === "reuse") {
@@ -41,10 +35,7 @@ export async function seedProductDemo(
               );
               const row = rows.rows[0];
               if (!row) throw new Error("Demo photo missing");
-              const bytes = await readPrivateBlob(
-                attachmentRoot,
-                row.storage_key as string,
-              );
+              const bytes = await store.read(row.storage_key as string);
               if (
                 !bytes ||
                 createHash("sha256").update(bytes).digest("hex") !== row.sha256
@@ -57,8 +48,7 @@ export async function seedProductDemo(
             sql`select pg_advisory_xact_lock(hashtextextended(${`blob:${storageKey}`},0))`,
           );
           await note({ storageKey, sha256 });
-          const photo =
-            await createPrivateFilesystemBlobStore(attachmentRoot).put(png);
+          const photo = await store.put(png);
           if (
             photo.storageKey !== storageKey ||
             photo.sha256 !== sha256 ||
@@ -73,7 +63,7 @@ export async function seedProductDemo(
         pruneUnreferencedBlob(
           db,
           identity,
-          (key, hash) => erasePrivateBlob(attachmentRoot, key, hash),
+          (key, hash) => store.erase(key, hash),
           done,
         ),
     );

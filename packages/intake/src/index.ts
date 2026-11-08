@@ -1,6 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
-import { mkdir, open, realpath, rename, rm, statfs } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
+import { createHash } from "node:crypto";
 import { type SourceEnvelope, sourceEnvelopeSchema } from "@relay/contracts";
 
 export type RowIssue = { row: number; code: string; message: string };
@@ -685,115 +683,17 @@ export function normalizeTelegramUpdate(
   return result.success ? result.data : null;
 }
 
-export type BlobWrite = {
-  storageKey: string;
-  sha256: string;
-  mimeType: "image/jpeg" | "image/png" | "image/webp";
-  bytes: number;
-};
-const signatures: Array<{
-  mime: BlobWrite["mimeType"];
-  check: (b: Buffer) => boolean;
-}> = [
-  {
-    mime: "image/png",
-    check: (b) =>
-      b.length >= 8 &&
-      b.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])),
-  },
-  {
-    mime: "image/jpeg",
-    check: (b) =>
-      b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
-  },
-  {
-    mime: "image/webp",
-    check: (b) =>
-      b.length >= 12 &&
-      b.toString("ascii", 0, 4) === "RIFF" &&
-      b.toString("ascii", 8, 12) === "WEBP",
-  },
-];
-
-export function detectedImageMime(bytes: Uint8Array) {
-  return (
-    signatures.find((entry) => entry.check(Buffer.from(bytes)))?.mime ?? null
-  );
-}
-
-export function createPrivateFilesystemBlobStore(
-  rootPath: string,
-  options: { maxBytes?: number } = {},
-) {
-  const root = resolve(rootPath);
-  const maxBytes = options.maxBytes ?? 10 * 1024 * 1024;
-  return {
-    async put(bytes: Uint8Array): Promise<BlobWrite> {
-      const data = Buffer.from(bytes);
-      if (data.length === 0 || data.length > maxBytes)
-        throw new Error("Attachment size is invalid");
-      const detected = signatures.find((entry) => entry.check(data));
-      if (!detected) throw new Error("Unsupported image content");
-      await mkdir(root, { recursive: true, mode: 0o700 });
-      const capacity = await statfs(root);
-      if (capacity.bavail * capacity.bsize < maxBytes * 2)
-        throw new Error("Attachment storage is full");
-      const actualRoot = await realpath(root);
-      if (actualRoot !== root)
-        throw new Error("Attachment root must not be a symlink");
-      const digest = createHash("sha256").update(data).digest("hex");
-      const storageKey = `${digest.slice(0, 2)}/${digest}`;
-      const destination = resolve(root, storageKey);
-      if (!destination.startsWith(`${root}${sep}`))
-        throw new Error("Invalid storage key");
-      await mkdir(join(root, digest.slice(0, 2)), {
-        recursive: true,
-        mode: 0o700,
-      });
-      const dir = await realpath(join(root, digest.slice(0, 2)));
-      if (!dir.startsWith(`${root}${sep}`))
-        throw new Error("Attachment directory escapes root");
-      const tempPath = join(dir, `.${digest}.${randomUUID()}.tmp`);
-      const handle = await open(tempPath, "wx", 0o600);
-      try {
-        await handle.writeFile(data);
-        await handle.sync();
-      } catch (error) {
-        await rm(tempPath, { force: true });
-        throw error;
-      } finally {
-        await handle.close();
-      }
-      try {
-        await rename(tempPath, destination);
-      } catch (error) {
-        await rm(tempPath, { force: true });
-        throw error;
-      }
-      for (const path of [dir, root]) {
-        const synced = await open(path, "r");
-        try {
-          await synced.sync();
-        } finally {
-          await synced.close();
-        }
-      }
-      return {
-        storageKey,
-        sha256: digest,
-        mimeType: detected.mime,
-        bytes: data.length,
-      };
-    },
-  };
-}
 export {
   type BlobIdentity,
+  type BlobMimeType,
   type BlobSettlement,
-  recoverPendingBlobWrites,
+  type BlobWrite,
+  createFilesystemBlobStore as createPrivateFilesystemBlobStore,
+  detectedImageMime,
+  eraseFilesystemBlob as erasePrivateBlob,
+  readFilesystemBlob as readPrivateBlob,
   withTrackedBlobWrites,
-} from "./blob-writes.ts";
-export { erasePrivateBlob, readPrivateBlob } from "./private-reader.ts";
+} from "@relay/blob";
 export {
   createTelegramIngress,
   type TelegramIngressDependencies,

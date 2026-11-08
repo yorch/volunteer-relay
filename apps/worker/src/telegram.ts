@@ -1,4 +1,9 @@
 import { randomUUID } from "node:crypto";
+import {
+  type BlobIdentity,
+  type PrivateBlobStore,
+  withTrackedBlobWrites,
+} from "@relay/blob";
 import type { parseEnvironment } from "@relay/config";
 import {
   createDomainStore,
@@ -12,17 +17,15 @@ import {
 import { createAuthorizationService } from "@relay/domain/auth";
 import { createNeedService, createSourceRepository } from "@relay/domain/core";
 import {
-  type BlobIdentity,
   createTelegramIngress,
   createTelegramPhotoLoader,
-  erasePrivateBlob,
   type TelegramUpdate,
-  withTrackedBlobWrites,
 } from "@relay/intake";
 import sharp from "sharp";
 export async function pollTelegram(
   db: Database,
   env: ReturnType<typeof parseEnvironment>,
+  store: PrivateBlobStore,
   stopped: () => boolean,
 ) {
   if (env.TELEGRAM_TRANSPORT !== "polling" || !env.TELEGRAM_BOT_TOKEN) return;
@@ -59,7 +62,7 @@ export async function pollTelegram(
       },
       photo: createTelegramPhotoLoader({
         botToken: botToken,
-        root: env.ATTACHMENT_ROOT,
+        store,
         maxBytes: env.ATTACHMENT_MAX_BYTES,
         withBlobLock: async (key, put) => {
           await db.execute(
@@ -114,7 +117,7 @@ export async function pollTelegram(
         if (!Number.isSafeInteger(update.update_id))
           throw new Error("Invalid update");
         const handled = await withTrackedBlobWrites(
-          env.ATTACHMENT_ROOT,
+          store,
           async (note) =>
             db.transaction(async (tx) =>
               handlerFor(
@@ -135,7 +138,7 @@ export async function pollTelegram(
             pruneUnreferencedBlob(
               db,
               identity,
-              (key, sha) => erasePrivateBlob(env.ATTACHMENT_ROOT, key, sha),
+              (key, sha) => store.erase(key, sha),
               done,
             ),
         );
