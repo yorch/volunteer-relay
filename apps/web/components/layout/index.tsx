@@ -1,5 +1,7 @@
+import type { Route } from "next";
+import Link from "next/link";
 import type { ReactNode } from "react";
-import { FoundationRoot, Icon, type IconName } from "../foundation";
+import { FoundationRoot, Icon, type IconName, Skeleton } from "../foundation";
 import styles from "./layout.module.css";
 
 export type NavigationIcon = string;
@@ -53,6 +55,53 @@ export function Brand() {
     </a>
   );
 }
+/**
+ * Shell-shaped placeholder shown while the workspace loads, so the sidebar and
+ * page area do not jump when the real shell replaces it. Purely decorative:
+ * the caller supplies the one announced status text as `children`.
+ */
+export function ShellSkeleton({
+  mainId,
+  children,
+}: {
+  mainId: string;
+  children: ReactNode;
+}) {
+  return (
+    <FoundationRoot>
+      <div className={styles.staff}>
+        <aside className={styles.sidebar}>
+          <div className={styles.sidebarHead}>
+            <Brand />
+          </div>
+          <div className={styles.skeletonNav} aria-hidden="true">
+            {[72, 88, 64, 80, 76, 68].map((width) => (
+              <Skeleton key={width} width={`${width}%`} height={16} />
+            ))}
+          </div>
+        </aside>
+        <div className={styles.mainColumn}>
+          <div className={styles.topbar} aria-hidden="true">
+            <Skeleton width={200} height={16} />
+          </div>
+          <main id={mainId} tabIndex={-1} className={styles.content}>
+            {children}
+            <div className={styles.skeletonPage} aria-hidden="true">
+              <Skeleton width="min(320px, 60%)" height={36} />
+              <Skeleton width="min(480px, 90%)" height={16} />
+              <div className={styles.skeletonTiles}>
+                <Skeleton height={112} />
+                <Skeleton height={112} />
+                <Skeleton height={112} />
+              </div>
+              <Skeleton height={220} />
+            </div>
+          </main>
+        </div>
+      </div>
+    </FoundationRoot>
+  );
+}
 export function StaffShell({
   organization,
   navigation,
@@ -85,7 +134,7 @@ export function StaffShell({
             <Brand />
             <span className={styles.mobileOrganization}>{organization}</span>
           </div>
-          <details className={styles.menu}>
+          <details key={currentPath} className={styles.menu}>
             <summary className={styles.menuToggle}>
               <span>Menu</span>
               <span aria-hidden="true" className={styles.menuIcon}>
@@ -119,8 +168,8 @@ export function StaffShell({
                           {items.map((item) => {
                             return (
                               <li key={item.href}>
-                                <a
-                                  href={item.href}
+                                <Link
+                                  href={item.href as Route}
                                   aria-current={
                                     currentPath === item.href
                                       ? "page"
@@ -134,7 +183,7 @@ export function StaffShell({
                                       {item.count}
                                     </span>
                                   )}
-                                </a>
+                                </Link>
                               </li>
                             );
                           })}

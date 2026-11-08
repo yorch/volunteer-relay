@@ -5,6 +5,8 @@ import {
   productEndpoints,
   type WorkspaceSnapshot,
 } from "@relay/contracts";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   type ReactNode,
   useCallback,
@@ -24,8 +26,14 @@ import {
   mutateAuth,
 } from "../auth/transport";
 import { Live } from "../card";
-import { Button, Icon, type IconName, Select, Skeleton } from "../foundation";
-import { StaffShell, VolunteerShell } from "../layout";
+import {
+  Button,
+  FoundationRoot,
+  Icon,
+  type IconName,
+  Select,
+} from "../foundation";
+import { ShellSkeleton, StaffShell, VolunteerShell } from "../layout";
 import { splitOrganizationHint } from "../org-hint";
 import { Members, Notifications, Settings } from "./admin";
 import { Import } from "./import";
@@ -54,6 +62,17 @@ type Page =
   | "history"
   | "delivery"
   | "retention";
+// Standalone states render before any shell exists, so they bring their own
+// foundation root (tokens, fonts, control styles) and the page canvas.
+function StandalonePage({ children }: { children: ReactNode }) {
+  return (
+    <FoundationRoot>
+      <div className={styles.standalonePage}>
+        <main className={styles.standalone}>{children}</main>
+      </div>
+    </FoundationRoot>
+  );
+}
 function StatePanel({
   icon,
   tone = "neutral",
@@ -138,7 +157,7 @@ function OrganizationPicker({ options }: { options: readonly OrgOption[] }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   return (
-    <main className={styles.standalone}>
+    <StandalonePage>
       <StatePanel icon="members" tone="accent" title="Choose an organization">
         <form
           className={styles.orgForm}
@@ -182,7 +201,7 @@ function OrganizationPicker({ options }: { options: readonly OrgOption[] }) {
           </Button>
         </form>
       </StatePanel>
-    </main>
+    </StandalonePage>
   );
 }
 const invitationRole: Record<AuthPendingInvitation["role"], string> = {
@@ -225,7 +244,7 @@ function NoOrganization() {
   const unverified =
     invitations?.ok === true && !invitations.value.emailVerified;
   return (
-    <main className={styles.standalone}>
+    <StandalonePage>
       <StatePanel
         icon="members"
         tone="accent"
@@ -313,10 +332,34 @@ function NoOrganization() {
         ) : null}
         <Live kind="alert">{error}</Live>
       </StatePanel>
-    </main>
+    </StandalonePage>
   );
 }
-export function ProductWorkspace({ page }: { page: Page | "home" }) {
+const pages = new Set<string>([
+  "volunteer",
+  "inbox",
+  "activities",
+  "needs",
+  "reports",
+  "import",
+  "settings",
+  "members",
+  "notifications",
+  "history",
+  "delivery",
+  "retention",
+]);
+// One workspace instance lives in app/workspace/layout.tsx, so moving between
+// pages is a client navigation that keeps the loaded snapshot instead of
+// remounting, refetching and flashing a loading screen.
+function pageFromPath(pathname: string): Page {
+  const segment = pathname.replace(/\/+$/, "").split("/")[2] ?? "";
+  return pages.has(segment) ? (segment as Page) : "home";
+}
+export function ProductWorkspace({ page: pageProp }: { page?: Page }) {
+  const pathname = usePathname();
+  const page = pageProp ?? pageFromPath(pathname);
+  const firstPage = useRef(true);
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [orgOptions, setOrgOptions] = useState<readonly OrgOption[] | null>(
@@ -326,6 +369,17 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
   const [workspaceChanged, setWorkspaceChanged] = useState(false);
   const hintResolved = useRef(false);
   useEffect(() => onWorkspaceChanged(() => setWorkspaceChanged(true)), []);
+  useEffect(() => {
+    // Full page loads used to reset focus and per-page request attempts; a
+    // client navigation must do both explicitly.
+    void page;
+    if (firstPage.current) {
+      firstPage.current = false;
+      return;
+    }
+    attempts.current = {};
+    document.getElementById("workspace-main")?.focus({ preventScroll: true });
+  }, [page]);
   const [error, setError] = useState("");
   // Kept beside the message so the recovery link can match the reason: a
   // signed-in user without usable membership must not be sent to /sign-in,
@@ -430,21 +484,18 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
   };
   if (loading)
     return (
-      <main className={styles.standalone} aria-live="polite">
-        <div className={styles.loading}>
-          <Skeleton width={48} height={48} />
-          <p>Loading workspace…</p>
-          <Skeleton width="100%" height={16} />
-          <Skeleton width="70%" height={16} />
-        </div>
-      </main>
+      <ShellSkeleton mainId="workspace-main">
+        <p className={styles.loadingText} aria-live="polite">
+          Loading workspace…
+        </p>
+      </ShellSkeleton>
     );
   if (!snapshot && orgOptions)
     return <OrganizationPicker options={orgOptions} />;
   if (!snapshot && noOrganization) return <NoOrganization />;
   if (!snapshot)
     return (
-      <main className={styles.standalone}>
+      <StandalonePage>
         <StatePanel
           icon="alert"
           tone="danger"
@@ -474,7 +525,7 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
         >
           <p role="alert">{error}</p>
         </StatePanel>
-      </main>
+      </StandalonePage>
     );
   const role = snapshot.organization.role;
   const staff = role === "owner" || role === "coordinator";
@@ -565,9 +616,9 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
           tone="accent"
           title="Permission denied"
           actions={
-            <a className={styles.linkButton} href="/workspace">
+            <Link className={styles.linkButton} href="/workspace">
               Go to your workspace
-            </a>
+            </Link>
           }
         >
           <p>Your role does not have access to this page.</p>
@@ -607,9 +658,9 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
       mainId="workspace-main"
       account={
         <>
-          <a href="/workspace/volunteer">My updates</a>
+          <Link href="/workspace/volunteer">My updates</Link>
           {" · "}
-          <a href="/workspace/notifications">Notifications</a>
+          <Link href="/workspace/notifications">Notifications</Link>
           {" · "}
           <Organization />
         </>

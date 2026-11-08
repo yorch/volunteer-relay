@@ -1,6 +1,7 @@
 "use client";
 
 import type { ProductReport, WorkspaceSnapshot } from "@relay/contracts";
+import Link from "next/link";
 import { type ReactNode, useEffect, useState } from "react";
 import { request } from "../api-client";
 import {
@@ -86,20 +87,20 @@ export function Overview({ snapshot }: { snapshot: WorkspaceSnapshot }) {
           <h1>Overview</h1>
           <p>Here's what needs your attention today.</p>
         </div>
-        <a className={styles.primaryLink} href="/workspace/inbox">
+        <Link className={styles.primaryLink} href="/workspace/inbox">
           Review updates <Icon name="arrowRight" size={16} />
-        </a>
+        </Link>
       </div>
       <div className={styles.metrics}>
         <Tile icon="inbox" tone="amber" label="Awaiting review">
           <p className={styles.metricValue}>{snapshot.queue.length}</p>
           <p className={styles.metricNote}>Updates ready for a decision</p>
-          <a href="/workspace/inbox">Open inbox</a>
+          <Link href="/workspace/inbox">Open inbox</Link>
         </Tile>
         <Tile icon="needs" tone="clay" label="Open needs">
           <p className={styles.metricValue}>{openNeeds.length}</p>
           <p className={styles.metricNote}>Needs being tracked</p>
-          <a href="/workspace/needs">View needs</a>
+          <Link href="/workspace/needs">View needs</Link>
         </Tile>
         <Tile
           icon="clock"
@@ -123,7 +124,7 @@ export function Overview({ snapshot }: { snapshot: WorkspaceSnapshot }) {
                 ? "From approved contributions"
                 : "Loading report…"}
           </p>
-          <a href="/workspace/reports">View summary</a>
+          <Link href="/workspace/reports">View summary</Link>
         </Tile>
       </div>
       <div className={styles.overviewGrid}>
@@ -133,7 +134,7 @@ export function Overview({ snapshot }: { snapshot: WorkspaceSnapshot }) {
               <span className={styles.eyebrow}>Up next</span>
               <h2>Priorities</h2>
             </div>
-            <a href="/workspace/inbox">View inbox</a>
+            <Link href="/workspace/inbox">View inbox</Link>
           </div>
           {(snapshot.queue.length > 0 || failed > 0 || urgent > 0) && (
             <ul className={styles.list}>
@@ -197,7 +198,7 @@ export function Overview({ snapshot }: { snapshot: WorkspaceSnapshot }) {
               <span className={styles.eyebrow}>Keep things moving</span>
               <h2>Open needs</h2>
             </div>
-            <a href="/workspace/needs">View board</a>
+            <Link href="/workspace/needs">View board</Link>
           </div>
           {openNeeds.length ? (
             <ul className={styles.list}>

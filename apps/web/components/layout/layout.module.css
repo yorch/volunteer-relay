@@ -487,3 +487,29 @@
     transition: none;
   }
 }
+
+/* Loading placeholder shaped like the shell (see ShellSkeleton). */
+.skeletonNav {
+  display: grid;
+  gap: var(--relay-space-4, 16px);
+  padding: var(--relay-space-4, 16px) var(--relay-space-3, 12px);
+}
+.skeletonNav > span {
+  background: rgb(255 255 255 / 14%);
+}
+.skeletonPage {
+  display: grid;
+  gap: var(--relay-space-4, 16px);
+  margin-top: var(--relay-space-4, 16px);
+  min-width: 0;
+}
+.skeletonTiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: var(--relay-space-4, 16px);
+}
+@media (max-width: 760px) {
+  .skeletonNav {
+    display: none;
+  }
+}
