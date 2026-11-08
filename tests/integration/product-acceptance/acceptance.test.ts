@@ -9,6 +9,8 @@ const sharp: typeof import("../../../apps/web/node_modules/sharp/lib/index.js") 
   );
 
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { createAuth } from "../../../apps/web/lib/auth/auth.ts";
+import { createSessionResolver } from "../../../apps/web/lib/auth/session.ts";
 import {
   createProductExtensions,
   readPrivateBlob,
@@ -24,8 +26,11 @@ import type {
 } from "../../../packages/contracts/src/index.ts";
 import {
   createAttachmentMetadataStore,
+  createFollowThroughRepository,
+  createMembershipReader,
   createProcessingRepository,
   createSourceStore,
+  schema,
   sql,
 } from "../../../packages/db/src/index.ts";
 import { createAttachmentReader } from "../../../packages/domain/core/src/index.ts";
@@ -78,6 +83,12 @@ beforeAll(async () => {
     }),
     root,
     maxBytes: 10485760,
+    timezone: async (organizationId) =>
+      (
+        await createFollowThroughRepository(fixture.db).getSettingsInternal(
+          organizationId,
+        )
+      ).timezone,
   });
   handler = createProductHandler({
     appUrl: "http://localhost:3000",
@@ -134,7 +145,7 @@ const post = (path: string, body: unknown) =>
     }),
   );
 
-it("persists fixture sources through leases, extraction and staff review without counting rejected duplicates", async () => {
+it("reviews the first five fixture sources against the independent ledger oracle", async () => {
   const extractor = createExtractionService({
     provider: createDeterministicProvider(),
   });
@@ -160,29 +171,71 @@ it("persists fixture sources through leases, extraction and staff review without
         )
       ).ok,
     ).toBe(true);
+    const activity = extraction.value.items.find(
+      (item) => item.kind === "activity",
+    );
+    let extra: Record<string, unknown> = {};
+    if (source.sourceId === "source-02" || source.sourceId === "source-03") {
+      const found = await fixture.db.execute(
+        sql`select id, revision from activity where beneficiary_reference='T-01'`,
+      );
+      const row = found.rows[0];
+      if (!row || !activity) throw new Error("Missing shared visit");
+      extra = {
+        activityLinks: {
+          [activity.key]: {
+            activityId: row.id,
+            expectedRevision: row.revision,
+          },
+        },
+      };
+    }
+    if (source.sourceId === "source-04") {
+      const found = await fixture.db.execute(
+        sql`select id, revision from contribution where membership_id='tidepath-mira'`,
+      );
+      const row = found.rows[0];
+      const item = extraction.value.items[0];
+      if (!row || item?.kind !== "correction")
+        throw new Error("Missing correction target");
+      extra = {
+        replacementItems: [
+          { ...item, targetId: row.id, expectedRevision: row.revision },
+        ],
+      };
+    }
     const decision = {
+      ...extra,
       runId: extraction.value.runId,
       expectedRevision: 1,
       idempotencyKey: `review-${source.sourceId}`,
-      decision:
-        source.sourceId === "source-01" || source.sourceId === "source-05"
-          ? "accept"
-          : "reject",
+      decision: "accept",
       reason: "Staff review",
     };
     const result = await post("review", decision);
     expect(result.status).toBe(200);
     expect((await post("review", decision)).status).toBe(200);
+    if (source.sourceId === "source-02" || source.sourceId === "source-03") {
+      expect(await fixture.ledger.summarize(staff)).toMatchObject({
+        ok: true,
+        value: { approvedMinutes: 120, approvedContributions: 2 },
+      });
+    }
   }
+  const visit = await fixture.db.execute(
+    sql`select count(*)::int as count from activity where beneficiary_reference='T-01'`,
+  );
+  expect(visit.rows[0]?.count).toBe(1);
   expect(await fixture.ledger.summarize(staff)).toMatchObject({
     ok: true,
-    value: { approvedMinutes: 60, approvedContributions: 1 },
+    value: { approvedMinutes: 150, approvedContributions: 2 },
   });
   const rows = await fixture.db.execute(
     sql`select status, duration_minutes from contribution order by duration_minutes nulls last`,
   );
   expect(rows.rows).toEqual([
     { status: "approved", duration_minutes: 60 },
+    { status: "approved", duration_minutes: 90 },
     { status: "pending", duration_minutes: null },
   ]);
   const report = await get("reports");
@@ -190,15 +243,15 @@ it("persists fixture sources through leases, extraction and staff review without
     ok: true,
     value: {
       ledger: {
-        approvedMinutes: 60,
-        approvedContributions: 1,
+        approvedMinutes: 150,
+        approvedContributions: 2,
         pendingUnknownDuration: 1,
       },
     },
   });
   const csv = await get("reports.csv");
   expect(csv.status).toBe(200);
-  expect(await csv.text()).toContain('"60"');
+  expect(await csv.text()).toContain('"150"');
 });
 
 it("conceals source detail and individual records across tenant and report-reader boundaries", async () => {
@@ -353,11 +406,173 @@ it("replays intake and review across repository restart and amends 60 minutes to
   await review(revised);
   expect(await fixture.ledger.summarize(staff)).toMatchObject({
     ok: true,
-    value: { approvedMinutes: 150, approvedContributions: 2 },
+    value: { approvedMinutes: 240, approvedContributions: 3 },
   });
   // The live contribution is updated once; replay does not create another record.
   const counts = await fixture.db.execute(
     sql`select duration_minutes, revision from contribution where origin_source_id=${id}`,
   );
   expect(counts.rows).toEqual([{ duration_minutes: 90, revision: 2 }]);
+});
+
+it("reviews routine and urgent needs and reports local calendar dates consistently", async () => {
+  const extractor = createExtractionService({
+    provider: createDeterministicProvider(),
+  });
+  for (const source of sources.slice(5, 7)) {
+    expect((await sourceRepo.accept(staff, source)).ok).toBe(true);
+    const leases = await processing.pendingSources(20);
+    const lease = leases.find(
+      (item) => item.source.sourceId === source.sourceId,
+    );
+    if (!lease) throw new Error("Missing need lease");
+    const proposal = await extractor.extract(
+      systemContext("tidepath"),
+      source,
+      { model: "fixture", prompt: "fixture", policy: "fixture" },
+    );
+    if (!proposal.ok) throw new Error("Need extraction failed");
+    expect(
+      (
+        await processing.persistProposal(
+          systemContext("tidepath"),
+          source,
+          proposal.value,
+          lease.leaseToken,
+        )
+      ).ok,
+    ).toBe(true);
+    expect(
+      (
+        await post("review", {
+          runId: proposal.value.runId,
+          expectedRevision: 1,
+          idempotencyKey: `need-review-${source.sourceId}`,
+          decision: "accept",
+          reason: "Confirmed",
+        })
+      ).status,
+    ).toBe(200);
+  }
+  const needs = await fixture.db.execute(
+    sql`select category, urgency, provisional from need order by category`,
+  );
+  expect(needs.rows).toEqual([
+    { category: "food", urgency: "urgent", provisional: true },
+    { category: "supplies", urgency: "routine", provisional: false },
+  ]);
+  const owner = await context(
+    fixture.authorization,
+    "user-rae",
+    "tidepath",
+    "settings",
+  );
+  const settings = createFollowThroughRepository(fixture.db);
+  expect(
+    (
+      await settings.updateSettings(owner, {
+        expectedRevision: 1,
+        idempotencyKey: "timezone-setting",
+        timezone: "America/New_York",
+        automationPolicy: "review-all",
+        policyVersion: "1",
+        routing: {},
+        fallbackMembershipId: null,
+        ackMinutes: 60,
+        retentionDays: 365,
+      })
+    ).ok,
+  ).toBe(true);
+  await fixture.db.execute(
+    sql`update need set created_at=case category when 'food' then '2026-11-05T04:30:00Z'::timestamptz else '2026-11-05T05:30:00Z'::timestamptz end where organization_id='tidepath'`,
+  );
+  const query = "from=2026-11-04&to=2026-11-04";
+  const report = await get(`reports?${query}`);
+  expect(await report.json()).toMatchObject({
+    ok: true,
+    value: { timezone: "America/New_York", openNeeds: 1 },
+  });
+  const csv = await get(`reports.csv?${query}`);
+  const [header, values] = (await csv.text()).trim().split("\r\n");
+  if (!header || !values) throw new Error("Missing CSV rows");
+  const fields = header.split(",").map((cell) => cell.replaceAll('"', ""));
+  const cells = values.split(",").map((cell) => cell.replaceAll('"', ""));
+  expect(cells[fields.indexOf("timezone")]).toBe("America/New_York");
+  expect(cells[fields.indexOf("openNeeds")]).toBe("1");
+});
+
+it("authorizes product requests using a real session and live membership", async () => {
+  const auth = createAuth({
+    db: fixture.db,
+    secret: "acceptance-secret-".padEnd(40, "x"),
+    baseURL: "http://localhost:3000",
+  });
+  const signup = await auth.api.signUpEmail({
+    body: {
+      name: "Synthetic Session",
+      email: "acceptance-session@example.invalid",
+      password: "synthetic-password-123",
+    },
+    returnHeaders: true,
+  });
+  await fixture.db.insert(schema.member).values({
+    id: "session-member",
+    organizationId: "tidepath",
+    userId: signup.response.user.id,
+    role: "volunteer",
+  });
+  const cookie = signup.headers
+    .getSetCookie()
+    .map((value) => value.split(";")[0])
+    .join("; ");
+  const sessions = createSessionResolver({
+    auth,
+    authorization: fixture.authorization,
+    memberships: createMembershipReader(fixture.db),
+    appUrl: "http://localhost:3000",
+    mailConfigured: false,
+  });
+  const sessionHandler = createProductHandler({
+    appUrl: "http://localhost:3000",
+    authorization: fixture.authorization,
+    sources: sourceRepo,
+    processing,
+    ledger: fixture.ledger,
+    needs: fixture.needs,
+    members: async () => [],
+    resolve: async (request, responseHeaders) => {
+      const resolved = await sessions.resolveVerifiedContext({
+        headers: request.headers,
+        responseHeaders,
+        organizationId: "tidepath",
+        correlationId: "acceptance-session",
+      });
+      if (!resolved.ok) return resolved;
+      if (resolved.value.actor.kind !== "user")
+        throw new Error("Expected user");
+      return {
+        ok: true,
+        value: {
+          context: resolved.value,
+          organization: {
+            organizationId: "tidepath",
+            membershipId: resolved.value.actor.membershipId,
+            name: "Tidepath",
+            slug: "tidepath",
+            role: resolved.value.actor.role,
+          },
+        },
+      };
+    },
+  });
+  const request = (value?: string) =>
+    new Request("http://localhost:3000/api/product/workspace", {
+      headers: value ? { cookie: value } : {},
+    });
+  expect((await sessionHandler(request())).status).toBe(401);
+  expect((await sessionHandler(request(cookie))).status).toBe(200);
+  await fixture.db
+    .delete(schema.member)
+    .where(sql`${schema.member.id}='session-member'`);
+  expect((await sessionHandler(request(cookie))).status).toBe(404);
 });
