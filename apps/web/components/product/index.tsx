@@ -526,6 +526,7 @@ function Volunteer({
   const [submissionKey, setSubmissionKey] = useState(key);
   const [photo, setPhoto] = useState<File | null>(null);
   const [sourceId, setSourceId] = useState<string | null>(null);
+  const sourceTrigger = useRef<HTMLButtonElement | null>(null);
   const [photoError, setPhotoError] = useState("");
   const photoKey = useRef<string | null>(null);
   const photoInput = useRef<HTMLInputElement>(null);
@@ -654,7 +655,10 @@ function Volunteer({
                 </p>
                 <button
                   type="button"
-                  onClick={() => setSourceId(source.sourceId)}
+                  onClick={(event) => {
+                    sourceTrigger.current = event.currentTarget;
+                    setSourceId(source.sourceId);
+                  }}
                 >
                   View my update
                 </button>
@@ -676,7 +680,10 @@ function Volunteer({
           key={sourceId}
           sourceId={sourceId}
           status="your update"
-          close={() => setSourceId(null)}
+          close={() => {
+            setSourceId(null);
+            requestAnimationFrame(() => sourceTrigger.current?.focus());
+          }}
         />
       )}
       <Card>
@@ -1039,6 +1046,10 @@ function PendingSource({
 }) {
   const [source, setSource] = useState<SourceEnvelope | null>(null);
   const [error, setError] = useState("");
+  const evidenceHeading = useRef<HTMLHeadingElement | null>(null);
+  useEffect(() => {
+    evidenceHeading.current?.focus();
+  }, []);
   useEffect(() => {
     let active = true;
     void request<SourceEnvelope>(
@@ -1054,7 +1065,13 @@ function PendingSource({
   }, [sourceId]);
   return (
     <Card>
-      <h2>Original source evidence</h2>
+      <h2
+        className={styles.evidenceHeading}
+        ref={evidenceHeading}
+        tabIndex={-1}
+      >
+        Original source evidence
+      </h2>
       <p>
         Source {sourceId} · {status}
       </p>

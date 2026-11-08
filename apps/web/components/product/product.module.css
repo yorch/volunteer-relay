@@ -611,3 +611,11 @@
   white-space: nowrap;
   overflow-wrap: normal;
 }
+
+.evidenceHeading {
+  scroll-margin-top: 6rem;
+}
+.evidenceHeading:focus-visible {
+  outline: 3px solid #895311;
+  outline-offset: 4px;
+}

@@ -788,12 +788,27 @@ test("volunteer recognizes and opens their own update evidence", async ({
   ).toBeVisible();
   await expect(page.getByText("accepted", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "View my update" }).click();
+  const evidenceHeading = page.getByRole("heading", {
+    name: "Original source evidence",
+    exact: true,
+  });
+  await expect(evidenceHeading).toBeFocused();
+  const position = await evidenceHeading.boundingBox();
+  expect(position).not.toBeNull();
+  expect(position?.y).toBeGreaterThanOrEqual(0);
+  expect(position?.y).toBeLessThan(page.viewportSize()?.height ?? 0);
   await expect(
     page.getByText("Delivered garden supplies with the team"),
   ).toBeVisible();
   await expect(
     page.getByText("This is your original update, shown read-only."),
   ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Close evidence", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "View my update" }),
+  ).toBeFocused();
 });
 
 test("switching volunteer updates clears old evidence and errors", async ({
