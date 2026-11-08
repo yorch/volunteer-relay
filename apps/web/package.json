@@ -11,7 +11,8 @@
     "@relay/contracts": "workspace:*",
     "@relay/db": "workspace:*",
     "@relay/domain": "workspace:*",
-    "@relay/intake": "workspace:*"
+    "@relay/intake": "workspace:*",
+    "sharp": "0.35.5"
   },
   "type": "module"
 }
