@@ -211,10 +211,14 @@ export function buildGraph(input: GraphInput, view: View): GraphSnapshot {
     const unanswered = new Set(input.unansweredIds);
     const root = (message: Message): string | null => {
       let current = message;
-      const seen = new Set<string>();
+      const positions = new Map<string, number>();
+      const path: string[] = [];
       while (true) {
-        if (seen.has(current.id)) return [...seen].sort(compare)[0] ?? null;
-        seen.add(current.id);
+        const cycleStart = positions.get(current.id);
+        if (cycleStart !== undefined)
+          return path.slice(cycleStart).sort(compare)[0] ?? null;
+        positions.set(current.id, path.length);
+        path.push(current.id);
         if (!current.replyTo)
           return current.kind === "question" || current.kind === "request"
             ? current.id

@@ -100,6 +100,37 @@ describe("GRAPH-V1 builder", () => {
     expect(edge("y")?.threadId).toBe("x");
     expect(edge("m")?.threadId).toBe("absent");
   });
+  it("resolves incoming prefixes to cycle members regardless of ID order", () => {
+    const source = input({
+      messages: [
+        message("x", { replyTo: "y" }),
+        message("y", { replyTo: "x" }),
+        message("a", { replyTo: "x" }),
+        message("b", { replyTo: "y" }),
+        message("0", { replyTo: "a" }),
+        message("z", { replyTo: "b" }),
+        message("self", { replyTo: "self" }),
+        message("before-self", { replyTo: "self" }),
+      ],
+    });
+    const graph = buildGraph(source, "communication");
+    expect(graph.edges.map((e) => [JSON.parse(e.id)[1], e.threadId])).toEqual([
+      ["0", "x"],
+      ["a", "x"],
+      ["b", "x"],
+      ["before-self", "self"],
+      ["self", "self"],
+      ["x", "x"],
+      ["y", "x"],
+      ["z", "x"],
+    ]);
+    expect(
+      buildGraph(
+        { ...source, messages: [...source.messages].reverse() },
+        "communication",
+      ),
+    ).toEqual(graph);
+  });
   it("counts fanout truncation and selects newest deterministically", () => {
     const source = input({
       lanes: Array.from({ length: 64 }, (_, i) => lane(`L${i}`)),
