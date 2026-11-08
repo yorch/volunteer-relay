@@ -372,13 +372,31 @@ export function createProcessingRepository(db: Database) {
                   )
                     throw new Abort("VALIDATION", "Invalid correction");
                   targets.add(item.targetId);
+                  const lineage = await tx.execute(
+                    sql`select 1 from review_effect e join extraction_run r on (r.organization_id,r.run_id)=(e.organization_id,e.run_id) where e.organization_id=${context.organizationId} and r.source_id=${sourceId} and r.source_revision<${source.revision} and r.status='accepted' and e.kind='contribution' and e.aggregate_id=${item.targetId} and e.aggregate_revision=${item.expectedRevision} limit 1`,
+                  );
+                  if (
+                    !lineage.rows.length &&
+                    (command.replacementItems === undefined ||
+                      !command.reason.trim())
+                  )
+                    throw new Abort(
+                      "CONFLICT",
+                      "Correction requires explicit staff authorization",
+                    );
+                  const auditReason = json({
+                    sourceId,
+                    sourceRevision: source.revision,
+                    staffReason: command.reason,
+                    proposalReason: item.reason,
+                  });
                   const result = await correctContribution(
                     tx,
                     context,
                     item.targetId,
                     item.expectedRevision,
                     item.durationMinutes,
-                    item.reason,
+                    auditReason,
                     new Date(),
                   );
                   await addEffect(

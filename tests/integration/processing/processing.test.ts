@@ -664,7 +664,12 @@ it("applies an explicit same-tenant correction with a revision guard and reason"
   const history = await fixture.db.execute(
     sql`select reason from domain_audit_event where aggregate_type='contribution' and aggregate_revision=2`,
   );
-  expect(history.rows[0]?.reason).toBe("Volunteer clarified");
+  expect(JSON.parse(history.rows[0]?.reason as string)).toEqual({
+    sourceId: "s1",
+    sourceRevision: 2,
+    staffReason: "",
+    proposalReason: "Volunteer clarified",
+  });
 });
 it.each(["independent edit", "changed identity"])(
   "stops reconciliation on %s",
@@ -772,3 +777,121 @@ it.each(["independent edit", "changed identity"])(
     });
   },
 );
+it("requires reasoned staff authorization for a correction to an unrelated source", async () => {
+  const repo = createProcessingRepository(fixture.db);
+  const staff = await context(
+    fixture.authorization,
+    "user-kai",
+    "tidepath",
+    "review",
+  );
+  const mira = await context(
+    fixture.authorization,
+    "user-mira",
+    "tidepath",
+    "source",
+  );
+  const [first] = await repo.pendingSources(1);
+  if (!first) throw new Error("missing lease");
+  expect(
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        source,
+        proposal,
+        first.leaseToken,
+      )
+    ).ok,
+  ).toBe(true);
+  expect(
+    (
+      await repo.decide(staff, {
+        runId: "r1",
+        expectedRevision: 1,
+        idempotencyKey: "initial",
+        decision: "accept",
+        reason: "",
+      })
+    ).ok,
+  ).toBe(true);
+  const rows = await fixture.db.execute(sql`select id from contribution`);
+  const targetId = rows.rows[0]?.id as string;
+  const unrelated = {
+    ...source,
+    sourceId: "unrelated",
+    externalMessageId: "unrelated",
+    idempotencyKey: "unrelated",
+  };
+  const sourceRepo = createSourceRepository({
+    authorization: fixture.authorization,
+    store: createSourceStore(fixture.db),
+  });
+  expect((await sourceRepo.accept(mira, unrelated)).ok).toBe(true);
+  const items: ExtractionProposal["items"] = [
+    {
+      kind: "correction",
+      key: "fix",
+      targetId,
+      expectedRevision: 1,
+      durationMinutes: 90,
+      reason: "Model guessed",
+      evidence: evidence.map((ev) => ({ ...ev, sourceId: "unrelated" })),
+    },
+  ];
+  const correction: ExtractionProposal = {
+    ...proposal,
+    sourceId: "unrelated",
+    runId: "other-run",
+    items,
+  };
+  const [lease] = await repo.pendingSources(1);
+  if (!lease) throw new Error("missing lease");
+  expect(
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        unrelated,
+        correction,
+        lease.leaseToken,
+      )
+    ).ok,
+  ).toBe(true);
+  expect(
+    await repo.decide(staff, {
+      runId: "other-run",
+      expectedRevision: 1,
+      idempotencyKey: "denied",
+      decision: "accept",
+      reason: "",
+    }),
+  ).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+  expect(await fixture.ledger.summarize(staff)).toMatchObject({
+    ok: true,
+    value: { approvedMinutes: 60 },
+  });
+  expect(
+    (
+      await repo.decide(staff, {
+        runId: "other-run",
+        expectedRevision: 1,
+        idempotencyKey: "confirmed",
+        decision: "accept",
+        reason: "Confirmed with volunteer",
+        replacementItems: items,
+      })
+    ).ok,
+  ).toBe(true);
+  expect(await fixture.ledger.summarize(staff)).toMatchObject({
+    ok: true,
+    value: { approvedMinutes: 90 },
+  });
+  const history = await fixture.db.execute(
+    sql`select reason from domain_audit_event where aggregate_type='contribution' and aggregate_revision=2`,
+  );
+  expect(JSON.parse(history.rows[0]?.reason as string)).toEqual({
+    sourceId: "unrelated",
+    sourceRevision: 1,
+    staffReason: "Confirmed with volunteer",
+    proposalReason: "Model guessed",
+  });
+});
