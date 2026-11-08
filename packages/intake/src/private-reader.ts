@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { open, realpath, unlink } from "node:fs/promises";
+import { lstat, open, readdir, realpath, unlink } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 /** Read digest-keyed private bytes; no caller-controlled filesystem paths. */
 export async function readPrivateBlob(
@@ -49,22 +49,39 @@ export async function erasePrivateBlob(
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
     throw error;
   }
-  let handle: Awaited<ReturnType<typeof open>>;
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
     handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-    throw error;
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
+  if (handle) {
+    try {
+      const stat = await handle.stat();
+      if (!stat.isFile() || stat.size > 10485760)
+        throw new Error("Invalid erasure file");
+      const bytes = await handle.readFile();
+      if (createHash("sha256").update(bytes).digest("hex") !== sha256)
+        throw new Error("Erasure digest mismatch");
+    } finally {
+      await handle.close();
+    }
+    await unlink(file);
+  }
+  const directory = dirname(file);
+  for (const entry of await readdir(directory)) {
+    if (
+      !entry.startsWith(`.${sha256}.`) ||
+      !/^\.[a-f0-9]{64}\.[a-f0-9-]{36}\.tmp$/.test(entry)
+    )
+      continue;
+    const temp = resolve(directory, entry);
+    if ((await lstat(temp)).isFile()) await unlink(temp);
+  }
+  const synced = await open(directory, "r");
   try {
-    const stat = await handle.stat();
-    if (!stat.isFile() || stat.size > 10485760)
-      throw new Error("Invalid erasure file");
-    const bytes = await handle.readFile();
-    if (createHash("sha256").update(bytes).digest("hex") !== sha256)
-      throw new Error("Erasure digest mismatch");
+    await synced.sync();
   } finally {
-    await handle.close();
+    await synced.close();
   }
-  await unlink(file);
 }

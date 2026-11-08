@@ -6,14 +6,18 @@ import {
   createMembershipReader,
   createSourceStore,
   type Database,
+  pruneUnreferencedBlob,
   sql,
 } from "@relay/db";
 import { createAuthorizationService } from "@relay/domain/auth";
 import { createNeedService, createSourceRepository } from "@relay/domain/core";
 import {
+  type BlobIdentity,
   createTelegramIngress,
   createTelegramPhotoLoader,
+  erasePrivateBlob,
   type TelegramUpdate,
+  withTrackedBlobWrites,
 } from "@relay/intake";
 import sharp from "sharp";
 export async function pollTelegram(
@@ -24,7 +28,10 @@ export async function pollTelegram(
   if (env.TELEGRAM_TRANSPORT !== "polling" || !env.TELEGRAM_BOT_TOKEN) return;
   const botToken = env.TELEGRAM_BOT_TOKEN;
   const pollingSecret = randomUUID();
-  const handlerFor = (db: Database) => {
+  const handlerFor = (
+    db: Database,
+    note: (identity: BlobIdentity) => Promise<void>,
+  ) => {
     const authorization = createAuthorizationService({
         memberships: createMembershipReader(db),
       }),
@@ -58,6 +65,7 @@ export async function pollTelegram(
           await db.execute(
             sql`select pg_advisory_xact_lock(hashtextextended(${`blob:${key}`},0))`,
           );
+          await note({ storageKey: key, sha256: key.slice(3) });
           return put();
         },
         transform: async (bytes) =>
@@ -105,17 +113,31 @@ export async function pollTelegram(
         if (stopped()) break;
         if (!Number.isSafeInteger(update.update_id))
           throw new Error("Invalid update");
-        const handled = await db.transaction(async (tx) =>
-          handlerFor(tx as unknown as Database)(
-            new Request("http://worker.invalid/telegram", {
-              method: "POST",
-              headers: {
-                "x-telegram-bot-api-secret-token": pollingSecret,
-                "content-type": "application/json",
-              },
-              body: JSON.stringify(update),
-            }),
-          ),
+        const handled = await withTrackedBlobWrites(
+          env.ATTACHMENT_ROOT,
+          async (note) =>
+            db.transaction(async (tx) =>
+              handlerFor(
+                tx as unknown as Database,
+                note,
+              )(
+                new Request("http://worker.invalid/telegram", {
+                  method: "POST",
+                  headers: {
+                    "x-telegram-bot-api-secret-token": pollingSecret,
+                    "content-type": "application/json",
+                  },
+                  body: JSON.stringify(update),
+                }),
+              ),
+            ),
+          (identity, done) =>
+            pruneUnreferencedBlob(
+              db,
+              identity,
+              (key, sha) => erasePrivateBlob(env.ATTACHMENT_ROOT, key, sha),
+              done,
+            ),
         );
         if (handled.status >= 500) throw new Error("Ingress unavailable");
         if (handled.ok) {

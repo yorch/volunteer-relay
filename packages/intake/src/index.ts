@@ -1,13 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import {
-  mkdir,
-  open,
-  realpath,
-  rename,
-  rm,
-  stat,
-  statfs,
-} from "node:fs/promises";
+import { mkdir, open, realpath, rename, rm, statfs } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { type SourceEnvelope, sourceEnvelopeSchema } from "@relay/contracts";
 
@@ -761,11 +753,14 @@ export function createPrivateFilesystemBlobStore(
       const dir = await realpath(join(root, digest.slice(0, 2)));
       if (!dir.startsWith(`${root}${sep}`))
         throw new Error("Attachment directory escapes root");
-      const tempPath = join(dir, `.${randomUUID()}.tmp`);
+      const tempPath = join(dir, `.${digest}.${randomUUID()}.tmp`);
       const handle = await open(tempPath, "wx", 0o600);
       try {
         await handle.writeFile(data);
         await handle.sync();
+      } catch (error) {
+        await rm(tempPath, { force: true });
+        throw error;
       } finally {
         await handle.close();
       }
@@ -773,11 +768,14 @@ export function createPrivateFilesystemBlobStore(
         await rename(tempPath, destination);
       } catch (error) {
         await rm(tempPath, { force: true });
+        throw error;
+      }
+      for (const path of [dir, root]) {
+        const synced = await open(path, "r");
         try {
-          const existing = await stat(destination);
-          if (!existing.isFile() || existing.size !== data.length) throw error;
-        } catch {
-          throw error;
+          await synced.sync();
+        } finally {
+          await synced.close();
         }
       }
       return {
@@ -789,8 +787,13 @@ export function createPrivateFilesystemBlobStore(
     },
   };
 }
+export {
+  type BlobIdentity,
+  type BlobSettlement,
+  recoverPendingBlobWrites,
+  withTrackedBlobWrites,
+} from "./blob-writes.ts";
 export { erasePrivateBlob, readPrivateBlob } from "./private-reader.ts";
-
 export {
   createTelegramIngress,
   type TelegramIngressDependencies,

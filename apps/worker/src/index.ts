@@ -6,9 +6,14 @@ import {
   createModelBudgetRepository,
   createProcessingRepository,
   createRetentionRepository,
+  pruneUnreferencedBlob,
   sql,
 } from "@relay/db";
-import { erasePrivateBlob, readPrivateBlob } from "@relay/intake";
+import {
+  erasePrivateBlob,
+  readPrivateBlob,
+  recoverPendingBlobWrites,
+} from "@relay/intake";
 import {
   createSmtpTransport,
   createTelegramTransport,
@@ -23,6 +28,7 @@ const processing = createProcessingRepository(db),
   follow = createFollowThroughRepository(db),
   budgets = createModelBudgetRepository(db);
 const retention = createRetentionRepository(db);
+let nextBlobRecovery = 0;
 let stopped = false,
   wake: (() => void) | undefined;
 for (const signal of ["SIGINT", "SIGTERM"] as const)
@@ -80,6 +86,17 @@ console.info(
 try {
   while (!stopped) {
     try {
+      if (Date.now() >= nextBlobRecovery) {
+        nextBlobRecovery = Date.now() + 60000;
+        await recoverPendingBlobWrites(env.ATTACHMENT_ROOT, (blob, done) =>
+          pruneUnreferencedBlob(
+            db,
+            blob,
+            (key, sha) => erasePrivateBlob(env.ATTACHMENT_ROOT, key, sha),
+            done,
+          ),
+        );
+      }
       for (const job of await retention.claimErasureJobs(5)) {
         if (stopped) break;
         await retention.runErasureJob(job, (key, sha) =>

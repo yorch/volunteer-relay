@@ -9,15 +9,22 @@ import {
   type SourceRepository,
   type TenantContext,
 } from "@relay/contracts";
-import { createSourceStore, type Database, sql } from "@relay/db";
+import {
+  createSourceStore,
+  type Database,
+  pruneUnreferencedBlob,
+  sql,
+} from "@relay/db";
 import { canonicalDigest, createSourceRepository } from "@relay/domain/core";
 import {
   createPrivateFilesystemBlobStore,
   detectedImageMime,
+  erasePrivateBlob,
   type ImportPreview,
   parseCsvImport,
   parseJsonImport,
   parseWhatsAppTextExport,
+  withTrackedBlobWrites,
 } from "@relay/intake";
 import sharp from "sharp";
 import { type ProductProcessing, productFailure } from "./http.ts";
@@ -238,61 +245,76 @@ export function createProductExtensions(options: {
         const actor = context.actor;
         const digest = createHash("sha256").update(pixels).digest("hex");
         const storageKey = `${digest.slice(0, 2)}/${digest}`;
-        return options.db.transaction(async (tx) => {
-          await tx.execute(
-            sql`select pg_advisory_xact_lock(hashtextextended(${`blob:${storageKey}`},0))`,
-          );
-          const tombstone = await tx.execute(
-            sql`select 1 from source_redaction where organization_id=${context.organizationId} and source_id=${sourceId}`,
-          );
-          if (tombstone.rows.length) return denied("NOT_FOUND");
-          const repository = createSourceRepository({
-            authorization: options.authorization,
-            store: createSourceStore(tx as unknown as Database),
-          });
-          const blob = await createPrivateFilesystemBlobStore(options.root, {
-            maxBytes: options.maxBytes,
-          }).put(pixels);
-          const old = await options.processing.getSource(context, sourceId);
-          if (old.ok) {
-            if (
-              old.value.text !== text ||
-              old.value.attachments[0]?.sha256 !== blob.sha256
-            )
-              return denied("CONFLICT");
-            return repository.accept(context, old.value);
-          }
-          if (old.error.code !== "NOT_FOUND") return old;
-          return repository.accept(context, {
-            schemaVersion: 1,
-            organizationId: context.organizationId,
-            sourceId,
-            revision: 1,
-            channel: "web",
-            channelIdentity: actor.membershipId,
-            externalMessageId: sourceId,
-            idempotencyKey: key,
-            author: {
-              externalIdentity: actor.userId,
-              membershipId: actor.membershipId,
-            },
-            occurredAt: null,
-            receivedAt: new Date().toISOString(),
-            timezone:
-              (await options.timezone?.(context.organizationId)) ?? "UTC",
-            text,
-            attachments: [
-              {
-                ...blob,
-                id: `photo:${blob.sha256}`,
+        return withTrackedBlobWrites(
+          options.root,
+          async (note) =>
+            options.db.transaction(async (tx) => {
+              await tx.execute(
+                sql`select pg_advisory_xact_lock(hashtextextended(${`blob:${storageKey}`},0))`,
+              );
+              const tombstone = await tx.execute(
+                sql`select 1 from source_redaction where organization_id=${context.organizationId} and source_id=${sourceId}`,
+              );
+              if (tombstone.rows.length) return denied("NOT_FOUND");
+              const repository = createSourceRepository({
+                authorization: options.authorization,
+                store: createSourceStore(tx as unknown as Database),
+              });
+              await note({ storageKey, sha256: digest });
+              const blob = await createPrivateFilesystemBlobStore(
+                options.root,
+                {
+                  maxBytes: options.maxBytes,
+                },
+              ).put(pixels);
+              const old = await options.processing.getSource(context, sourceId);
+              if (old.ok) {
+                if (
+                  old.value.text !== text ||
+                  old.value.attachments[0]?.sha256 !== blob.sha256
+                )
+                  return denied("CONFLICT");
+                return repository.accept(context, old.value);
+              }
+              if (old.error.code !== "NOT_FOUND") return old;
+              return repository.accept(context, {
+                schemaVersion: 1,
                 organizationId: context.organizationId,
-              },
-            ],
-            replyToSourceId: null,
-            replacesRevision: null,
-            original: { mediaType: "text/plain", payload: text },
-          });
-        });
+                sourceId,
+                revision: 1,
+                channel: "web",
+                channelIdentity: actor.membershipId,
+                externalMessageId: sourceId,
+                idempotencyKey: key,
+                author: {
+                  externalIdentity: actor.userId,
+                  membershipId: actor.membershipId,
+                },
+                occurredAt: null,
+                receivedAt: new Date().toISOString(),
+                timezone:
+                  (await options.timezone?.(context.organizationId)) ?? "UTC",
+                text,
+                attachments: [
+                  {
+                    ...blob,
+                    id: `photo:${blob.sha256}`,
+                    organizationId: context.organizationId,
+                  },
+                ],
+                replyToSourceId: null,
+                replacesRevision: null,
+                original: { mediaType: "text/plain", payload: text },
+              });
+            }),
+          (identity, done) =>
+            pruneUnreferencedBlob(
+              options.db,
+              identity,
+              (key, sha) => erasePrivateBlob(options.root, key, sha),
+              done,
+            ),
+        );
       }
       let input: Record<string, unknown>;
       let files: Map<string, File>;
@@ -389,44 +411,57 @@ export function createProductExtensions(options: {
         }
       }
       try {
-        return await options.db.transaction(async (tx) => {
-          const repository = createSourceRepository({
-            authorization: options.authorization,
-            store: createSourceStore(tx as unknown as Database),
-          });
-          const receipts: Receipt[] = [];
-          for (const blob of [...prepared.blobs].sort((a, b) =>
-            a.metadata.storageKey.localeCompare(b.metadata.storageKey),
-          )) {
-            await tx.execute(
-              sql`select pg_advisory_xact_lock(hashtextextended(${`blob:${blob.metadata.storageKey}`},0))`,
-            );
-          }
-          for (const source of preview.sources) {
-            const hidden = await tx.execute(
-              sql`select 1 from source_redaction where organization_id=${context.organizationId} and source_id=${source.sourceId}`,
-            );
-            if (hidden.rows.length)
-              throw new ImportRollback(denied("NOT_FOUND"));
-          }
-          for (const blob of prepared.blobs)
-            await createPrivateFilesystemBlobStore(options.root, {
-              maxBytes: options.maxBytes,
-            }).put(blob.content);
-          for (const source of preview.sources) {
-            const old = await options.processing.getSource(
-              context,
-              source.sourceId,
-            );
-            if (old.ok) source.receivedAt = old.value.receivedAt;
-            else if (old.error.code !== "NOT_FOUND")
-              throw new ImportRollback(old);
-            const accepted = await repository.accept(context, source);
-            if (!accepted.ok) throw new ImportRollback(accepted);
-            receipts.push(accepted.value);
-          }
-          return { ok: true as const, value: { receipts } };
-        });
+        return await withTrackedBlobWrites(
+          options.root,
+          async (note) =>
+            options.db.transaction(async (tx) => {
+              const repository = createSourceRepository({
+                authorization: options.authorization,
+                store: createSourceStore(tx as unknown as Database),
+              });
+              const receipts: Receipt[] = [];
+              for (const blob of [...prepared.blobs].sort((a, b) =>
+                a.metadata.storageKey.localeCompare(b.metadata.storageKey),
+              )) {
+                await tx.execute(
+                  sql`select pg_advisory_xact_lock(hashtextextended(${`blob:${blob.metadata.storageKey}`},0))`,
+                );
+              }
+              for (const source of preview.sources) {
+                const hidden = await tx.execute(
+                  sql`select 1 from source_redaction where organization_id=${context.organizationId} and source_id=${source.sourceId}`,
+                );
+                if (hidden.rows.length)
+                  throw new ImportRollback(denied("NOT_FOUND"));
+              }
+              for (const blob of prepared.blobs) {
+                await note(blob.metadata);
+                await createPrivateFilesystemBlobStore(options.root, {
+                  maxBytes: options.maxBytes,
+                }).put(blob.content);
+              }
+              for (const source of preview.sources) {
+                const old = await options.processing.getSource(
+                  context,
+                  source.sourceId,
+                );
+                if (old.ok) source.receivedAt = old.value.receivedAt;
+                else if (old.error.code !== "NOT_FOUND")
+                  throw new ImportRollback(old);
+                const accepted = await repository.accept(context, source);
+                if (!accepted.ok) throw new ImportRollback(accepted);
+                receipts.push(accepted.value);
+              }
+              return { ok: true as const, value: { receipts } };
+            }),
+          (identity, done) =>
+            pruneUnreferencedBlob(
+              options.db,
+              identity,
+              (key, sha) => erasePrivateBlob(options.root, key, sha),
+              done,
+            ),
+        );
       } catch (error) {
         if (error instanceof ImportRollback) return error.result;
         throw error;
