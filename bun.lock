@@ -23,6 +23,7 @@
         "@relay/contracts": "workspace:*",
         "@relay/db": "workspace:*",
         "@relay/domain": "workspace:*",
+        "@relay/intake": "workspace:*",
         "better-auth": "1.7.18",
         "next": "16.4.5",
         "react": "19.3.1",
@@ -37,6 +38,7 @@
         "@relay/config": "workspace:*",
         "@relay/contracts": "workspace:*",
         "@relay/db": "workspace:*",
+        "@relay/intake": "workspace:*",
       },
     },
     "packages/ai": {
@@ -93,6 +95,9 @@
       "dependencies": {
         "@relay/contracts": "workspace:*",
         "nodemailer": "10.4.0",
+      },
+      "devDependencies": {
+        "@types/nodemailer": "8.0.2",
       },
     },
   },
@@ -344,6 +349,8 @@
     "@types/estree": ["@types/estree@1.0.10", "", {}, "sha512-lTyOMnOcmRBzdCv6/4zUZCrEhV0xrqQiUZBZtVcbmLHBXKLnN8q89v/wKRF/Q0HbwVsqbIG3o5HDoFl9sduM+g=="],
 
     "@types/node": ["@types/node@26.6.6", "", { "dependencies": { "undici-types": "~8.9.0" } }, "sha512-MzQj+8Kx3XI40OmUAE6Qoh58ZMNstNNMwn2nfd3qWsfe7nDNSqJNzes4njhz6AHwrSHOffSLwXU6yb474Q4aog=="],
+
+    "@types/nodemailer": ["@types/nodemailer@8.0.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-c7M5ox8p0nEOfbJ2E9Qcmt8/QCu/VzsiAhzBiZbvky2PhKZDHpKB3sQHBM5MEZNkCfBOaS6S9//AGPRTNB7IaA=="],
 
     "@types/pg": ["@types/pg@8.23.1", "", { "dependencies": { "@types/node": "*", "pg-protocol": "*", "pg-types": "^2.2.0" } }, "sha512-fKVHpikPdg4GKks3JuLEhvwSyvwzF23hnabPy6DD8ljVbC7+6J5dQzdv4arV6jqq57djnMgs1HKBxX4P8aBI3A=="],
 

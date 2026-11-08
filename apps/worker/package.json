@@ -7,6 +7,7 @@
     "@relay/config": "workspace:*",
     "@relay/contracts": "workspace:*",
     "@relay/db": "workspace:*",
-    "@relay/ai": "workspace:*"
+    "@relay/ai": "workspace:*",
+    "@relay/intake": "workspace:*"
   }
 }

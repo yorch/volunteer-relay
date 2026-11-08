@@ -7,5 +7,8 @@
   "dependencies": {
     "@relay/contracts": "workspace:*",
     "nodemailer": "10.4.0"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "8.0.2"
   }
 }

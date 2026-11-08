@@ -10,7 +10,8 @@
     "@relay/config": "workspace:*",
     "@relay/contracts": "workspace:*",
     "@relay/db": "workspace:*",
-    "@relay/domain": "workspace:*"
+    "@relay/domain": "workspace:*",
+    "@relay/intake": "workspace:*"
   },
   "type": "module"
 }
