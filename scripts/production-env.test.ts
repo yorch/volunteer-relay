@@ -137,6 +137,8 @@ it("leaves secrets unset so a copied sample cannot start", () => {
     "RETENTION_LEDGER_KEY",
     "SMTP_USER",
     "SMTP_PASSWORD",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
     "OPENAI_API_KEY",
     "TELEGRAM_BOT_TOKEN",
     "TELEGRAM_WEBHOOK_SECRET",
