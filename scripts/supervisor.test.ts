@@ -191,7 +191,7 @@ it("builds explicit-session resume arguments with automatic approval review and 
 it.each(["codex", "pi"] as const)(
   "runs controlled %s, persists its native identity, resumes exactly and drains",
   async (harness) => {
-    const { mkdtemp, mkdir, writeFile, readFile, rm } = await import(
+    const { mkdtemp, mkdir, writeFile, readFile, rename, rm } = await import(
       "node:fs/promises"
     );
     const { tmpdir } = await import("node:os");
@@ -223,7 +223,7 @@ it.each(["codex", "pi"] as const)(
         `#!/usr/bin/env node
 import {writeFileSync,mkdirSync,readFileSync,existsSync} from 'node:fs';
 let input='';for await(const chunk of process.stdin)input+=chunk;
-if(!input.includes('dedicated headless lane A'))process.exit(2);
+if(!/dedicated headless lane [AR]/.test(input))process.exit(2);
 const args=process.argv.slice(2);const out=args[args.indexOf('--output-last-message')+1];
 mkdirSync('.relay-local',{recursive:true});const file='.relay-local/args.json';const history=existsSync(file)?JSON.parse(readFileSync(file,'utf8')):[];history.push(args);writeFileSync(file,JSON.stringify(history));
 console.log(JSON.stringify({type:'thread.started',thread_id:'00000000-0000-4000-8000-000000000001'}));
@@ -240,29 +240,53 @@ console.log(JSON.stringify({type:'agent_settled',aborted:false}));
         { mode: 0o700 },
       );
       const directory = join(root, ".relay-coordination/supervisor");
-      running = serve(
-        {
-          ...config,
-          root,
-          binary,
-          intervalSeconds: 1,
-          binaries: { pi: binary },
-          lanes: {
-            A: {
-              enabled: true,
-              ...(harness === "pi"
-                ? ({
-                    harness: "pi",
-                    piPermissions: "no-tools",
-                    sessionEpoch: "fixture",
-                  } as const)
-                : {}),
-            },
+      const initial: Config = {
+        ...config,
+        root,
+        binary,
+        intervalSeconds: 1,
+        binaries: { pi: binary },
+        allowedTasks: [],
+        lanes: {
+          R: { enabled: false },
+          A: {
+            enabled: true,
+            ...(harness === "pi"
+              ? ({
+                  harness: "pi",
+                  piPermissions: "no-tools",
+                  sessionEpoch: "fixture",
+                } as const)
+              : {}),
           },
         },
-        directory,
-        controller.signal,
+      };
+      await mkdir(directory, { recursive: true });
+      const replaceConfig = async (value: unknown) => {
+        const temporary = join(directory, "candidate.json");
+        await writeFile(temporary, JSON.stringify(value));
+        await rename(temporary, join(directory, "config.json"));
+      };
+      await replaceConfig(initial);
+      execFileSync(
+        process.execPath,
+        [
+          "/Users/yorch/code/volunteer-relay/scripts/agents.mjs",
+          "send",
+          "--agent",
+          "A",
+          "--to",
+          "R",
+          "--kind",
+          "request",
+          "--task",
+          "P1-06",
+          "--text",
+          "Synthetic pinned review",
+        ],
+        { cwd: root, stdio: "pipe" },
       );
+      running = serve(initial, directory, controller.signal);
       const until = async (check: () => Promise<boolean>) => {
         const deadline = Date.now() + 7000;
         while (!(await check())) {
@@ -326,6 +350,35 @@ console.log(JSON.stringify({type:'agent_settled',aborted:false}));
           "--session",
           "00000000-0000-4000-8000-000000000001",
         ]);
+      const before = await load();
+      expect(Object.values(before.records).some((r) => r.lane === "R")).toBe(
+        false,
+      );
+      const enabled: Config = {
+        ...initial,
+        allowedTasks: ["P1-06"],
+        lanes: { ...initial.lanes, R: { enabled: true } },
+      };
+      await replaceConfig(enabled);
+      await until(async () =>
+        Object.values((await load()).records).some(
+          (r) => r.lane === "R" && !!r.finishedAt,
+        ),
+      );
+      expect((await load()).pid).toBe(before.pid);
+      expect((await load()).scheduling?.allowedTasks).toEqual(["P1-06"]);
+      await replaceConfig({ version: "invalid" });
+      await until(
+        async () => (await load()).configReload?.errorCode === "INVALID_CONFIG",
+      );
+      expect((await load()).scheduling?.allowedTasks).toEqual(["P1-06"]);
+      await replaceConfig({ ...enabled, maxParallel: 3, allowedTasks: [] });
+      await until(
+        async () =>
+          (await load()).configReload?.errorCode === "RESTART_REQUIRED",
+      );
+      expect((await load()).scheduling?.maxParallel).toBe(4);
+      expect((await load()).scheduling?.allowedTasks).toEqual(["P1-06"]);
       controller.abort();
       await running;
       expect((await load()).running).toBe(false);
@@ -337,7 +390,7 @@ console.log(JSON.stringify({type:'agent_settled',aborted:false}));
       await rm(root, { recursive: true, force: true });
     }
   },
-  12000,
+  22000,
 );
 
 it("schedules V only for pinned A requests, separately from R within existing limits", () => {

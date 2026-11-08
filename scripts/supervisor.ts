@@ -11,6 +11,7 @@ import {
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { evaluateSchedulingReload } from "./config-reload.ts";
 import { snapshot } from "./dashboard.ts";
 import {
   assertSwitch,
@@ -84,6 +85,11 @@ export interface State {
   records: Record<string, RecordState>;
   notices: Partial<Record<Lane, string[]>>;
   scheduling?: LoadedScheduling;
+  configReload?: {
+    outcome: "applied" | "unchanged" | "invalid" | "deferred";
+    errorCode: string | null;
+    evaluatedAt: string;
+  };
 }
 export interface Work {
   lane: Lane;
@@ -158,7 +164,11 @@ export function validateConfig(value: Config) {
   }
   if (Object.keys(value.lanes).some((lane) => !lanes.includes(lane as Lane)))
     throw new Error("Unknown lane");
-  for (const lane of Object.values(value.lanes)) validateHarness(value, lane);
+  for (const lane of Object.values(value.lanes)) {
+    if (!lane || typeof lane.enabled !== "boolean")
+      throw new Error("Lane enabled must be boolean");
+    validateHarness(value, lane);
+  }
   return value;
 }
 export function plan(
@@ -372,11 +382,11 @@ const progress = (board: Board, cwd: string) => {
   });
 };
 export async function serve(
-  config: Config,
+  initialConfig: Config,
   directory: string,
   signal: AbortSignal,
 ) {
-  validateConfig(config);
+  let config = validateConfig(initialConfig);
   const release = await acquire(directory);
   const statePath = join(directory, "state.json");
   const state = await read<State>(statePath, {
@@ -497,6 +507,24 @@ export async function serve(
         state.commands.push(file);
       }
       if (!state.draining) {
+        let candidate: unknown = null;
+        try {
+          candidate = JSON.parse(
+            await readFile(join(directory, "config.json"), "utf8"),
+          );
+        } catch {
+          /* invalid or incomplete replacement keeps last known good */
+        }
+        const decision = evaluateSchedulingReload(config, candidate, (value) =>
+          validateConfig(value as Config),
+        );
+        config = decision.config;
+        state.scheduling = loadedScheduling(config);
+        state.configReload = {
+          outcome: decision.outcome,
+          errorCode: decision.errorCode,
+          evaluatedAt: new Date().toISOString(),
+        };
         let board: Board;
         try {
           board = await snapshot(config.root);
