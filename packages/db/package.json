@@ -10,6 +10,7 @@
     "pg": "8.23.1"
   },
   "devDependencies": {
+    "@relay/notifications": "workspace:*",
     "drizzle-kit": "0.31.11"
   }
 }

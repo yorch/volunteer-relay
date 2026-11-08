@@ -1,12 +1,12 @@
+import { isOrganizationHintId } from "@relay/contracts";
+
 /**
  * Deep-link organization hint (`?org=<id>`). The hint is only a selector for
- * the existing select endpoint; the server re-checks live membership.
- * Id shape mirrors `isOrganizationHintId` in packages/notifications (source of
- * truth); duplicated here so the client bundle does not import server code.
+ * the existing select endpoint; the server re-checks live membership. The id
+ * shape comes from the shared helper in `@relay/contracts` (pure, so safe for
+ * the client bundle) and is re-exported for the callers and tests here.
  */
-export function isOrganizationHintId(value: string): boolean {
-  return /^[A-Za-z0-9][A-Za-z0-9_:-]{0,127}$/.test(value);
-}
+export { isOrganizationHintId };
 
 /**
  * Splits a location search string into the validated hint (if any) and the
