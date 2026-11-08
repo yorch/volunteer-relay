@@ -24,6 +24,11 @@ export const environmentSchema = z
       .int()
       .nonnegative()
       .optional(),
+    OPENAI_IMAGE_INPUT_TOKEN_LIMIT: z.coerce
+      .number()
+      .int()
+      .positive()
+      .optional(),
     OPENAI_INPUT_TOKEN_LIMIT: z.coerce.number().int().positive().optional(),
     OPENAI_OUTPUT_TOKEN_LIMIT: z.coerce
       .number()

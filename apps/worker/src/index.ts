@@ -144,6 +144,12 @@ try {
               provider: createOpenAIProvider({
                 apiKey: env.OPENAI_API_KEY ?? "",
                 maxOutputTokens: env.OPENAI_OUTPUT_TOKEN_LIMIT,
+                ...(env.OPENAI_INPUT_TOKEN_LIMIT
+                  ? { maxInputTokens: env.OPENAI_INPUT_TOKEN_LIMIT }
+                  : {}),
+                ...(env.OPENAI_IMAGE_INPUT_TOKEN_LIMIT
+                  ? { imageInputTokenLimit: env.OPENAI_IMAGE_INPUT_TOKEN_LIMIT }
+                  : {}),
                 beforeRequest: async () => {
                   if (stopped) throw new Error("Worker stopping");
                   const marked = await budgets.markModelBudgetSent(

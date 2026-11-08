@@ -61,21 +61,19 @@ describe("OpenAI structured extraction transport", () => {
 });
 
 it("never calls the provider without a durable reservation and reports billed usage", async () => {
-  const request = vi
-    .fn<typeof fetch>()
-    .mockResolvedValue(
-      Response.json({
-        status: "completed",
-        usage: { input_tokens: 123, output_tokens: 45 },
-        output: [
-          {
-            content: [
-              { type: "output_text", text: '{"items":[],"unresolved":[]}' },
-            ],
-          },
-        ],
-      }),
-    );
+  const request = vi.fn<typeof fetch>().mockResolvedValue(
+    Response.json({
+      status: "completed",
+      usage: { input_tokens: 123, output_tokens: 45 },
+      output: [
+        {
+          content: [
+            { type: "output_text", text: '{"items":[],"unresolved":[]}' },
+          ],
+        },
+      ],
+    }),
+  );
   const denied = createOpenAIProvider({
     apiKey: "synthetic",
     fetch: request,
@@ -96,4 +94,20 @@ it("never calls the provider without a durable reservation and reports billed us
   });
   await provider.extract({ source, versions });
   expect(usage).toHaveBeenCalledWith({ inputTokens: 123, outputTokens: 45 });
+});
+
+it("refuses input exceeding the reservation before marking sent or making a request", async () => {
+  const request = vi.fn<typeof fetch>();
+  const sent = vi.fn(async () => {});
+  const provider = createOpenAIProvider({
+    apiKey: "synthetic",
+    fetch: request,
+    maxInputTokens: 1,
+    beforeRequest: sent,
+  });
+  await expect(provider.extract({ source, versions })).rejects.toMatchObject({
+    retryable: false,
+  });
+  expect(sent).not.toHaveBeenCalled();
+  expect(request).not.toHaveBeenCalled();
 });

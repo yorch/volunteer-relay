@@ -19,6 +19,8 @@ export function createOpenAIProvider(options: {
   apiKey: string;
   fetch?: typeof fetch;
   maxOutputTokens?: number;
+  maxInputTokens?: number;
+  imageInputTokenLimit?: number;
   beforeRequest?: () => Promise<void>;
   onUsage?: (usage: {
     inputTokens: number;
@@ -68,6 +70,33 @@ export function createOpenAIProvider(options: {
           detail: "low",
         });
       }
+      const schema = z.toJSONSchema(draftSchema);
+      // Byte-level text encoding gives a conservative bound; image token
+      // bounds must be supplied from the chosen model's documented low-detail
+      // limit. Refuse images without that trusted configuration.
+      if (source.attachments.length && !options.imageInputTokenLimit)
+        throw new ExtractionProviderError("Image pricing bound unavailable", {
+          retryable: false,
+        });
+      const inputBound =
+        Buffer.byteLength(
+          JSON.stringify({
+            instructions,
+            schema,
+            content: content.filter((item) => item.type === "input_text"),
+          }),
+          "utf8",
+        ) +
+        4096 +
+        source.attachments.length * (options.imageInputTokenLimit ?? 0);
+      if (
+        options.maxInputTokens !== undefined &&
+        inputBound > options.maxInputTokens
+      )
+        throw new ExtractionProviderError(
+          "Input exceeds reserved token bound",
+          { retryable: false },
+        );
       await options.beforeRequest?.();
       let response: Response;
       try {
@@ -88,7 +117,7 @@ export function createOpenAIProvider(options: {
                 type: "json_schema",
                 name: "volunteer_extraction",
                 strict: true,
-                schema: z.toJSONSchema(draftSchema),
+                schema,
               },
             },
           }),

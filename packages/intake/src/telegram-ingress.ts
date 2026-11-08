@@ -155,6 +155,7 @@ export function createTelegramIngress(deps: TelegramIngressDependencies) {
         const org = args[1] ?? "",
           needId = args[2] ?? "",
           revision = Number(args[3]);
+        if (org !== context.organizationId) return error(403);
         if (context.actor.kind !== "user" || !Number.isSafeInteger(revision))
           return error(422);
         const current = await deps.authorization.resolve(
