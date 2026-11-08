@@ -39,6 +39,7 @@ export interface AuthHttpDependencies {
     | "acceptInvitation"
     | "switchOrganization"
     | "listAvailableOrganizations"
+    | "listPendingInvitations"
   >;
   // Defaults to one in-memory limiter per handler set; see rate-limit.ts for
   // the single-replica and trusted-proxy assumptions.
@@ -63,6 +64,8 @@ export const defaultAuthRateRules = {
   mailRequestPerAccount: { limit: 5, windowMs: 60 * minute },
   mailRequestPerAddress: { limit: 30, windowMs: 60 * minute },
   tokenConfirmPerAddress: { limit: 30, windowMs: 15 * minute },
+  // A read, counted per attempt: the zero-organization panel loads it once.
+  invitationListPerAddress: { limit: 60, windowMs: 15 * minute },
 } satisfies Record<string, RateRule>;
 export type AuthRateRules = typeof defaultAuthRateRules;
 const status: Record<Code, number> = {
@@ -410,6 +413,16 @@ export function createAuthHttpHandlers({
       authOrganizationSelectionSchema,
       (input, call) =>
         sessions.switchOrganization({ ...input, ...helper(call) }),
+    ),
+    // Same-origin GET read like `organizations`; the recipient is the verified
+    // session, and the resolver returns only that user's own invitations.
+    invitations: handler("GET", (call) =>
+      limited(
+        call,
+        [byAddress("invitations", call, rules.invitationListPerAddress)],
+        false,
+        () => sessions.listPendingInvitations(helper(call)),
+      ),
     ),
     organizations: handler("GET", async (call) => {
       const current = await auth.api.getSession({

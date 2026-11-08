@@ -168,6 +168,41 @@ class OutcomeRollback extends Error {
 
 type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
+/**
+ * Per-organization activity/need ledger lock, held to transaction end.
+ *
+ * The validated automatic-acceptance gate (processing.ts) checks that no
+ * plausible matching activity or open need exists before it inserts its own.
+ * There is no unique index for that "plausible match", so the check is only
+ * sound if no other transaction of the same organization can insert or change
+ * an activity/need row between the check and the gate's commit. Every
+ * application writer that inserts or updates activity/need rows therefore
+ * takes this lock before its first such write: the automatic gate, human
+ * review acceptance, provisional urgent needs from proposal persistence, and
+ * domain-store commits. Writers of other organizations are never blocked.
+ *
+ * Acquisition order (deadlock avoidance): an idempotency-key lock or
+ * domain_command insert first, then row locks on the source/run being
+ * decided, then this lock, and only then activity/need/contribution/member/
+ * source_author row locks and writes. Hash collisions with other advisory keys
+ * can only add waiting, never admit a concurrent writer.
+ */
+export async function lockOrganizationLedger(
+  tx: Pick<Database, "execute">,
+  organizationId: string,
+): Promise<void> {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${JSON.stringify(["relay:organization-ledger:v1", organizationId])},0))`,
+  );
+}
+
+const ledgerWriteKinds = new Set<DomainWrite["kind"]>([
+  "insert-activity",
+  "update-activity",
+  "insert-need",
+  "update-need",
+]);
+
 function toInstant(value: Date | null): string | null {
   return value === null ? null : value.toISOString();
 }
@@ -591,6 +626,10 @@ export function createDomainStore(db: Database): DomainStoreRecord {
             result: mutation.command.result,
             correlationId: mutation.command.correlationId,
           });
+          // Serialize activity/need writes with the automatic-acceptance
+          // match check of the same organization, before any row locks.
+          if (mutation.writes.some((write) => ledgerWriteKinds.has(write.kind)))
+            await lockOrganizationLedger(tx, mutation.organizationId);
           // Anchors are verified against live member rows, then upserted into
           // the historical source_author anchor exactly like source intake.
           for (const membershipId of new Set(mutation.anchors))

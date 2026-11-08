@@ -1,17 +1,23 @@
-import type {
-  ApiError,
-  AuthOrganizationOption,
-  AuthorizationService,
-  AuthVerificationConfirm,
-  AuthVerificationRequest,
-  Result,
-  TenantContext,
+import {
+  type ApiError,
+  type AuthOrganizationOption,
+  type AuthorizationService,
+  type AuthPendingInvitations,
+  type AuthVerificationConfirm,
+  type AuthVerificationRequest,
+  authPendingInvitationsSchema,
+  type Result,
+  type TenantContext,
 } from "@relay/contracts";
 import type { MembershipReader } from "@relay/db";
 import { isContractRole } from "@relay/domain/auth";
 import { APIError } from "better-auth/api";
 import type { Auth } from "./auth.ts";
 import { trackMailDelivery } from "./delivery.ts";
+import {
+  type InvitationRow,
+  projectPendingInvitations,
+} from "./invitations.ts";
 
 type Failure = Extract<Result<never>, { ok: false }>;
 
@@ -361,6 +367,71 @@ export function createSessionResolver({
       };
       if (responseHeaders) value.headers = responseHeaders;
       return { ok: true, value };
+    },
+
+    // Lists invitations addressed to the session user's own VERIFIED email.
+    // An unverified email gets an empty list with emailVerified=false before
+    // any invitation lookup, so it reveals nothing about stored invitations.
+    // The recipient email always comes from the verified session, never input.
+    async listPendingInvitations(input: {
+      headers: Headers;
+      responseHeaders?: Headers;
+      correlationId: string;
+      now?: Date;
+    }): Promise<Result<AuthPendingInvitations>> {
+      let user: { id?: string; email?: string; emailVerified?: boolean };
+      try {
+        const current = await auth.api.getSession({
+          headers: input.headers,
+          returnHeaders: true,
+        });
+        collectHeaders(current.headers, input.responseHeaders);
+        if (!current.response?.user?.id || !current.response.user.email)
+          return failure(
+            "UNAUTHENTICATED",
+            "Sign-in is required",
+            input.correlationId,
+          );
+        user = current.response.user;
+      } catch {
+        return failure(
+          "DEPENDENCY_UNAVAILABLE",
+          "Session service is unavailable",
+          input.correlationId,
+          true,
+        );
+      }
+      if (user.emailVerified !== true)
+        return { ok: true, value: { emailVerified: false, invitations: [] } };
+      let rows: InvitationRow[];
+      try {
+        // The library queries by the session's own lowercased email and keeps
+        // pending rows; it also refuses an unverified session itself.
+        rows = await auth.api.listUserInvitations({ headers: input.headers });
+      } catch {
+        return failure(
+          "DEPENDENCY_UNAVAILABLE",
+          "Invitation lookup is unavailable",
+          input.correlationId,
+          true,
+        );
+      }
+      const parsed = authPendingInvitationsSchema.safeParse({
+        emailVerified: true,
+        invitations: projectPendingInvitations(
+          rows,
+          user.email ?? "",
+          input.now ?? new Date(),
+        ),
+      });
+      if (!parsed.success)
+        return failure(
+          "DEPENDENCY_UNAVAILABLE",
+          "Invitation lookup is unavailable",
+          input.correlationId,
+          true,
+        );
+      return { ok: true, value: parsed.data };
     },
 
     // Accepts the emailed secret only for the verified matching recipient; the

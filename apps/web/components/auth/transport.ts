@@ -1,7 +1,9 @@
 import {
   type AuthOrganizationChoices,
+  type AuthPendingInvitations,
   apiErrorSchema,
   authOrganizationChoicesSchema,
+  authPendingInvitationsSchema,
   type Result,
 } from "@relay/contracts";
 import { fetchJson } from "../api-client";
@@ -96,6 +98,24 @@ export async function loadOrganizations(): Promise<
     Object.keys(data).sort().join() === "ok,value"
   ) {
     const parsed = authOrganizationChoicesSchema.safeParse(data.value);
+    if (parsed.success) return { ok: true, value: parsed.data };
+  }
+  return failure(response, data);
+}
+// Invitations addressed to the signed-in user's verified email. Listing grants
+// nothing: acceptance goes through `invitations/accept` and is reauthorized.
+export async function loadPendingInvitations(): Promise<
+  Result<AuthPendingInvitations>
+> {
+  const result = await request("invitations");
+  if (!result) return unavailable();
+  const { response, data } = result;
+  if (
+    response.status === 200 &&
+    data.ok === true &&
+    Object.keys(data).sort().join() === "ok,value"
+  ) {
+    const parsed = authPendingInvitationsSchema.safeParse(data.value);
     if (parsed.success) return { ok: true, value: parsed.data };
   }
   return failure(response, data);

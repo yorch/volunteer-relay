@@ -7,26 +7,17 @@ import {
   type TenantContext,
   type UpdateOrganizationSettings,
   updateOrganizationSettingsSchema,
+  withOrganizationHint,
 } from "@relay/contracts";
 import { sql } from "drizzle-orm";
 import type { Database } from "../types.ts";
 
-/**
- * Mirrors withOrganizationHint in @relay/notifications (db does not depend on
- * that package). The org query value is a selector hint only, never authority.
- */
+/** New-row app link with the org selector hint; unchanged when not hintable. */
 export function organizationAppPath(
   path: string,
   organizationId: string,
 ): string {
-  if (
-    !/^[A-Za-z0-9][A-Za-z0-9_:-]{0,127}$/.test(organizationId) ||
-    !path.startsWith("/workspace/") ||
-    path.includes("?") ||
-    path.includes("#")
-  )
-    return path;
-  return `${path}?org=${encodeURIComponent(organizationId)}`;
+  return withOrganizationHint(path, organizationId) ?? path;
 }
 
 type Executor = Pick<Database, "execute">;

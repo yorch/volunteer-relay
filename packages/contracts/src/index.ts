@@ -105,6 +105,48 @@ export type AuthOrganizationChoices = z.infer<
   typeof authOrganizationChoicesSchema
 >;
 
+/**
+ * Upper bound on pending invitations listed for the signed-in recipient.
+ * The list is a convenience; the emailed link remains the canonical path.
+ */
+export const AUTH_PENDING_INVITATIONS_LIMIT = 20 as const;
+// One pending invitation addressed to the signed-in user's verified email.
+// Only acceptance-relevant facts: no organization ID, inviter or recipient.
+// Listing an item grants nothing; acceptance is reauthorized server-side.
+export const authPendingInvitationSchema = z
+  .object({
+    invitationId: id,
+    organizationName: id,
+    role: roleSchema,
+    expiresAt: instant,
+  })
+  .strict();
+export type AuthPendingInvitation = z.infer<typeof authPendingInvitationSchema>;
+// `GET /api/auth/invitations`. An unverified email yields
+// `{ emailVerified: false, invitations: [] }` regardless of stored rows, so the
+// signal reveals only the caller's own verification state.
+export const authPendingInvitationsSchema = z
+  .object({
+    emailVerified: z.boolean(),
+    invitations: z
+      .array(authPendingInvitationSchema)
+      .max(AUTH_PENDING_INVITATIONS_LIMIT),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (!value.emailVerified && value.invitations.length > 0)
+      ctx.addIssue({
+        code: "custom",
+        message: "Invitations are listed only for a verified email",
+      });
+    const ids = value.invitations.map((item) => item.invitationId);
+    if (new Set(ids).size !== ids.length)
+      ctx.addIssue({ code: "custom", message: "Invitations must be unique" });
+  });
+export type AuthPendingInvitations = z.infer<
+  typeof authPendingInvitationsSchema
+>;
+
 export const tenantContextSchema = z
   .object({
     organizationId: id,
@@ -876,6 +918,7 @@ export interface NeedService {
   ): Promise<Result<NeedRecord[]>>;
 }
 export * from "./operations.ts";
+export * from "./organization-hint.ts";
 export * from "./reports.ts";
 export * from "./retention.ts";
 export * from "./settings.ts";

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type AuthPendingInvitation,
   type ContributionRecord,
   type NeedRecord,
   type ProductReport,
@@ -25,7 +26,11 @@ import {
   request,
   setRenderedOrganization,
 } from "../api-client";
-import { loadOrganizations, mutateAuth } from "../auth/transport";
+import {
+  loadOrganizations,
+  loadPendingInvitations,
+  mutateAuth,
+} from "../auth/transport";
 import { Card as BaseCard, Live } from "../card";
 import { StaffShell, VolunteerShell } from "../layout";
 import { splitOrganizationHint } from "../org-hint";
@@ -168,17 +173,118 @@ function OrganizationPicker({ options }: { options: readonly OrgOption[] }) {
     </main>
   );
 }
+const invitationRole: Record<AuthPendingInvitation["role"], string> = {
+  owner: "Owner",
+  coordinator: "Coordinator",
+  volunteer: "Volunteer",
+  "report-reader": "Report reader",
+};
+// One neutral message for every refusal: it never says whether the invitation
+// exists, was withdrawn, expired or belongs to someone else.
+const invitationAcceptFailed =
+  "This invitation could not be accepted. It may have expired or been withdrawn. Open the link in your invitation email, or ask for a new invitation.";
+const invitationsUnavailable =
+  "Invitations could not be loaded right now. You can still open the link in your invitation email.";
 function NoOrganization() {
   const [error, setError] = useState("");
+  const [invitations, setInvitations] = useState<Awaited<
+    ReturnType<typeof loadPendingInvitations>
+  > | null>(null);
+  const [accepting, setAccepting] = useState<string | null>(null);
+  const [acceptError, setAcceptError] = useState("");
+  // Shared across StrictMode's double effect run so the list loads only once.
+  const loadOnce = useRef<ReturnType<typeof loadPendingInvitations> | null>(
+    null,
+  );
+  useEffect(() => {
+    let live = true;
+    loadOnce.current ??= loadPendingInvitations();
+    void loadOnce.current.then((result) => {
+      if (live) setInvitations(result);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const listed =
+    invitations?.ok && invitations.value.emailVerified
+      ? invitations.value.invitations
+      : [];
+  const unverified =
+    invitations?.ok === true && !invitations.value.emailVerified;
   return (
     <main className={styles.standalone}>
       <h1>You&apos;re not in an organization yet</h1>
-      <p>
-        An owner or coordinator needs to invite you. Check your email for an
-        invitation, and make sure your email address is{" "}
-        <a href="/verify-email">verified</a>. Then open the invitation link to
-        join.
-      </p>
+      <Live kind="polite">
+        {invitations === null ? "Loading invitations…" : ""}
+      </Live>
+      {listed.length > 0 ? (
+        <section aria-labelledby="pending-invitations">
+          <h2 id="pending-invitations">Invitations waiting for you</h2>
+          <p>Accept an invitation to join that organization.</p>
+          <ul
+            aria-busy={accepting !== null}
+            style={{ listStyle: "none", padding: 0 }}
+          >
+            {listed.map((item) => (
+              <li key={item.invitationId}>
+                <Card>
+                  <h3>{item.organizationName}</h3>
+                  <p>Role: {invitationRole[item.role]}</p>
+                  <p>
+                    Expires{" "}
+                    <time dateTime={item.expiresAt}>
+                      {date(item.expiresAt)}
+                    </time>
+                  </p>
+                  <button
+                    type="button"
+                    disabled={accepting !== null}
+                    aria-label={`Accept invitation to ${item.organizationName}`}
+                    onClick={async () => {
+                      if (accepting !== null) return;
+                      setAccepting(item.invitationId);
+                      setAcceptError("");
+                      const result = await mutateAuth("invitations/accept", {
+                        invitationId: item.invitationId,
+                      });
+                      if (result.ok) {
+                        window.location.assign("/workspace");
+                        return;
+                      }
+                      setAcceptError(invitationAcceptFailed);
+                      setAccepting(null);
+                    }}
+                  >
+                    {accepting === item.invitationId ? "Accepting…" : "Accept"}
+                  </button>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      <Live kind="alert">
+        {acceptError ||
+          (invitations !== null && !invitations.ok
+            ? invitationsUnavailable
+            : "")}
+      </Live>
+      {unverified ? (
+        <p>
+          Your email address is not verified yet.{" "}
+          <a href="/verify-email">Verify your email</a> to see invitations sent
+          to it here.
+        </p>
+      ) : null}
+      {listed.length === 0 ? (
+        <p>
+          An owner or coordinator needs to invite you. Check your email for an
+          invitation, and make sure your email address is{" "}
+          <a href="/verify-email">verified</a>. Then open the invitation link to
+          join.
+        </p>
+      ) : null}
       <Live kind="alert">{error}</Live>
       <button
         type="button"
