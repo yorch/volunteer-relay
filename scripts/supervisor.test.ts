@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 import type { snapshot } from "./dashboard.ts";
 import {
@@ -271,7 +272,7 @@ console.log(JSON.stringify({type:'agent_settled',aborted:false}));
       execFileSync(
         process.execPath,
         [
-          "/Users/yorch/code/volunteer-relay/scripts/agents.mjs",
+          fileURLToPath(new URL("./agents.mjs", import.meta.url)),
           "send",
           "--agent",
           "A",
