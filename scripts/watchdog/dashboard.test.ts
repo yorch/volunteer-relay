@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { expect, it } from "vitest";
 import { watchdogHealth } from "./dashboard.ts";
 import type { WatchdogInput } from "./policy.ts";
-import { settings } from "./runner.ts";
+import { readHealth, settings } from "./runner.ts";
 import { checkWatchdog } from "./service.ts";
 
 it("delivers synthetic dead/paused/mismatch faults visibly without controlling live processes", async () => {
@@ -62,6 +62,70 @@ it("delivers synthetic dead/paused/mismatch faults visibly without controlling l
     );
     expect(JSON.stringify(await watchdogHealth(store, 900000))).not.toContain(
       "PRIVATE_SENTINEL",
+    );
+  } finally {
+    await rm(store, { recursive: true, force: true });
+  }
+});
+
+it("keeps failed rollout observable while protecting a live drain and intentional stop", async () => {
+  const store = await mkdtemp(join(tmpdir(), "relay-rollout-health-"));
+  try {
+    const supervisor = join(store, "supervisor");
+    await (await import("node:fs/promises")).mkdir(supervisor, { mode: 0o700 });
+    await writeFile(
+      join(supervisor, "desired.json"),
+      JSON.stringify({ desiredRunning: true }),
+      { mode: 0o600 },
+    );
+    await writeFile(
+      join(supervisor, "state.json"),
+      JSON.stringify({
+        pid: 123,
+        running: false,
+        draining: true,
+        checkedAt: new Date(0).toISOString(),
+        held: [],
+        records: {},
+      }),
+      { mode: 0o600 },
+    );
+    let input = await readHealth(store, 900000, () => "dead");
+    expect(input.supervisor.draining).toBe(false);
+    await checkWatchdog({
+      directory: join(store, "watchdog"),
+      readInput: async () => input,
+      settings: { ...settings, startupGraceMs: 0 },
+      signal: new AbortController().signal,
+      notify: async () => {},
+      requestRecovery: async () => {
+        throw Error("Recovery disabled");
+      },
+      clock: { now: () => 900000, sleep: async () => {} },
+    });
+    expect((await watchdogHealth(store, 900000)).codes).toContain(
+      "supervisor-dead",
+    );
+    await writeFile(
+      join(supervisor, "state.json"),
+      JSON.stringify({
+        pid: 123,
+        running: true,
+        draining: true,
+        held: [],
+        records: {},
+      }),
+      { mode: 0o600 },
+    );
+    input = await readHealth(store, 900000, () => "alive");
+    expect(input.supervisor.draining).toBe(true);
+    await writeFile(
+      join(supervisor, "desired.json"),
+      JSON.stringify({ desiredRunning: false }),
+      { mode: 0o600 },
+    );
+    expect((await readHealth(store, 900000, () => "dead")).desiredRunning).toBe(
+      false,
     );
   } finally {
     await rm(store, { recursive: true, force: true });

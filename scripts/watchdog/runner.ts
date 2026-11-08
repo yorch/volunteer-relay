@@ -56,6 +56,7 @@ const laneNames = ["A", "B", "C", "D", "E", "F", "R", "V"];
 export async function readHealth(
   store: string,
   now = Date.now(),
+  observe: (pid: number | null) => Liveness = liveness,
 ): Promise<WatchdogInput> {
   const state = object(await privateJson(join(store, "supervisor/state.json")));
   const config = await privateJson(join(store, "supervisor/config.json"));
@@ -80,6 +81,7 @@ export async function readHealth(
       ? (state.held as string[])
       : null;
   const pid = pidValue(state?.pid);
+  const supervisorAlive = observe(pid);
   let disk: string | null = null;
   try {
     disk = schedulingFingerprint(validateConfig(config as Config));
@@ -95,15 +97,18 @@ export async function readHealth(
         : null,
     supervisor: {
       pid,
-      alive: liveness(pid),
+      alive: supervisorAlive,
       heartbeatAt: time(state?.checkedAt),
-      draining: state?.draining === true,
+      draining:
+        state?.draining === true &&
+        state?.running === true &&
+        supervisorAlive === "alive",
     },
     children: records
       .filter((r) => r.status === "running" && pidValue(r.pid) !== null)
       .map((r) => ({
         pid: pidValue(r.pid) as number,
-        alive: liveness(pidValue(r.pid)),
+        alive: observe(pidValue(r.pid)),
       })),
     config: {
       loaded: fingerprint(object(state?.scheduling)?.fingerprint),
