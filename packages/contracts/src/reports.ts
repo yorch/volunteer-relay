@@ -21,5 +21,6 @@ export interface ProductReport {
   openNeeds: number;
   resolvedNeeds: number;
   averageAcknowledgmentMinutes: number | null;
+  averageResolutionMinutes?: number | null;
   excludedUnknownDate: number;
 }

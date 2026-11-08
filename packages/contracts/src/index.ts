@@ -864,5 +864,6 @@ export interface NeedService {
     query: NeedListQuery,
   ): Promise<Result<NeedRecord[]>>;
 }
+export * from "./operations.ts";
 export * from "./reports.ts";
 export * from "./settings.ts";
