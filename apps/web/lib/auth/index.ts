@@ -13,6 +13,7 @@ export {
 export {
   type AuthMailCallbacks,
   createRecordingMailer,
+  type EmailVerificationMail,
   type InvitationMail,
   type RecordingMailer,
   type RecordingMailerOptions,

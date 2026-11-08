@@ -20,18 +20,31 @@ export interface InvitationMail {
   expiresAt: Date;
 }
 
+export interface EmailVerificationMail {
+  to: string;
+  name: string;
+  verificationUrl: string;
+  token: string;
+}
+
 export interface AuthMailCallbacks {
+  sendEmailVerification?(message: EmailVerificationMail): Promise<void>;
   sendPasswordReset(message: ResetPasswordMail): Promise<void>;
   sendInvitation(message: InvitationMail): Promise<void>;
 }
 
 export interface RecordingMailer extends AuthMailCallbacks {
+  readonly verificationMessages: EmailVerificationMail[];
   readonly resetMessages: ResetPasswordMail[];
   readonly invitationMessages: InvitationMail[];
-  readonly failures: Array<{ kind: "reset" | "invitation"; at: Date }>;
+  readonly failures: Array<{
+    kind: "reset" | "invitation" | "verification";
+    at: Date;
+  }>;
 }
 
 export interface RecordingMailerOptions {
+  failVerification?: boolean;
   failReset?: boolean;
   failInvitation?: boolean;
 }
@@ -44,11 +57,23 @@ export interface RecordingMailerOptions {
 export function createRecordingMailer(
   options: RecordingMailerOptions = {},
 ): RecordingMailer {
+  const verificationMessages: EmailVerificationMail[] = [];
   const resetMessages: ResetPasswordMail[] = [];
   const invitationMessages: InvitationMail[] = [];
-  const failures: Array<{ kind: "reset" | "invitation"; at: Date }> = [];
+  const failures: Array<{
+    kind: "reset" | "invitation" | "verification";
+    at: Date;
+  }> = [];
   return {
+    verificationMessages,
     resetMessages,
+    async sendEmailVerification(message) {
+      if (options.failVerification) {
+        failures.push({ kind: "verification", at: new Date() });
+        throw new Error("verification delivery failed");
+      }
+      verificationMessages.push(message);
+    },
     invitationMessages,
     failures,
     async sendPasswordReset(message) {
@@ -71,7 +96,7 @@ export function createRecordingMailer(
 export interface TrackedMailer {
   mail: AuthMailCallbacks;
   // Kind-only failure records: no recipient, token or URL content.
-  failures: Array<{ kind: "reset" | "invitation"; at: Date }>;
+  failures: Array<{ kind: "reset" | "invitation" | "verification"; at: Date }>;
 }
 
 /**
@@ -83,6 +108,18 @@ export function createTrackedMailer(inner: AuthMailCallbacks): TrackedMailer {
   return {
     failures,
     mail: {
+      ...(inner.sendEmailVerification
+        ? {
+            async sendEmailVerification(message: EmailVerificationMail) {
+              try {
+                await inner.sendEmailVerification?.(message);
+              } catch {
+                failures.push({ kind: "verification", at: new Date() });
+                throw new Error("verification delivery failed");
+              }
+            },
+          }
+        : {}),
       async sendPasswordReset(message) {
         try {
           await inner.sendPasswordReset(message);

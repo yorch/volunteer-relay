@@ -3,9 +3,11 @@ import { type Database, schema } from "@relay/db";
 import type { ContractRole } from "@relay/domain/auth";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { organization } from "better-auth/plugins";
 import { createAccessControl } from "better-auth/plugins/access";
 import type { AuthMailCallbacks } from "./mail.ts";
+import { createEmailVerification } from "./verification.ts";
 
 // Two layers share one statement set:
 // - the four tenant permissions from @relay/contracts (domain authority), and
@@ -136,7 +138,20 @@ export function createAuth({
       }
     : undefined;
 
-  return betterAuth({
+  const auth = betterAuth({
+    disabledPaths: ["/verify-email", "/send-verification-email"],
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        if (
+          ctx.path === "/verify-email" ||
+          ctx.path === "/send-verification-email"
+        ) {
+          throw new APIError("FORBIDDEN", {
+            message: "Use application verification",
+          });
+        }
+      }),
+    },
     secret,
     baseURL,
     database: drizzleAdapter(db, { provider: "pg", schema, transaction: true }),
@@ -163,6 +178,9 @@ export function createAuth({
         ...(sendInvitationEmail ? { sendInvitationEmail } : {}),
       }),
     ],
+  });
+  return Object.assign(auth, {
+    emailVerification: createEmailVerification(db, baseURL, mail),
   });
 }
 

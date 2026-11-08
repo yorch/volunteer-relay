@@ -2,6 +2,8 @@ import type {
   ApiError,
   AuthOrganizationOption,
   AuthorizationService,
+  AuthVerificationConfirm,
+  AuthVerificationRequest,
   Result,
   TenantContext,
 } from "@relay/contracts";
@@ -27,7 +29,7 @@ export interface SessionResolverDependencies {
   auth: Auth;
   authorization: AuthorizationService;
   memberships: MembershipReader;
-  mailFailures?: Array<{ kind: "reset" | "invitation" }>;
+  mailFailures?: Array<{ kind: "reset" | "invitation" | "verification" }>;
   // Application origin used to constrain password-reset redirect targets.
   appUrl: string;
   // Whether a mail transport is configured; without one, reset requests are
@@ -102,6 +104,53 @@ export function createSessionResolver({
   }
 
   return {
+    async requestEmailVerification(
+      input: AuthVerificationRequest & {
+        correlationId: string;
+        responseHeaders?: Headers;
+      },
+    ): Promise<Result<void>> {
+      if (!auth.emailVerification.configured)
+        return failure(
+          "DEPENDENCY_UNAVAILABLE",
+          "Email verification delivery is not configured",
+          input.correlationId,
+        );
+      try {
+        await auth.emailVerification.request(input.email);
+      } catch {
+        return failure(
+          "DEPENDENCY_UNAVAILABLE",
+          "Email verification is unavailable",
+          input.correlationId,
+          true,
+        );
+      }
+      return { ok: true, value: undefined };
+    },
+    async confirmEmailVerification(
+      input: AuthVerificationConfirm & {
+        correlationId: string;
+        responseHeaders?: Headers;
+      },
+    ): Promise<Result<void>> {
+      try {
+        if (!(await auth.emailVerification.confirm(input.token)))
+          return failure(
+            "VALIDATION",
+            "Email verification cannot be completed",
+            input.correlationId,
+          );
+      } catch {
+        return failure(
+          "DEPENDENCY_UNAVAILABLE",
+          "Email verification is unavailable",
+          input.correlationId,
+          true,
+        );
+      }
+      return { ok: true, value: undefined };
+    },
     async resolveVerifiedContext(input: {
       headers: Headers;
       responseHeaders?: Headers;
