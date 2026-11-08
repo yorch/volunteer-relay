@@ -125,3 +125,10 @@
     grid-template-columns: 1fr;
   }
 }
+.attachment {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: 32rem;
+  object-fit: contain;
+}

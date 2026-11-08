@@ -481,11 +481,54 @@ function Inbox({
   refresh: () => Promise<void>;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState<string | null>(null);
+  const failed = snapshot.sources.filter(
+    (source) => source.status === "failed",
+  );
   const entry = snapshot.queue.find((e) => e.proposal.runId === selected);
   return (
     <>
       <h1>Source inbox</h1>
       <p>Review the original update alongside its proposed fields.</p>
+      <Card>
+        <h2>Processing failures</h2>
+        {failed.length ? (
+          <>
+            <p>
+              Retry processing these updates. The original evidence is retained.
+            </p>
+            <ul className={styles.list}>
+              {failed.map((source) => (
+                <li key={source.sourceId}>
+                  Source {source.sourceId} · revision {source.revision}{" "}
+                  <button
+                    type="button"
+                    disabled={retrying !== null}
+                    onClick={async () => {
+                      setRetrying(source.sourceId);
+                      try {
+                        await mutate(
+                          "/api/product/retry-source",
+                          { sourceId: source.sourceId },
+                          "Processing retry requested.",
+                        );
+                      } finally {
+                        setRetrying(null);
+                      }
+                    }}
+                  >
+                    {retrying === source.sourceId
+                      ? "Requesting…"
+                      : "Retry processing"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <p>No processing failures.</p>
+        )}
+      </Card>
       {snapshot.queue.length === 0 ? (
         <p>No sources awaiting review.</p>
       ) : (
@@ -606,6 +649,30 @@ function ReviewEditor({
         {date(entry.source.receivedAt)} · source revision{" "}
         {entry.source.revision}
       </p>
+      {entry.source.attachments?.length > 0 && (
+        <section>
+          <h3>Source attachments</h3>
+          <p>
+            Original evidence attached to source revision{" "}
+            {entry.source.revision}.
+          </p>
+          {entry.source.attachments.map((attachment) => (
+            <figure key={attachment.id}>
+              {/* The authenticated same-origin endpoint serves the original evidence without an image optimization proxy. */}
+              {/* biome-ignore lint/performance/noImgElement: authenticated original evidence must use the same-origin endpoint */}
+              <img
+                className={styles.attachment}
+                src={`/api/product/attachments/${encodeURIComponent(entry.source.sourceId)}/${encodeURIComponent(attachment.id)}`}
+                alt={`Source attachment ${attachment.id}, revision ${entry.source.revision}`}
+              />
+              <figcaption>
+                Source revision {entry.source.revision} · attachment{" "}
+                {attachment.id}
+              </figcaption>
+            </figure>
+          ))}
+        </section>
+      )}
       <h3>Proposed fields</h3>
       {items.length ? (
         items.map((item, index) => (
@@ -726,6 +793,11 @@ function ReviewEditor({
             )}
             {item.kind === "correction" && (
               <>
+                <p>
+                  This proposed correction identifies a target and revision.
+                  Check the original evidence before accepting; explain any
+                  staff changes in the review reason.
+                </p>
                 <label>
                   Target ID for {item.key}
                   <input
@@ -969,6 +1041,11 @@ function Contribution({
         · {c.status} · revision {c.revision}
       </p>
       <p>Activity {c.activityId}</p>
+      <p>
+        {c.origin.kind === "source"
+          ? `Source ${c.origin.sourceId} · revision ${c.origin.sourceRevision}`
+          : `Staff entry reason: ${c.origin.reason}`}
+      </p>
       {(c.status === "pending" || c.status === "approved") && (
         <form onSubmit={transition}>
           <label>
@@ -987,6 +1064,10 @@ function Contribution({
           <label>
             Reason for correction
             <input name="reason" maxLength={2000} />
+            <span>
+              Explain the correction using the source evidence or your staff
+              knowledge.
+            </span>
           </label>
           <button type="submit">Update contribution</button>
         </form>
