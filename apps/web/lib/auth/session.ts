@@ -1,8 +1,8 @@
 import type {
   ApiError,
+  AuthOrganizationOption,
   AuthorizationService,
   Result,
-  roleSchema,
   TenantContext,
 } from "@relay/contracts";
 import { type Database, type MembershipReader, sql } from "@relay/db";
@@ -33,14 +33,6 @@ export interface SessionResolverDependencies {
   // Whether a mail transport is configured; without one, reset requests are
   // refused with a bounded error instead of silently succeeding.
   mailConfigured: boolean;
-}
-
-export interface AvailableOrganization {
-  organizationId: string;
-  membershipId: string;
-  name: string;
-  slug: string;
-  role: (typeof roleSchema.options)[number];
 }
 
 /**
@@ -114,7 +106,7 @@ export function createSessionResolver({
     async listAvailableOrganizations(input: {
       headers: Headers;
       correlationId: string;
-    }): Promise<Result<AvailableOrganization[]>> {
+    }): Promise<Result<AuthOrganizationOption[]>> {
       const verified = await verifiedUserId(input.headers, input.correlationId);
       if (!verified.ok) return verified;
 
@@ -138,7 +130,7 @@ export function createSessionResolver({
             membershipId: row.membershipId,
             name: row.organizationName,
             slug: row.organizationSlug,
-            role: row.role as AvailableOrganization["role"],
+            role: row.role as AuthOrganizationOption["role"],
           })),
       };
     },

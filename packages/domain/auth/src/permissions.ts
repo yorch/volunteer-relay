@@ -1,8 +1,8 @@
-import { roleSchema } from "@relay/contracts";
+import { type ContractRole, roleSchema } from "@relay/contracts";
 
 // The contract defines the role vocabulary and the permission set; this module
 // only maps one to the other so no lane redefines either.
-export type ContractRole = (typeof roleSchema.options)[number];
+export type { ContractRole } from "@relay/contracts";
 
 export const permissions = [
   "source:submit",

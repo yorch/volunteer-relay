@@ -19,7 +19,6 @@ export {
   type ResetPasswordMail,
 } from "./mail.ts";
 export {
-  type AvailableOrganization,
   createSessionResolver,
   type SessionResolver,
   type SessionResolverDependencies,

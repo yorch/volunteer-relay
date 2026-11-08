@@ -1,7 +1,5 @@
-import type { Result } from "@relay/contracts";
+import type { ContractRole, Result } from "@relay/contracts";
 import { roleSchema } from "@relay/contracts";
-
-export type ContractRole = (typeof roleSchema.options)[number];
 
 type Failure = Extract<Result<never>, { ok: false }>;
 
