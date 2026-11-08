@@ -125,7 +125,7 @@ export function Opening({ scene }: { scene: Scene }) {
       <div
         style={{
           position: "absolute",
-          bottom: 30,
+          top: 84,
           left: 40,
           fontSize: 20,
           color: theme.inkSoft,
@@ -222,7 +222,7 @@ function BuriedNotice({ frame, fps }: { frame: number; fps: number }) {
     <div
       style={{
         position: "absolute",
-        bottom: 92,
+        bottom: 176,
         left: 110,
         opacity,
         display: "flex",

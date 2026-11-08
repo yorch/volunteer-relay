@@ -23,6 +23,7 @@ this footage as the deployed release.
 
 | Path             | What it shows                                                                                                           |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `final.mp4`      | Full programme: 176.20 s, 1920×1080, 30 fps, H.264/AAC; −16.5 LUFS, −4.0 dBTP                                           |
 | `proof.mp4`      | 1920×1080, 30 fps, H.264 yuv420p/bt709, AAC; 18.00 s; −16.4 LUFS, −4.2 dBTP                                             |
 | `scenes/S02.mp4` | Coordinator inbox with 7 updates awaiting review (baseline)                                                             |
 | `scenes/S03.mp4` | Original update beside proposed fields, each tied to its source                                                         |

@@ -27,8 +27,8 @@ export function Callout({ overlays }: { overlays: readonly Overlay[] }) {
     <div
       style={{
         position: "absolute",
-        top: 56,
-        left: 56,
+        top: 84,
+        right: 26,
         opacity,
         transform: `translateY(${translate}px)`,
         background: theme.surface,
@@ -41,7 +41,8 @@ export function Callout({ overlays }: { overlays: readonly Overlay[] }) {
         fontWeight: 700,
         letterSpacing: 0.2,
         boxShadow: "0 10px 28px rgba(16, 38, 31, 0.16)",
-        maxWidth: 900,
+        maxWidth: 720,
+        textAlign: "left",
       }}
     >
       {active.text}

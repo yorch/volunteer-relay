@@ -101,7 +101,7 @@ export function Closing({ scene }: { scene: Scene }) {
       <div
         style={{
           position: "absolute",
-          bottom: 34,
+          bottom: 176,
           fontSize: 22,
           color: theme.inkSoft,
           letterSpacing: 0.4,

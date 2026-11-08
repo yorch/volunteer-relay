@@ -5,7 +5,7 @@
   "captureOrigin": "local",
   "manifestScenes": 8,
   "output": "/Users/yorch/code/volunteer-relay/video/output/proof.mp4",
-  "bytes": 1703070,
+  "bytes": 1692247,
   "measured": {
     "path": "/Users/yorch/code/volunteer-relay/video/output/proof.mp4",
     "durationSeconds": 18.005,
@@ -20,5 +20,5 @@
     "integratedLufs": -16.4,
     "truePeakDb": -4.2
   },
-  "renderedAt": "2026-11-08T18:18:48.178Z"
+  "renderedAt": "2026-11-08T18:33:25.598Z"
 }
