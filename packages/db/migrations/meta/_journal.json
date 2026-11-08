@@ -50,6 +50,13 @@
       "when": 1794139298107,
       "tag": "0006_wooden_starfox",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794139486072,
+      "tag": "0007_bitter_black_knight",
+      "breakpoints": true
     }
   ]
 }
