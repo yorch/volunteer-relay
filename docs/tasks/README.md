@@ -2,9 +2,9 @@
 
 **Current product status:** M2–M7 implementation and evidence are summarized in [PRODUCT-IMPLEMENTATION.md](PRODUCT-IMPLEMENTATION.md) and [STATUS.md](../STATUS.md). The dispatch and phase descriptions below are historical planning context; their statements that product work is queued or fixture-only have been superseded.
 
-**Open UI acceptance:** Functional product screens are implemented, but full prototype UX parity remains open. See the [product parity assessment](../design/product-parity.md) and follow-up [P2-06](P2-06.md); current browser checks do not close that design gate.
+**UI revamp complete:** [P2-06](P2-06.md) is implemented and independently reviewed, with 264 browser cases at four sizes and a production-image visual follow-up. See the [comparison](../design/product-parity.md) and [current screenshots](../design/revamp-gallery.md). Live-service and deployment acceptance remain separate.
 
-Current demo-data work: [P7-06](P7-06.md) is implemented and validated with eight PostgreSQL cases; see the [populated demo walkthrough](../demo.md).
+Current demo-data work: [P7-06](P7-06.md) is implemented with eight seed-safety cases plus two scoped workspace-metadata cases; see the [populated demo walkthrough](../demo.md).
 
 ## Current product task status
 
@@ -18,7 +18,7 @@ Current demo-data work: [P7-06](P7-06.md) is implemented and validated with eigh
 | P7-03, P7-05                      | Production profile, recovery/retention and operator provisioning are integrated with isolated local rehearsals.                                                                    | Fresh-host, public TLS, provider, cutover and load gates remain open.                                                                                                  |
 | P7-07                             | Edge hardening (HSTS, security headers, body-size and rate limits) is scoped only; the operator chose to deploy with the current parity posture first.                             | Not started; must be decided before the host serves public traffic indefinitely.                                                                                       |
 
-At `dd989a1`, root verification passed 394 unit tests and the product PostgreSQL runner passed 244 integration tests; at `40742ce`, 208 browser cases passed across four viewports. These are controlled checks; see [product evidence](PRODUCT-IMPLEMENTATION.md) for exact scope and limitations. The coordinator archived the superseded local P2-05 and P3-01 entries on 2026-11-08 at 14:08 UTC; their original claim, handoff state and messages remain in archive history. The board then reported no active tasks or unanswered questions. These tracked records are the current product status, not a claim of additional board acceptance.
+Current integrated verification passed 499 unit tests, 254 product integration cases and 264 browser cases across four viewports; exact snapshots are recorded in the linked evidence. These are controlled checks; see [product evidence](PRODUCT-IMPLEMENTATION.md) for exact scope and limitations. The coordinator archived the superseded local P2-05 and P3-01 entries on 2026-11-08 at 14:08 UTC; their original claim, handoff state and messages remain in archive history. The board then reported no active tasks or unanswered questions. These tracked records are the current product status, not a claim of additional board acceptance.
 
 ## Historical dispatch and phase plan
 

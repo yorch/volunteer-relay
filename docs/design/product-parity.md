@@ -1,6 +1,35 @@
-# Product UI versus the prototype
+# Product UI and prototype comparison
 
-Reviewed 2026-11-08. **Visual and UX parity is incomplete.** The implemented product follows the reference palette and shell direction, but the browser acceptance results establish functional behavior, not fidelity to the prototype. Track remaining work in [P2-06](../tasks/P2-06.md); implementation through M2–M7 does not close this design gate.
+## Current result — 2026-11-08
+
+The full product UI revamp is implemented and independently reviewed. The application now carries the reference's warm off-white/sage/teal palette, bundled Manrope and DM Sans typography, compact staff shell, review workspace, status-based needs board and board-ready reports. See the [production screenshot gallery](revamp-gallery.md). The initial gap audit below is historical and superseded by this result.
+
+| Area                              | Implemented result                                                                                                                                                                                                                     |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shell, landing and authentication | Reliable SVG branding, locally served licensed fonts, grouped navigation, breadcrumbs and a compact keyboard-operable mobile menu. Volunteer pages have no staff navigation or fake phone frame.                                       |
+| Product overview                  | Authorized queue, need and approved-time data with prioritized work; no prototype counters or fabricated weekly totals.                                                                                                                |
+| Inbox                             | Search and status filters, explicit source selection, evidence/proposed-field panels, mobile review staging and restored focus. Filtering never silently selects another proposal or leaves hidden-source decision actions active.     |
+| Needs                             | New/assigned/acknowledged columns, urgent-first ordering, urgency/provisional badges and secondary creation/management controls. Completed work remains available.                                                                     |
+| Ledger                            | Compact records with activity type/date, contribution status and source-specific authorized evidence. Corrections retain explicit reasons and optimistic revisions.                                                                    |
+| Reports                           | Four leading metrics, compact filters and a detailed summary table. Human-readable durations and a CSV link use the same authoritative query.                                                                                          |
+| Volunteer                         | Focused text/photo entry, recognizable own-update summaries, dates/status labels and private evidence. Evidence opening scrolls/focuses the heading; closing returns to its trigger. Switching updates clears old evidence and errors. |
+| Imports                           | File/preview/confirmation hierarchy with person and photo mapping controls instead of JSON. Exact filenames, unknown authors, duplicate mappings and replay behavior remain explicit.                                                  |
+| Administration                    | Named staff routing, protected fallback selection, compact member/preferences panels, readable audit history and responsive delivery details. Provider acceptance remains distinct from acknowledgment.                                |
+| Retention                         | Source preview, explicit reason and acknowledgment retain the existing owner/revision/privacy gates. No real evidence was erased for visual review.                                                                                    |
+
+### Verification
+
+At UI commit `ba21950`, all 264 Chromium browser cases passed across 1440/1024/390/320px; the production-image follow-up inspected populated core/role screens and resolved the final volunteer badge/focus issues. Earlier full-page visual capture covered all twelve owner routes at the four sizes; final follow-up captured 24 representative owner/volunteer/multi-account page-size combinations with no document overflow. Independent review also checked source filtering, keyboard behavior, role boundaries and matching report/CSV queries. The 254 PostgreSQL product cases include current-member metadata scoping and redaction exclusion.
+
+These checks establish the measured revamp, not pixel identity or a formal accessibility certification. Native-device, Firefox/WebKit and assistive-technology certification were not performed. Correction/record revision references and the extra operational/privacy screens are deliberate additions to the reference. The prototype's sample counters, inferred hour defaults, localStorage, unrestricted role switching and simulated phone chrome were not copied. Live providers, public TLS and fresh-host recovery remain separate release gates.
+
+## Historical initial audit
+
+Everything below records the pre-revamp snapshot and its findings; it does not describe the current visual acceptance status.
+
+### Initial audit — before the revamp
+
+Initial audit on 2026-11-08, before the revamp. **At that checkpoint, visual and UX parity was incomplete.** The implemented product follows the reference palette and shell direction, but the browser acceptance results establish functional behavior, not fidelity to the prototype. Track remaining work in [P2-06](../tasks/P2-06.md); implementation through M2–M7 does not close this design gate.
 
 ## Comparison method and limits
 

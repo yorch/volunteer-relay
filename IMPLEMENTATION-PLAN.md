@@ -1,7 +1,7 @@
 # Volunteer Relay — Full Implementation Plan
 
 Date: November 7, 2026. Working name, subject to change.
-Status updated 2026-11-08: core product workflows through M2–M7 are implemented and validated with synthetic tests. Full prototype UX parity, including the product overview, and live-provider/deployment gates remain open. Current evidence and follow-up work are tracked in [docs/STATUS.md](docs/STATUS.md) and [P2-06](docs/tasks/P2-06.md). This plan describes target behavior; it is not a completion certificate.
+Status updated 2026-11-08: core product workflows through M2–M7 are implemented and validated with synthetic tests. The full product UI revamp, including the overview, is implemented and reviewed; live-provider/deployment gates remain open. Current evidence and follow-up work are tracked in [docs/STATUS.md](docs/STATUS.md) and [P2-06](docs/tasks/P2-06.md). This plan describes target behavior; it is not a completion certificate.
 
 ## 1. Outcome and scope
 

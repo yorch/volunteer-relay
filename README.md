@@ -55,7 +55,7 @@ Read [AGENTS.md](AGENTS.md), [status](docs/STATUS.md), [contracts](docs/CONTRACT
 
 ## Design reference
 
-The [interactive prototype](design/reference/prototype.html) is a standalone visual reference, not an implemented product workflow. Read its [usage notes](design/reference/README.md) and the [review/phase map](docs/design/prototype-review.md) before translating it. The production screens share its palette and general shell, but full layout and UX parity remains open. See the [current comparison and screenshots](docs/design/product-parity.md) and [design follow-up task](docs/tasks/P2-06.md). The prototype remains reference-only and does not supply product data.
+The [interactive prototype](design/reference/prototype.html) is a standalone visual reference, not an implemented product workflow. Read its [usage notes](design/reference/README.md) and the [review/phase map](docs/design/prototype-review.md) before translating it. The production screens now carry its palette, bundled typography and main layout patterns, with improved mobile navigation, real data, safe review flows and consistent administration. See the [comparison](docs/design/product-parity.md), [current screenshot gallery](docs/design/revamp-gallery.md) and [completed revamp](docs/tasks/P2-06.md). The prototype remains reference-only and does not supply product data.
 
 ## Running multiple agents
 
@@ -64,3 +64,5 @@ Start with one coordinator and three workers (B data/auth, D extraction, E UI). 
 ## Browser smoke checks
 
 After `bun run test:e2e:install`, run `bun run test:e2e` for the current browser suite at 1440/1024/390/320px. These checks run separately from `bun run verify`. See [browser verification](tests/e2e/README.md) for isolated ports, preview reuse and test coverage limits.
+
+Bundled Manrope and DM Sans retain their included SIL Open Font Licenses under `apps/web/app/fonts`; the application remains MIT licensed.
