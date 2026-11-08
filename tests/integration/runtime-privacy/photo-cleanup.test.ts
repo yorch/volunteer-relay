@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { expect, it } from "vitest";
 import { createProductExtensions } from "../../../apps/web/lib/product/extensions.ts";
 import { createProductHandler } from "../../../apps/web/lib/product/http.ts";
+import { createFilesystemBlobStore } from "../../../packages/blob/src/index.ts";
 import {
   createAttachmentMetadataStore,
   createProcessingRepository,
@@ -45,7 +46,7 @@ it("keeps the accepted photo and removes unreferenced bytes after a conflicting 
     const attachments = createAttachmentReader({
       authorization: fixture.authorization,
       metadata: createAttachmentMetadataStore(fixture.db),
-      blobs: { read: (key) => readPrivateBlob(root, key) },
+      blobs: { read: (key) => createFilesystemBlobStore({ root }).read(key) },
     });
     const extension = createProductExtensions({
       db: fixture.db,
@@ -53,7 +54,7 @@ it("keeps the accepted photo and removes unreferenced bytes after a conflicting 
       sources,
       processing,
       attachments,
-      root,
+      store: createFilesystemBlobStore({ root }),
       maxBytes: 1048576,
     });
     const handler = createProductHandler({

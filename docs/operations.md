@@ -53,11 +53,94 @@ This profile is a deployment starting point, not proof of production readiness. 
 
    The migration container and subsequent runtime-grants container must exit successfully before web and worker start. The latter grants runtime CRUD on existing public tables and sequences and default privileges for future objects created by the migration owner. It restricts the runtime role to the application database and does not grant schema ownership, superuser, database creation or role creation. Keep migration ownership consistent across upgrades and rerun the grants gate after migration; for extensions or other schemas review grants explicitly. Use URL encoding for special characters in both database URLs. Do not enable SQL statement logging for the role setup because it includes the runtime password. To rotate the runtime password, stop application services, update both files consistently, rerun the grants gate, then restart. Caddy waits for web health. Investigate failed migrations before restarting; do not bypass the gate. Check HTTPS certificate issuance, `/api/health`, sign-in and authorized workflows, worker logs, disk space and backup alerting. Health alone does not prove database connectivity, provider delivery or business workflow correctness. The web and worker have graceful stop periods; allow in-flight work to finish before maintenance.
 
+## Private attachment storage
+
+Private attachment bytes live behind `PrivateBlobStore` (`packages/blob`) and
+only ever reach a client through the authorized attachment route, which
+re-verifies the digest against the database row. Two backends are supported and
+selected by configuration; there is no migration between them, so choose one at
+install time.
+
+- `BLOB_STORE=filesystem` (default): a persistent volume at `ATTACHMENT_ROOT`.
+  Uploads are rejected below `2 x ATTACHMENT_MAX_BYTES` free space, and
+  `GET /api/ready` fails under the same floor.
+- `BLOB_STORE=s3`: any S3-compatible service. The reference implementation is
+  versitygw (Apache-2.0, stateless, POSIX backend); MinIO Community Edition is
+  archived upstream and is not a supported target. Only the
+  lowest-common-denominator API is used (`PutObject`, `GetObject`, `HeadObject`,
+  `DeleteObject`, `ListObjectsV2`, `HeadBucket`), so a service without
+  conditional writes or checksum headers still works.
+
+Configuration is fail-closed. `BLOB_STORE=s3` requires `S3_BUCKET`,
+`S3_REGION` and `S3_DEPLOYMENT_ID`; credentials must be complete or absent (the
+standard provider chain is used otherwise); a plaintext `S3_ENDPOINT` is refused
+in production and requires `S3_ALLOW_INSECURE=true` in development. Never fall
+back to local disk when object storage is misconfigured: bytes would spread
+across hosts.
+
+Bucket ownership is exclusive. Startup writes and verifies a
+`.relay-deployment` marker; a bucket already claimed by a different
+deployment ID refuses to serve writes. Never point two deployments at one
+prefix: each one's orphan reconciliation could delete the other's evidence.
+
+Operational differences from local disk:
+
+- `GET /api/ready` probes the bucket and the deployment marker instead of
+  `statfs`. `HeadBucket` needs `s3:ListBucket` in AWS IAM, so grant the web role
+  that action on the bucket in addition to object actions.
+- `availableStorageBytes` is `null` for object storage. Unknown stays unknown;
+  it is never reported as zero. Provider quota failures surface as
+  `DEPENDENCY_UNAVAILABLE`, not validation errors.
+- Crash-recovery uses bucket reconciliation instead of the `.pending` intent
+  spool: the worker enumerates a bounded page, takes the per-digest
+  `blob:<key>` advisory lock, re-checks references globally, and only then
+  erases. The digest lock — not object age — is the safety mechanism; the age
+  floor (`S3_RECONCILE_MINIMUM_AGE_MS`) only avoids churn.
+- Erasure verifies the stored bytes against the key digest before deleting, and
+  confirms the object is gone. A versioned bucket keeps bytes behind delete
+  markers, so it is refused unless `S3_ERASURE_MODE=versions` is set, which
+  enumerates and deletes every version. A denied, locked or failing delete keeps
+  the retention job open; it is never recorded as a completed erasure.
+- Uploads happen inside the transaction that accepts the source, while holding
+  the per-digest advisory lock. That is what makes crash compensation correct,
+  but object-storage latency now extends the transaction and lock hold time.
+  Keep bucket latency low (same region, no cross-continent endpoint), watch for
+  lock waits, and do not raise transaction timeouts to mask slow storage.
+- Least privilege: web needs `GetObject`, `PutObject`, and `DeleteObject`
+  (uploads are compensated on rollback); worker additionally needs
+  `ListBucket` and, in versions mode, `ListBucketVersions` and
+  `DeleteObjectVersion`. Never grant `s3:*`.
+
+For a local S3-compatible service, start the optional Compose profile and
+bootstrap the bucket (both idempotent):
+
+```sh
+docker compose --profile s3 up -d objects
+NODE_ENV=development BLOB_STORE=s3 S3_BUCKET=relay S3_REGION=us-east-1 \
+  S3_ENDPOINT=http://127.0.0.1:7070 S3_ALLOW_INSECURE=true \
+  S3_FORCE_PATH_STYLE=true S3_DEPLOYMENT_ID=local-dev \
+  S3_ACCESS_KEY_ID=relaylocal S3_SECRET_ACCESS_KEY=relaylocaldevelopment \
+  node scripts/s3-bootstrap.ts --smoke
+```
+
+`--check` only probes an existing bucket; `--smoke` also writes, reads, lists and
+erases synthetic bytes. Neither is part of `bun run verify`, because both need a
+live endpoint.
+
+In production the bundled `compose.production.yaml` still mounts the
+`attachments` volume on web and worker. With `BLOB_STORE=s3` nothing reads it —
+`ATTACHMENT_ROOT` is unused — so the mount is inert, not a second source of
+truth. Remove it in your own deployment manifest (or drop the volume) so it
+cannot be mistaken for live storage, and remember that the bundled backup script
+still archives that volume if the mount remains.
+
 ## Backup
 
 Backups contain private source evidence, identity data and attachments. Encrypt them at rest and in transit, restrict access, retain according to policy, and regularly test restoration in a separate environment. The scripts require Docker access and an explicit project and environment file. Never point them at a shared or unintended project. The backup directory must not exist and is created with restrictive permissions. Check exit status; discard any incomplete directory.
 
 For a consistent database/attachment pair, stop all writers and ingress, including any external or manually started writers, before starting the backup. The script checks only the Compose services it knows about. Maintenance causes downtime.
+
+With `BLOB_STORE=s3` the bundled backup and restore scripts do not capture the bucket. In that mode take a bucket snapshot (or a bucket version checkpoint) inside the same quiesced window, keep the same checksum manifest discipline, suspend orphan reconciliation until the restore target is verified, and never restore a bucket into a prefix owned by another deployment. Rehearse that path before relying on it; the signed redaction ledger requirement below is unchanged.
 
 ```sh
 docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RELAY_ENV_FILE" -f compose.production.yaml stop caddy web worker

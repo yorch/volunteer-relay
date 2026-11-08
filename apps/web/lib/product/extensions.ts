@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
 import {
+  detectedImageMime,
+  type PrivateBlobStore,
+  withTrackedBlobWrites,
+} from "@relay/blob";
+import {
   type AttachmentStore,
   type AuthorizationService,
   type ProductReport,
@@ -17,20 +22,14 @@ import {
 } from "@relay/db";
 import { canonicalDigest, createSourceRepository } from "@relay/domain/core";
 import {
-  createPrivateFilesystemBlobStore,
-  detectedImageMime,
-  erasePrivateBlob,
   type ImportPreview,
   parseCsvImport,
   parseJsonImport,
   parseWhatsAppTextExport,
-  withTrackedBlobWrites,
 } from "@relay/intake";
 import sharp from "sharp";
 import { type ProductProcessing, productFailure } from "./http.ts";
 import { prepareImportPhotos, readImportInput } from "./import-photos.ts";
-
-export { readPrivateBlob } from "@relay/intake";
 
 async function bodyBytes(request: Request, limit: number) {
   const reader = request.body?.getReader();
@@ -64,7 +63,7 @@ export function createProductExtensions(options: {
   sources: SourceRepository;
   processing: ProductProcessing;
   attachments: AttachmentStore;
-  root: string;
+  store: PrivateBlobStore;
   maxBytes: number;
   timezone?: (organizationId: string) => Promise<string>;
 }) {
@@ -246,7 +245,7 @@ export function createProductExtensions(options: {
         const digest = createHash("sha256").update(pixels).digest("hex");
         const storageKey = `${digest.slice(0, 2)}/${digest}`;
         return withTrackedBlobWrites(
-          options.root,
+          options.store,
           async (note) =>
             options.db.transaction(async (tx) => {
               await tx.execute(
@@ -261,12 +260,7 @@ export function createProductExtensions(options: {
                 store: createSourceStore(tx as unknown as Database),
               });
               await note({ storageKey, sha256: digest });
-              const blob = await createPrivateFilesystemBlobStore(
-                options.root,
-                {
-                  maxBytes: options.maxBytes,
-                },
-              ).put(pixels);
+              const blob = await options.store.put(pixels);
               const old = await options.processing.getSource(context, sourceId);
               if (old.ok) {
                 if (
@@ -311,7 +305,7 @@ export function createProductExtensions(options: {
             pruneUnreferencedBlob(
               options.db,
               identity,
-              (key, sha) => erasePrivateBlob(options.root, key, sha),
+              (key, sha) => options.store.erase(key, sha),
               done,
             ),
         );
@@ -412,7 +406,7 @@ export function createProductExtensions(options: {
       }
       try {
         return await withTrackedBlobWrites(
-          options.root,
+          options.store,
           async (note) =>
             options.db.transaction(async (tx) => {
               const repository = createSourceRepository({
@@ -436,9 +430,7 @@ export function createProductExtensions(options: {
               }
               for (const blob of prepared.blobs) {
                 await note(blob.metadata);
-                await createPrivateFilesystemBlobStore(options.root, {
-                  maxBytes: options.maxBytes,
-                }).put(blob.content);
+                await options.store.put(blob.content);
               }
               for (const source of preview.sources) {
                 const old = await options.processing.getSource(
@@ -458,7 +450,7 @@ export function createProductExtensions(options: {
             pruneUnreferencedBlob(
               options.db,
               identity,
-              (key, sha) => erasePrivateBlob(options.root, key, sha),
+              (key, sha) => options.store.erase(key, sha),
               done,
             ),
         );

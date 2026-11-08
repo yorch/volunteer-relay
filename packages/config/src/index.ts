@@ -52,6 +52,24 @@ export const environmentSchema = z
     SMTP_USER: z.string().optional(),
     SMTP_PASSWORD: z.string().optional(),
     SMTP_FROM: z.email().default("relay@example.invalid"),
+    S3_ENDPOINT: z.url().optional(),
+    S3_REGION: z.string().min(1).default("us-east-1"),
+    S3_BUCKET: z.string().min(1).max(255).optional(),
+    S3_PREFIX: z.string().max(512).optional(),
+    S3_FORCE_PATH_STYLE: z.enum(["true", "false"]).optional(),
+    S3_ACCESS_KEY_ID: z.string().min(1).optional(),
+    S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+    /** Stable per-deployment identifier; a mismatch refuses to write. */
+    S3_DEPLOYMENT_ID: z.string().min(1).max(200).optional(),
+    S3_ERASURE_MODE: z.enum(["unversioned", "versions"]).default("unversioned"),
+    /** Hygiene only; reconciliation never relies on age for delete safety. */
+    S3_RECONCILE_MINIMUM_AGE_MS: z.coerce
+      .number()
+      .int()
+      .nonnegative()
+      .default(3600000),
+    S3_ALLOW_INSECURE: z.enum(["true", "false"]).default("false"),
+    BLOB_STORE: z.enum(["filesystem", "s3"]).default("filesystem"),
     ATTACHMENT_MAX_BYTES: z.coerce.number().int().positive().default(10485760),
   })
   .superRefine((env, ctx) => {
@@ -63,6 +81,34 @@ export const environmentSchema = z
         code: "custom",
         message: "Production requires an auth secret and disabled demo mode",
       });
+    if (env.BLOB_STORE !== "s3") return;
+    if (!env.S3_BUCKET)
+      ctx.addIssue({
+        code: "custom",
+        message: "S3 blob storage requires S3_BUCKET",
+      });
+    if (!env.S3_DEPLOYMENT_ID)
+      ctx.addIssue({
+        code: "custom",
+        message: "S3 blob storage requires S3_DEPLOYMENT_ID",
+      });
+    if (Boolean(env.S3_ACCESS_KEY_ID) !== Boolean(env.S3_SECRET_ACCESS_KEY))
+      ctx.addIssue({
+        code: "custom",
+        message: "S3 credentials require both an access key and a secret",
+      });
+    if (
+      env.S3_ENDPOINT?.startsWith("http://") &&
+      (env.NODE_ENV === "production" || env.S3_ALLOW_INSECURE !== "true")
+    )
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "S3_ENDPOINT must use https outside development; set S3_ALLOW_INSECURE=true only for a local endpoint",
+      });
   });
+
+/** Parsed environment shared by web, worker and scripts. */
+export type Environment = z.infer<typeof environmentSchema>;
 export const parseEnvironment = (env: Record<string, string | undefined>) =>
   environmentSchema.parse(env);

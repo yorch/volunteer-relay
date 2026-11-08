@@ -1,4 +1,4 @@
-import { statfs } from "node:fs/promises";
+import type { PrivateBlobStore } from "@relay/blob";
 import type {
   DeliveryStatus,
   OperationalStatus,
@@ -12,7 +12,7 @@ import { productFailure } from "./http.ts";
 const timestamp = (value: unknown): string | null =>
   value == null ? null : new Date(value as string | Date).toISOString();
 
-export function createOperationsHttp(db: Database, attachmentRoot: string) {
+export function createOperationsHttp(db: Database, store: PrivateBlobStore) {
   return async (
     context: TenantContext,
     path: string,
@@ -111,12 +111,8 @@ export function createOperationsHttp(db: Database, attachmentRoot: string) {
         if (!r) return fail("DEPENDENCY_UNAVAILABLE");
         let availableStorageBytes: number | null = null;
         try {
-          const disk = await statfs(attachmentRoot, { bigint: true });
-          const bytes = disk.bavail * disk.bsize;
-          availableStorageBytes =
-            bytes <= BigInt(Number.MAX_SAFE_INTEGER)
-              ? Number(bytes)
-              : Number.MAX_SAFE_INTEGER;
+          // Object storage reports null: unknown stays null, never zero.
+          availableStorageBytes = (await store.capacity()).availableBytes;
         } catch {
           /* Storage metadata may be unavailable. */
         }

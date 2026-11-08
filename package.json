@@ -11,37 +11,39 @@
     "packages/*"
   ],
   "scripts": {
+    "agents": "node scripts/agents.mjs",
+    "agents:dashboard": "node scripts/dashboard.ts",
+    "agents:supervisor": "node scripts/supervisor.ts",
+    "agents:watch": "node scripts/watch.ts",
+    "build": "node scripts/run.mjs build",
+    "check": "node node_modules/@biomejs/biome/bin/biome check .",
+    "db:migrate": "node packages/db/src/migrate.ts",
+    "db:seed": "node packages/db/src/seed.ts",
+    "db:seed:demo": "node scripts/seed-demo.ts --demo",
     "dev": "node scripts/run.mjs dev",
     "dev:web": "node scripts/run.mjs web",
     "dev:worker": "node --watch apps/worker/src/index.ts",
-    "build": "node scripts/run.mjs build",
-    "typecheck": "node scripts/run.mjs typecheck",
-    "check": "node node_modules/@biomejs/biome/bin/biome check .",
     "format": "node node_modules/@biomejs/biome/bin/biome check --write .",
+    "s3:bootstrap": "node scripts/s3-bootstrap.ts",
     "test": "node node_modules/vitest/vitest.mjs run",
-    "verify": "node scripts/run.mjs verify",
-    "db:migrate": "node packages/db/src/migrate.ts",
-    "db:seed": "node packages/db/src/seed.ts",
-    "agents": "node scripts/agents.mjs",
-    "agents:dashboard": "node scripts/dashboard.ts",
-    "agents:watch": "node scripts/watch.ts",
-    "agents:supervisor": "node scripts/supervisor.ts",
     "test:e2e": "node node_modules/@playwright/test/cli.js test",
     "test:e2e:install": "node node_modules/@playwright/test/cli.js install chromium",
     "test:integration": "node node_modules/vitest/vitest.mjs run --config packages/db/vitest.integration.config.ts",
     "test:live-provider": "node scripts/live-provider-smoke.ts",
     "test:product:integration": "node scripts/product-integration.mjs",
-    "db:seed:demo": "node scripts/seed-demo.ts --demo"
+    "typecheck": "node scripts/run.mjs typecheck",
+    "verify": "node scripts/run.mjs verify"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "3.1019.0",
     "@biomejs/biome": "2.6.6",
+    "@playwright/test": "1.65.0",
     "@types/node": "26.6.6",
     "@types/pg": "8.23.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "typescript": "7.0.2",
-    "vitest": "5.1.0",
-    "@playwright/test": "1.65.0"
+    "vitest": "5.1.0"
   },
   "type": "module"
 }

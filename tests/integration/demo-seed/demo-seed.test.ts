@@ -18,6 +18,7 @@ import { provisionDemo } from "../../../apps/web/lib/auth/demo.ts";
 import { seedProductDemo } from "../../../apps/web/lib/auth/product-demo.ts";
 import { createProductExtensions } from "../../../apps/web/lib/product/extensions.ts";
 import { verifyProposalEvidence } from "../../../packages/ai/src/index.ts";
+import { createFilesystemBlobStore } from "../../../packages/blob/src/index.ts";
 import {
   createAttachmentMetadataStore,
   createDomainStore,
@@ -53,7 +54,8 @@ const getContext = async (user: string, org: string) => {
   if (!result.ok) throw new Error(`Missing demo membership ${user}`);
   return result.value;
 };
-const seed = () => seedProductDemo({ db, attachmentRoot: root }, args, env);
+const store = () => createFilesystemBlobStore({ root });
+const seed = () => seedProductDemo({ db, store: store() }, args, env);
 const counts = async () =>
   (
     await db.execute(
@@ -185,7 +187,7 @@ it("seeds useful tenant-scoped review, need and report states without external d
     }),
     processing,
     attachments: reader,
-    root,
+    store: createFilesystemBlobStore({ root }),
     maxBytes: 10485760,
   });
   const report = await extension(
@@ -286,16 +288,16 @@ it("reruns without duplication and preserves staff edits", async () => {
 it("refuses production or missing explicit opt-in without creating product records", async () => {
   const before = await counts();
   await expect(
-    seedProductDemo({ db, attachmentRoot: root }, [], env),
+    seedProductDemo({ db, store: store() }, [], env),
   ).rejects.toThrow();
   await expect(
-    seedProductDemo({ db, attachmentRoot: root }, args, {
+    seedProductDemo({ db, store: store() }, args, {
       NODE_ENV: "production",
       DEMO_MODE: "true",
     }),
   ).rejects.toThrow();
   await expect(
-    seedProductDemo({ db, attachmentRoot: root }, args, {
+    seedProductDemo({ db, store: store() }, args, {
       NODE_ENV: "test",
       DEMO_MODE: "false",
     }),

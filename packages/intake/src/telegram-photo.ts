@@ -1,20 +1,18 @@
 import { createHash } from "node:crypto";
+import type { BlobWrite, PrivateBlobStore } from "@relay/blob";
+import { detectedImageMime } from "@relay/blob";
 import type { SourceEnvelope, TenantContext } from "@relay/contracts";
-import {
-  createPrivateFilesystemBlobStore,
-  detectedImageMime,
-} from "./index.ts";
 /** Only prescribed Bot API photo endpoints are fetched; caller decodes/strips metadata. */
 export function createTelegramPhotoLoader(options: {
   botToken: string;
-  root: string;
+  store: PrivateBlobStore;
   maxBytes: number;
   transform: (bytes: Uint8Array) => Promise<Uint8Array>;
   fetch?: typeof fetch;
   withBlobLock?: (
     key: string,
-    put: () => Promise<import("./index.ts").BlobWrite>,
-  ) => Promise<import("./index.ts").BlobWrite>;
+    put: () => Promise<BlobWrite>,
+  ) => Promise<BlobWrite>;
 }) {
   const request = options.fetch ?? fetch;
   return async (
@@ -73,10 +71,7 @@ export function createTelegramPhotoLoader(options: {
     const pixels = await options.transform(raw);
     const digest = createHash("sha256").update(pixels).digest("hex");
     const key = `${digest.slice(0, 2)}/${digest}`;
-    const put = () =>
-      createPrivateFilesystemBlobStore(options.root, {
-        maxBytes: options.maxBytes,
-      }).put(pixels);
+    const put = () => options.store.put(pixels);
     const blob = options.withBlobLock
       ? await options.withBlobLock(key, put)
       : await put();

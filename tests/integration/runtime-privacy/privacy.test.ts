@@ -42,7 +42,9 @@ it("erases the real private blob and reapplies an authenticated ledger to an old
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/aWQAAAAASUVORK5CYII=",
       "base64",
     );
-    const metadata = await createPrivateFilesystemBlobStore(blobRoot).put(png);
+    const metadata = await createPrivateFilesystemBlobStore({
+      root: blobRoot,
+    }).put(png);
     const source: SourceEnvelope = {
       schemaVersion: 1,
       organizationId: "tidepath",

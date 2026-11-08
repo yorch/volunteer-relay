@@ -5,6 +5,7 @@
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
+    "@relay/blob": "workspace:*",
     "@relay/contracts": "workspace:*"
   }
 }

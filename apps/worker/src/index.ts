@@ -3,6 +3,7 @@ import {
   createOpenAIProvider,
   OPENAI_PROMPT_VERSION,
 } from "@relay/ai";
+import { createBlobStore } from "@relay/blob";
 import { parseEnvironment } from "@relay/config";
 import {
   createDatabase,
@@ -14,11 +15,6 @@ import {
   sql,
 } from "@relay/db";
 import {
-  erasePrivateBlob,
-  readPrivateBlob,
-  recoverPendingBlobWrites,
-} from "@relay/intake";
-import {
   createSmtpTransport,
   createTelegramTransport,
 } from "@relay/notifications";
@@ -28,6 +24,7 @@ if (process.versions.node !== "26.11.1")
   throw new Error("Worker requires Node26.11.1");
 const env = parseEnvironment(process.env);
 const { db, close } = createDatabase(env.DATABASE_URL);
+const store = createBlobStore(env);
 const processing = createProcessingRepository(db),
   follow = createFollowThroughRepository(db),
   budgets = createModelBudgetRepository(db);
@@ -76,7 +73,7 @@ const configured = Boolean(
     env.OPENAI_INPUT_MICROUSD_PER_MILLION !== undefined &&
     env.OPENAI_OUTPUT_MICROUSD_PER_MILLION !== undefined,
 );
-const polling = pollTelegram(db, env, () => stopped);
+const polling = pollTelegram(db, env, store, () => stopped);
 console.info(
   JSON.stringify({
     service: "worker",
@@ -92,20 +89,18 @@ try {
     try {
       if (Date.now() >= nextBlobRecovery) {
         nextBlobRecovery = Date.now() + 60000;
-        await recoverPendingBlobWrites(env.ATTACHMENT_ROOT, (blob, done) =>
+        await store.lifecycle.recover((blob, done) =>
           pruneUnreferencedBlob(
             db,
             blob,
-            (key, sha) => erasePrivateBlob(env.ATTACHMENT_ROOT, key, sha),
+            (key, sha) => store.erase(key, sha),
             done,
           ),
         );
       }
       for (const job of await retention.claimErasureJobs(5)) {
         if (stopped) break;
-        await retention.runErasureJob(job, (key, sha) =>
-          erasePrivateBlob(env.ATTACHMENT_ROOT, key, sha),
-        );
+        await retention.runErasureJob(job, (key, sha) => store.erase(key, sha));
       }
       await follow.processPendingNotifications(50);
       await follow.escalateOverdue(50);
@@ -195,7 +190,7 @@ try {
                     throw new Error("Usage settlement unavailable");
                 },
                 readAttachment: async (key) => {
-                  const bytes = await readPrivateBlob(env.ATTACHMENT_ROOT, key);
+                  const bytes = await store.read(key);
                   if (!bytes) throw new Error("Image unavailable");
                   return bytes;
                 },
@@ -252,6 +247,7 @@ try {
   }
 } finally {
   await polling;
+  await store.lifecycle.close();
   await close();
   console.info(JSON.stringify({ service: "worker", status: "stopped" }));
 }
