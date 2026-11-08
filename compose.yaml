@@ -63,7 +63,25 @@ services:
       NODE_ENV: development
     volumes: ["attachments:/data/attachments"]
     depends_on:
-      postgres: { condition: service_healthy }
+      postgres:
+        condition: service_healthy
+  # Optional S3-compatible object storage for private attachments.
+  # Start with: docker compose --profile s3 up -d objects, then set
+  # BLOB_STORE=s3 and the S3_* variables on web/worker (.env.example).
+  # versitygw (Apache-2.0) serves a POSIX volume: no cluster and no license
+  # trap. MinIO Community Edition is archived upstream and is not used.
+  objects:
+    profiles: [s3]
+    image: versity/versitygw:v1.10.0
+    environment:
+      ROOT_ACCESS_KEY: ${RELAY_OBJECTS_ACCESS_KEY:-relaylocal}
+      ROOT_SECRET_KEY: ${RELAY_OBJECTS_SECRET_KEY:-relaylocaldevelopment}
+    # A named volume is required: the POSIX backend keeps metadata in xattrs,
+    # which a host bind mount on macOS or Windows does not support.
+    command: ["--port", ":7070", "posix", "/data"]
+    volumes: ["object-data:/data"]
+    ports: ["127.0.0.1:${RELAY_OBJECTS_PORT:-7070}:7070"]
 volumes:
   postgres-data:
   attachments:
+  object-data:
