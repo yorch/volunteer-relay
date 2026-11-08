@@ -35,7 +35,7 @@ try {
   while (!stopped) {
     if (extraction) {
       const sources = await processing.pendingSources(5);
-      for (const source of sources) {
+      for (const { source, leaseToken } of sources) {
         if (stopped) break;
         const context = {
           organizationId: source.organizationId,
@@ -49,17 +49,18 @@ try {
             policy: "review-all-v1",
           });
           if (!result.ok) {
-            await processing.markFailure(source);
+            await processing.markFailure(source, leaseToken);
             continue;
           }
           const saved = await processing.persistProposal(
             context,
             source,
             result.value,
+            leaseToken,
           );
-          if (!saved.ok) await processing.markFailure(source);
+          if (!saved.ok) await processing.markFailure(source, leaseToken);
         } catch {
-          await processing.markFailure(source);
+          await processing.markFailure(source, leaseToken);
         }
       }
     }
