@@ -98,7 +98,7 @@ test("composition bar lists overlapping pending flags as counts and survives a r
   page,
 }) => {
   await mockWorkspace(page, { approvedHours: 3, ledger });
-  await page.goto("/workspace");
+  await page.goto("/workspace/reports");
   await expect(
     page.getByRole("heading", { name: "Where contributions stand" }),
   ).toBeVisible();
@@ -117,7 +117,7 @@ test("composition bar lists overlapping pending flags as counts and survives a r
   await page.route("**/api/product/reports", (route) =>
     route.fulfill({ json: { ok: true, value: { approvedHours: 3 } } }),
   );
-  await page.reload();
+  await page.goto("/workspace");
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Where contributions stand" }),
