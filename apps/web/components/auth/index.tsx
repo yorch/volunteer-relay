@@ -7,6 +7,9 @@ import type {
   AuthResetConfirm,
   AuthResetRequest,
   AuthSignInCommand,
+  AuthSignUpCommand,
+  AuthVerificationConfirm,
+  AuthVerificationRequest,
   Result,
 } from "@relay/contracts";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
@@ -18,6 +21,12 @@ type Command<T> = (command: T) => Promise<Result<void>>;
 // Never render arbitrary transport messages/fields: they may contain secrets.
 function safeError(result: Extract<Result<void>, { ok: false }>): string {
   switch (result.error.code) {
+    case "NOT_FOUND":
+      return "This invitation or link is unavailable or expired. Request a new link or invitation.";
+    case "UNAUTHENTICATED":
+      return "Please sign in and try again.";
+    case "FORBIDDEN":
+      return "This request is not permitted. Invitations require the matching verified email.";
     case "RATE_LIMITED":
       return "Too many attempts. Please wait before trying again.";
     case "DEPENDENCY_UNAVAILABLE":
@@ -43,6 +52,8 @@ function CommandForm({
   disabled?: boolean;
 }) {
   const [pending, setPending] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
   const [message, setMessage] = useState("");
   const [failed, setFailed] = useState(false);
   const lock = useRef(false);
@@ -52,13 +63,15 @@ function CommandForm({
   }, [message]);
   return (
     <Card title={title}>
+      {!hydrated && <p>Enable JavaScript to use this form safely.</p>}
       <form
         className={styles.form}
+        method="post"
         aria-label={title}
         aria-busy={pending}
         onSubmit={async (event) => {
           event.preventDefault();
-          if (lock.current || disabled) return;
+          if (lock.current || disabled || !hydrated) return;
           lock.current = true;
           const form = event.currentTarget;
           const data = new FormData(form);
@@ -90,7 +103,10 @@ function CommandForm({
           setPending(false);
         }}
       >
-        <fieldset disabled={pending || disabled} className={styles.fields}>
+        <fieldset
+          disabled={!hydrated || pending || disabled}
+          className={styles.fields}
+        >
           {children}
           <Button type="submit">{pending ? "Please wait…" : action}</Button>
         </fieldset>
@@ -274,6 +290,95 @@ export function OrganizationSwitcher({
         </Select>
       </Field>
       {options.length === 0 && <p>No organizations are available.</p>}
+    </CommandForm>
+  );
+}
+
+export function SignUpForm({
+  onSignUp,
+}: {
+  onSignUp: Command<AuthSignUpCommand>;
+}) {
+  const id = useId();
+  return (
+    <CommandForm
+      title="Create an account"
+      action="Create account"
+      success="Account created. Organization membership requires an invitation."
+      submit={(data) =>
+        onSignUp({
+          name: value(data, "name"),
+          email: value(data, "email"),
+          password: value(data, "newPassword"),
+        })
+      }
+    >
+      <Field id={id} label="Name">
+        <TextInput
+          id={id}
+          name="name"
+          autoComplete="name"
+          maxLength={200}
+          required
+        />
+      </Field>
+      <EmailField />
+      <PasswordField fresh />
+    </CommandForm>
+  );
+}
+export function VerificationRequestForm({
+  onRequestVerification,
+}: {
+  onRequestVerification: Command<AuthVerificationRequest>;
+}) {
+  return (
+    <CommandForm
+      title="Request email verification"
+      action="Request verification"
+      success="If this account is eligible, verification instructions may be sent. Check your email for any next steps."
+      submit={(data) => onRequestVerification({ email: value(data, "email") })}
+    >
+      <EmailField />
+    </CommandForm>
+  );
+}
+export function VerificationConfirmForm({
+  token,
+  onConfirmVerification,
+}: {
+  token: string;
+  onConfirmVerification: Command<AuthVerificationConfirm>;
+}) {
+  return (
+    <CommandForm
+      key={token}
+      title="Verify your email"
+      action="Verify email"
+      success="Email verified. Organization membership still requires an invitation."
+      disabled={!token}
+      submit={() => onConfirmVerification({ token })}
+    >
+      <p>
+        Confirm this email verification link. Verification does not grant
+        organization membership.
+      </p>
+    </CommandForm>
+  );
+}
+export function SignOutForm({
+  onSignOut,
+}: {
+  onSignOut: () => Promise<Result<void>>;
+}) {
+  return (
+    <CommandForm
+      title="End your session"
+      action="Sign out"
+      success="Signed out."
+      submit={onSignOut}
+    >
+      <p>Sign out on this browser.</p>
     </CommandForm>
   );
 }

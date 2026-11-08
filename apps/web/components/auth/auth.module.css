@@ -27,3 +27,12 @@
   display: grid;
   gap: 1.5rem;
 }
+.navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.navigation a {
+  color: #204b43;
+  padding-block: 0.75rem;
+}
