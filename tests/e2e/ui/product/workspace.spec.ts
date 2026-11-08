@@ -656,3 +656,45 @@ test("ledger inspects the contribution source and shows access denial", async ({
     page.getByText("Source source-original · revision 2"),
   ).toBeVisible();
 });
+
+test("staff without a current organization is directed to choose one", async ({
+  page,
+}) => {
+  await page.route("**/api/product/workspace", (route) =>
+    route.fulfill({
+      status: 403,
+      json: { ok: false, error: { code: "FORBIDDEN" } },
+    }),
+  );
+  await page.route("**/api/auth/organizations", (route) =>
+    route.fulfill({
+      json: {
+        ok: true,
+        value: {
+          currentOrganizationId: null,
+          options: [
+            { ...organization, role: "coordinator" },
+            {
+              ...organization,
+              organizationId: "org-2",
+              membershipId: "member-2",
+              slug: "second",
+              name: "Second",
+              role: "coordinator",
+            },
+          ],
+        },
+      },
+    }),
+  );
+  await page.goto("/workspace");
+  await expect(
+    page.getByRole("heading", { name: "Choose an organization" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Choose organization in your account" }),
+  ).toHaveAttribute("href", "/account");
+  await expect(
+    page.getByText("You do not have permission to access this workspace."),
+  ).toHaveCount(0);
+});

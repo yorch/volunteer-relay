@@ -135,6 +135,7 @@ function Organization() {
 export function ProductWorkspace({ page }: { page: Page | "home" }) {
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
+  const [chooseOrganization, setChooseOrganization] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const attempts = useRef<Record<string, { signature: string; key: string }>>(
@@ -142,12 +143,22 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
   );
   const refresh = useCallback(async () => {
     const result = await request<WorkspaceSnapshot>(productEndpoints.workspace);
+    setChooseOrganization(false);
     if (result.ok) {
       setSnapshot(result.value);
       setError("");
     } else {
       setSnapshot(null);
       setError(errorMessage(result.error.code));
+      if (result.error.code === "FORBIDDEN") {
+        const choices = await loadOrganizations();
+        if (
+          choices.ok &&
+          choices.value.currentOrganizationId === null &&
+          choices.value.options.length > 1
+        )
+          setChooseOrganization(true);
+      }
     }
     setLoading(false);
   }, []);
@@ -191,6 +202,14 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
     return (
       <main className={styles.standalone} aria-live="polite">
         Loading workspace…
+      </main>
+    );
+  if (!snapshot && chooseOrganization)
+    return (
+      <main className={styles.standalone}>
+        <h1>Choose an organization</h1>
+        <p>Select an organization to open its workspace.</p>
+        <a href="/account">Choose organization in your account</a>
       </main>
     );
   if (!snapshot)
