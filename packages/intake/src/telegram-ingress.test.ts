@@ -102,7 +102,16 @@ describe("Telegram verified ingress", () => {
   });
   it("links only a private sender identity and revalidates acknowledgement authority", async () => {
     const f = fixture();
-    const body = update(1);
+    const body = {
+      update_id: 1,
+      message: {
+        message_id: 7,
+        chat: { id: 12, type: "private" },
+        from: { id: 12 },
+        date: 1794000000,
+        text: "/link single-use-token",
+      },
+    };
     body.message.text = "/link single-use-token";
     expect((await f.handler(request(body))).status).toBe(200);
     expect(f.consume).toHaveBeenCalledWith("single-use-token", "12");
