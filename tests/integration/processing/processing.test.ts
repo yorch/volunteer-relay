@@ -60,7 +60,7 @@ const proposal: ExtractionProposal = {
   runId: "r1",
   modelVersion: "model",
   promptVersion: "prompt",
-  policyVersion: "policy",
+  policyVersion: "1",
   unresolved: [],
   items: [
     {
@@ -1029,6 +1029,9 @@ it.each([
   "removed member",
   "stale policy",
 ])("applies only eligible validated policy: %s", async (scenario) => {
+  await resetAuthTables(fixture.db);
+  await seedOrganizations(fixture.db);
+  await seedDomainMembers(fixture.db);
   const repo = createProcessingRepository(fixture.db);
   const settings = createFollowThroughRepository(fixture.db);
   const owner = await context(
@@ -1038,7 +1041,7 @@ it.each([
     "owner",
   );
   const ready = structuredClone(proposal);
-  ready.policyVersion = "policy";
+  ready.policyVersion = scenario === "review-all" ? "1" : "policy";
   for (const item of ready.items) {
     if (item.kind === "activity") {
       item.localDate = "2026-11-04";
@@ -1079,7 +1082,34 @@ it.each([
           idempotencyKey: "settings",
           timezone: "UTC",
           automationPolicy: "validated-auto-record",
-          policyVersion: scenario === "stale policy" ? "other" : "policy",
+          policyVersion: "policy",
+          routing: {},
+          fallbackMembershipId: null,
+          ackMinutes: 60,
+          retentionDays: 365,
+        })
+      ).ok,
+    ).toBe(true);
+  const mira = await context(
+    fixture.authorization,
+    "user-mira",
+    "tidepath",
+    "source",
+  );
+  const sources = createSourceRepository({
+    authorization: fixture.authorization,
+    store: createSourceStore(fixture.db),
+  });
+  expect((await sources.accept(mira, source)).ok).toBe(true);
+  if (scenario === "stale policy")
+    expect(
+      (
+        await settings.updateSettings(owner, {
+          expectedRevision: 2,
+          idempotencyKey: "settings-next",
+          timezone: "UTC",
+          automationPolicy: "review-all",
+          policyVersion: "other",
           routing: {},
           fallbackMembershipId: null,
           ackMinutes: 60,
@@ -1106,9 +1136,9 @@ it.each([
   const result = await repo.applyValidatedPolicy(source);
   expect(result).toEqual({
     ok: true,
-    value: { applied: scenario === "validated" },
+    value: { applied: scenario === "validated" || scenario === "stale policy" },
   });
-  if (scenario === "validated") {
+  if (scenario === "validated" || scenario === "stale policy") {
     expect(await repo.applyValidatedPolicy(source)).toEqual(result);
     const records = await fixture.db.execute(
       sql`select actor,command from review_decision`,
@@ -1132,6 +1162,9 @@ it.each([
   }
 });
 it("leaves a plausible existing activity in review under validated policy", async () => {
+  await resetAuthTables(fixture.db);
+  await seedOrganizations(fixture.db);
+  await seedDomainMembers(fixture.db);
   const repo = createProcessingRepository(fixture.db);
   const settings = createFollowThroughRepository(fixture.db);
   const owner = await context(
@@ -1153,7 +1186,7 @@ it("leaves a plausible existing activity in review under validated policy", asyn
         idempotencyKey: "settings",
         timezone: "UTC",
         automationPolicy: "validated-auto-record",
-        policyVersion: "policy",
+        policyVersion: "1",
         routing: {},
         fallbackMembershipId: null,
         ackMinutes: 60,
@@ -1161,6 +1194,17 @@ it("leaves a plausible existing activity in review under validated policy", asyn
       })
     ).ok,
   ).toBe(true);
+  const mira = await context(
+    fixture.authorization,
+    "user-mira",
+    "tidepath",
+    "source",
+  );
+  const sources = createSourceRepository({
+    authorization: fixture.authorization,
+    store: createSourceStore(fixture.db),
+  });
+  expect((await sources.accept(mira, source)).ok).toBe(true);
   const prior = await fixture.ledger.recordActivity(staff, {
     schemaVersion: 1,
     idempotencyKey: "prior",
@@ -1488,4 +1532,215 @@ it("does not duplicate a previously confirmed urgent need on a later source revi
     sql`select count(*)::int as count from need`,
   );
   expect(rows.rows[0]?.count).toBe(1);
+});
+it("keeps intake policy snapshot after organization policy changes", async () => {
+  const repo = createProcessingRepository(fixture.db);
+  const settings = createFollowThroughRepository(fixture.db);
+  const owner = await context(
+    fixture.authorization,
+    "user-rae",
+    "tidepath",
+    "owner",
+  );
+  expect(
+    (
+      await settings.updateSettings(owner, {
+        expectedRevision: 1,
+        idempotencyKey: "new-policy",
+        timezone: "UTC",
+        automationPolicy: "validated-auto-record",
+        policyVersion: "v2",
+        routing: {},
+        fallbackMembershipId: null,
+        ackMinutes: 60,
+        retentionDays: 365,
+      })
+    ).ok,
+  ).toBe(true);
+  const [lease] = await repo.pendingSources(1);
+  if (!lease) throw new Error("missing lease");
+  expect(lease).toMatchObject({
+    generation: 1,
+    policy: { automationPolicy: "review-all", policyVersion: "1" },
+  });
+  const ready = structuredClone(proposal);
+  for (const item of ready.items)
+    if (item.kind === "activity") {
+      item.localDate = "2026-11-04";
+      item.datePrecision = "day";
+    }
+  expect(
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        source,
+        ready,
+        lease.leaseToken,
+      )
+    ).ok,
+  ).toBe(true);
+  expect(await repo.applyValidatedPolicy(source)).toEqual({
+    ok: true,
+    value: { applied: false },
+  });
+});
+it("reprocesses the same source as a fresh generation without duplicating approved effects", async () => {
+  const repo = createProcessingRepository(fixture.db);
+  const settings = createFollowThroughRepository(fixture.db);
+  const staff = await context(
+    fixture.authorization,
+    "user-kai",
+    "tidepath",
+    "review",
+  );
+  const owner = await context(
+    fixture.authorization,
+    "user-rae",
+    "tidepath",
+    "owner",
+  );
+  const [first] = await repo.pendingSources(1);
+  if (!first) throw new Error("missing lease");
+  expect(
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        source,
+        proposal,
+        first.leaseToken,
+      )
+    ).ok,
+  ).toBe(true);
+  expect(
+    (
+      await repo.decide(staff, {
+        runId: "r1",
+        expectedRevision: 1,
+        idempotencyKey: "first-review",
+        decision: "accept",
+        reason: "",
+      })
+    ).ok,
+  ).toBe(true);
+  expect(
+    (
+      await settings.updateSettings(owner, {
+        expectedRevision: 1,
+        idempotencyKey: "settings",
+        timezone: "UTC",
+        automationPolicy: "validated-auto-record",
+        policyVersion: "v2",
+        routing: {},
+        fallbackMembershipId: null,
+        ackMinutes: 60,
+        retentionDays: 365,
+      })
+    ).ok,
+  ).toBe(true);
+  const command = {
+    sourceId: source.sourceId,
+    expectedRevision: 1,
+    idempotencyKey: "reprocess",
+  };
+  expect(await repo.reprocessSource(staff, command)).toEqual({
+    ok: true,
+    value: { generation: 2 },
+  });
+  expect(await repo.reprocessSource(staff, command)).toEqual({
+    ok: true,
+    value: { generation: 2 },
+  });
+  const [second] = await repo.pendingSources(1);
+  if (!second) throw new Error("missing lease");
+  expect(second).toMatchObject({
+    generation: 2,
+    policy: { automationPolicy: "validated-auto-record", policyVersion: "v2" },
+  });
+  expect(
+    await repo.persistProposal(
+      systemContext("tidepath"),
+      source,
+      proposal,
+      second.leaseToken,
+    ),
+  ).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+  const fresh = structuredClone(proposal);
+  fresh.runId = "r2";
+  fresh.policyVersion = "v2";
+  expect(
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        source,
+        fresh,
+        second.leaseToken,
+      )
+    ).ok,
+  ).toBe(true);
+  expect(await repo.applyValidatedPolicy(source)).toEqual({
+    ok: true,
+    value: { applied: false },
+  });
+  expect(
+    (
+      await repo.decide(staff, {
+        runId: "r2",
+        expectedRevision: 1,
+        idempotencyKey: "second-review",
+        decision: "accept",
+        reason: "",
+      })
+    ).ok,
+  ).toBe(true);
+  expect(await fixture.ledger.summarize(staff)).toMatchObject({
+    ok: true,
+    value: { approvedMinutes: 60, approvedContributions: 1 },
+  });
+  const rows = await fixture.db.execute(
+    sql`select run_id,generation,status from extraction_run order by generation`,
+  );
+  expect(rows.rows).toEqual([
+    { run_id: "r1", generation: 1, status: "accepted" },
+    { run_id: "r2", generation: 2, status: "accepted" },
+  ]);
+});
+it("prevents an older pending review from being decided after reprocessing starts", async () => {
+  const repo = createProcessingRepository(fixture.db);
+  const staff = await context(
+    fixture.authorization,
+    "user-kai",
+    "tidepath",
+    "review",
+  );
+  const [first] = await repo.pendingSources(1);
+  if (!first) throw new Error("missing lease");
+  expect(
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        source,
+        proposal,
+        first.leaseToken,
+      )
+    ).ok,
+  ).toBe(true);
+  expect(
+    (
+      await repo.reprocessSource(staff, {
+        sourceId: source.sourceId,
+        expectedRevision: 1,
+        idempotencyKey: "restart",
+      })
+    ).ok,
+  ).toBe(true);
+  expect(
+    await repo.decide(staff, {
+      runId: "r1",
+      expectedRevision: 1,
+      idempotencyKey: "stale",
+      decision: "accept",
+      reason: "",
+    }),
+  ).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+  expect(await repo.listQueue(staff)).toEqual({ ok: true, value: [] });
 });

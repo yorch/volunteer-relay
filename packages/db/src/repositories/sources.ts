@@ -589,10 +589,26 @@ export function createSourceStore(db: Database): SourceStoreRecord {
       await assertRevisionChain(tx, revision);
       await ensureAttachmentIdentities(tx, revision);
 
-      return {
-        kind: "inserted",
-        stored: await writeRevision(tx, revision, event),
-      };
+      const stored = await writeRevision(tx, revision, event);
+      // Serialize with settings updates so the intake policy snapshot is exact.
+      await tx.execute(
+        sql`select id from organization where id=${revision.organizationId} for update`,
+      );
+      const policy = await tx.execute(
+        sql`select automation_policy,policy_version from organization_settings where organization_id=${revision.organizationId} for share`,
+      );
+      const mode =
+        (policy.rows[0]?.automation_policy as string | undefined) ??
+        "review-all";
+      const version =
+        (policy.rows[0]?.policy_version as string | undefined) ?? "1";
+      await tx.execute(
+        sql`insert into processing_policy_snapshot(organization_id,source_id,source_revision,generation,automation_policy,policy_version) values (${revision.organizationId},${revision.sourceId},${revision.revision},1,${mode},${version})`,
+      );
+      await tx.execute(
+        sql`insert into processing_work(organization_id,source_id,source_revision,generation) values (${revision.organizationId},${revision.sourceId},${revision.revision},1) on conflict do nothing`,
+      );
+      return { kind: "inserted", stored };
     });
   }
 

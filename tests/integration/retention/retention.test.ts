@@ -72,7 +72,7 @@ const proposal: ExtractionProposal = {
   runId: "run-private",
   modelVersion: "model",
   promptVersion: "prompt",
-  policyVersion: "policy",
+  policyVersion: "1",
   items: [
     {
       kind: "activity",

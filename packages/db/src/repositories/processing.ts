@@ -147,6 +147,11 @@ export function createProcessingRepository(db: Database) {
           );
           if (latest.rows[0]?.revision !== row.source_revision)
             throw new Abort("CONFLICT", "Source revision is stale");
+          const currentGeneration = await tx.execute(
+            sql`select max(generation)::int as generation from processing_policy_snapshot where organization_id=${context.organizationId} and source_id=${sourceId} and source_revision=${row.source_revision as number}`,
+          );
+          if (currentGeneration.rows[0]?.generation !== row.generation)
+            throw new Abort("CONFLICT", "Review generation is stale");
           const original = row.proposal as ExtractionProposal;
           const source = row.envelope as SourceEnvelope;
           if (
@@ -162,6 +167,7 @@ export function createProcessingRepository(db: Database) {
               context.organizationId,
               original,
               source,
+              row.generation as number,
             );
           }
           const proposal = {
@@ -210,7 +216,7 @@ export function createProcessingRepository(db: Database) {
               (item) => item.kind === "correction",
             );
             const priorRun = await tx.execute(
-              sql`select r.run_id,r.proposal,d.command from extraction_run r join review_decision d on (d.organization_id,d.run_id)=(r.organization_id,r.run_id) where r.organization_id=${context.organizationId} and r.source_id=${sourceId} and r.source_revision<${source.revision} and r.status='accepted' order by r.source_revision desc limit 1`,
+              sql`select r.run_id,r.proposal,d.command from extraction_run r join review_decision d on (d.organization_id,d.run_id)=(r.organization_id,r.run_id) where r.organization_id=${context.organizationId} and r.source_id=${sourceId} and (r.source_revision<${source.revision} or (r.source_revision=${source.revision} and r.generation<${row.generation as number})) and r.status='accepted' order by r.source_revision desc,r.generation desc limit 1`,
             );
             if (
               Object.keys(links).length > 0 &&
@@ -625,26 +631,45 @@ export function createProcessingRepository(db: Database) {
           if (!equal(stored, supplied) || !validEvidence(proposal, stored))
             throw new Abort("VALIDATION", "Proposal evidence is invalid");
           const prior = await tx.execute(
-            sql`select proposal from extraction_run where organization_id = ${context.organizationId} and (run_id = ${proposal.runId} or (source_id = ${proposal.sourceId} and source_revision = ${proposal.sourceRevision}))`,
+            sql`select r.proposal,r.generation,(select max(p.generation) from processing_policy_snapshot p where p.organization_id=r.organization_id and p.source_id=r.source_id and p.source_revision=r.source_revision) as current_generation from extraction_run r where r.organization_id=${context.organizationId} and r.run_id=${proposal.runId}`,
           );
           if (prior.rows.length) {
-            if (equal(prior.rows[0]?.proposal, proposal)) return;
+            if (
+              prior.rows[0]?.generation === prior.rows[0]?.current_generation &&
+              equal(prior.rows[0]?.proposal, proposal)
+            )
+              return;
             throw new Abort("CONFLICT", "Proposal already exists");
           }
           const lease = await tx.execute(
-            sql`select 1 from processing_work where organization_id=${context.organizationId} and source_id=${proposal.sourceId} and source_revision=${proposal.sourceRevision} and lease_until > now() and lease_token=${leaseToken} for update`,
+            sql`select w.generation,p.policy_version from processing_work w join processing_policy_snapshot p on (p.organization_id,p.source_id,p.source_revision,p.generation)=(w.organization_id,w.source_id,w.source_revision,w.generation) where w.organization_id=${context.organizationId} and w.source_id=${proposal.sourceId} and w.source_revision=${proposal.sourceRevision} and w.lease_until > now() and w.lease_token=${leaseToken} for update of w`,
           );
           if (!lease.rows.length)
             throw new Abort("CONFLICT", "Source is not leased for processing");
-          await withdrawEarlierProvisional(tx, context, proposal);
+          const generation = lease.rows[0]?.generation as number;
+          if (lease.rows[0]?.policy_version !== proposal.policyVersion)
+            throw new Abort(
+              "VALIDATION",
+              "Proposal policy version does not match its intake snapshot",
+            );
+          const occupied = await tx.execute(
+            sql`select 1 from extraction_run where organization_id=${context.organizationId} and source_id=${proposal.sourceId} and source_revision=${proposal.sourceRevision} and generation=${generation}`,
+          );
+          if (occupied.rows.length)
+            throw new Abort(
+              "CONFLICT",
+              "Processing generation already has a proposal",
+            );
+          await withdrawEarlierProvisional(tx, context, proposal, generation);
           await tx.execute(
-            sql`insert into extraction_run (organization_id,run_id,source_id,source_revision,proposal) values (${context.organizationId},${proposal.runId},${proposal.sourceId},${proposal.sourceRevision},${json(proposal)}::jsonb)`,
+            sql`insert into extraction_run (organization_id,run_id,source_id,source_revision,generation,proposal) values (${context.organizationId},${proposal.runId},${proposal.sourceId},${proposal.sourceRevision},${generation},${json(proposal)}::jsonb)`,
           );
           await createProvisionalNeeds(
             tx,
             context,
             sourceEnvelopeSchema.parse(stored),
             proposal,
+            generation,
           );
           await tx.execute(
             sql`delete from processing_work where organization_id = ${context.organizationId} and source_id = ${proposal.sourceId} and source_revision = ${proposal.sourceRevision}`,
@@ -668,7 +693,7 @@ export function createProcessingRepository(db: Database) {
         if (!staff(await authorize(db, context)))
           return fail(context, "FORBIDDEN", "Review authority required");
         const rows = await db.execute(
-          sql`select r.proposal, r.revision, s.envelope from extraction_run r join source_revision s on (s.organization_id,s.source_id,s.revision)=(r.organization_id,r.source_id,r.source_revision) where r.organization_id=${context.organizationId} and r.status='review' and not exists (select 1 from source_redaction z where z.organization_id=r.organization_id and z.source_id=r.source_id) and not exists (select 1 from source_revision newer where newer.organization_id=r.organization_id and newer.source_id=r.source_id and newer.revision>r.source_revision) order by r.created_at,r.run_id`,
+          sql`select r.proposal, r.revision, s.envelope from extraction_run r join source_revision s on (s.organization_id,s.source_id,s.revision)=(r.organization_id,r.source_id,r.source_revision) where r.organization_id=${context.organizationId} and r.status='review' and r.generation=(select max(p.generation) from processing_policy_snapshot p where p.organization_id=r.organization_id and p.source_id=r.source_id and p.source_revision=r.source_revision) and not exists (select 1 from source_redaction z where z.organization_id=r.organization_id and z.source_id=r.source_id) and not exists (select 1 from source_revision newer where newer.organization_id=r.organization_id and newer.source_id=r.source_id and newer.revision>r.source_revision) order by r.created_at,r.run_id`,
         );
         return success(
           rows.rows.map((row) => ({
@@ -729,7 +754,7 @@ export function createProcessingRepository(db: Database) {
         const actorId =
           context.actor.kind === "user" ? context.actor.membershipId : "";
         const rows = await db.execute(
-          sql`select s.source_id,s.revision,coalesce(r.status,case when w.failed or (w.attempts>=3 and (w.lease_until is null or w.lease_until<=now())) then 'failed' else 'queued' end) as status from source_revision s left join extraction_run r on (r.organization_id,r.source_id,r.source_revision)=(s.organization_id,s.source_id,s.revision) left join processing_work w on (w.organization_id,w.source_id,w.source_revision)=(s.organization_id,s.source_id,s.revision) where s.organization_id=${context.organizationId} and not exists (select 1 from source_redaction z where z.organization_id=s.organization_id and z.source_id=s.source_id) and (${staff(role)} or s.author_membership_id=${actorId}) and not exists (select 1 from source_revision n where n.organization_id=s.organization_id and n.source_id=s.source_id and n.revision>s.revision) order by s.received_at desc,s.source_id`,
+          sql`select s.source_id,s.revision,coalesce(r.status,case when w.failed or (w.attempts>=3 and (w.lease_until is null or w.lease_until<=now())) then 'failed' else 'queued' end) as status from source_revision s left join extraction_run r on (r.organization_id,r.source_id,r.source_revision)=(s.organization_id,s.source_id,s.revision) and r.generation=(select max(p.generation) from processing_policy_snapshot p where p.organization_id=s.organization_id and p.source_id=s.source_id and p.source_revision=s.revision) left join processing_work w on (w.organization_id,w.source_id,w.source_revision)=(s.organization_id,s.source_id,s.revision) where s.organization_id=${context.organizationId} and not exists (select 1 from source_redaction z where z.organization_id=s.organization_id and z.source_id=s.source_id) and (${staff(role)} or s.author_membership_id=${actorId}) and not exists (select 1 from source_revision n where n.organization_id=s.organization_id and n.source_id=s.source_id and n.revision>s.revision) order by s.received_at desc,s.source_id`,
         );
         return success(
           rows.rows.map((row) => ({
@@ -746,9 +771,17 @@ export function createProcessingRepository(db: Database) {
         );
       }
     },
-    async pendingSources(
-      limit: number,
-    ): Promise<Array<{ source: SourceEnvelope; leaseToken: string }>> {
+    async pendingSources(limit: number): Promise<
+      Array<{
+        source: SourceEnvelope;
+        leaseToken: string;
+        generation: number;
+        policy: {
+          automationPolicy: "review-all" | "validated-auto-record";
+          policyVersion: string;
+        };
+      }>
+    > {
       if (!Number.isInteger(limit) || limit < 1 || limit > 100)
         throw new Error("Invalid processing limit");
       return db
@@ -760,11 +793,18 @@ export function createProcessingRepository(db: Database) {
             sql`insert into processing_work (organization_id,source_id,source_revision) select s.organization_id,s.source_id,s.revision from source_revision s where not exists (select 1 from source_redaction z where z.organization_id=s.organization_id and z.source_id=s.source_id) and not exists (select 1 from source_revision n where n.organization_id=s.organization_id and n.source_id=s.source_id and n.revision>s.revision) and not exists (select 1 from extraction_run r where r.organization_id=s.organization_id and r.source_id=s.source_id and r.source_revision=s.revision) on conflict do nothing`,
           );
           const rows = await tx.execute(
-            sql`with picked as (select w.organization_id,w.source_id,w.source_revision from processing_work w where not exists (select 1 from source_redaction z where z.organization_id=w.organization_id and z.source_id=w.source_id) and w.attempts<3 and (w.lease_until is null or w.lease_until<=now()) and (w.retry_after is null or w.retry_after<=now()) and not exists (select 1 from source_revision n where n.organization_id=w.organization_id and n.source_id=w.source_id and n.revision>w.source_revision) order by w.source_id for update skip locked limit ${limit}), leased as (update processing_work w set attempts=w.attempts+1,lease_token=gen_random_uuid()::text,lease_until=now()+interval '5 minutes',failed=false from picked p where (w.organization_id,w.source_id,w.source_revision)=(p.organization_id,p.source_id,p.source_revision) returning w.*) select s.envelope,w.lease_token from leased w join source_revision s on (s.organization_id,s.source_id,s.revision)=(w.organization_id,w.source_id,w.source_revision)`,
+            sql`with picked as (select w.organization_id,w.source_id,w.source_revision from processing_work w where not exists (select 1 from source_redaction z where z.organization_id=w.organization_id and z.source_id=w.source_id) and w.attempts<3 and (w.lease_until is null or w.lease_until<=now()) and (w.retry_after is null or w.retry_after<=now()) and not exists (select 1 from source_revision n where n.organization_id=w.organization_id and n.source_id=w.source_id and n.revision>w.source_revision) order by w.source_id for update skip locked limit ${limit}), leased as (update processing_work w set attempts=w.attempts+1,lease_token=gen_random_uuid()::text,lease_until=now()+interval '5 minutes',failed=false from picked p where (w.organization_id,w.source_id,w.source_revision)=(p.organization_id,p.source_id,p.source_revision) returning w.*) select s.envelope,w.lease_token,w.generation,p.automation_policy,p.policy_version from leased w join source_revision s on (s.organization_id,s.source_id,s.revision)=(w.organization_id,w.source_id,w.source_revision) join processing_policy_snapshot p on (p.organization_id,p.source_id,p.source_revision,p.generation)=(w.organization_id,w.source_id,w.source_revision,w.generation)`,
           );
           return rows.rows.map((row) => ({
             source: row.envelope as SourceEnvelope,
             leaseToken: row.lease_token as string,
+            generation: row.generation as number,
+            policy: {
+              automationPolicy: row.automation_policy as
+                | "review-all"
+                | "validated-auto-record",
+              policyVersion: row.policy_version as string,
+            },
           }));
         })
         .catch(() => {
@@ -831,7 +871,7 @@ export function createProcessingRepository(db: Database) {
           const revision = latest.rows[0]?.revision as number | undefined;
           if (!revision) throw new Abort("NOT_FOUND", "Source not found");
           const proposal = await tx.execute(
-            sql`select 1 from extraction_run where organization_id=${context.organizationId} and source_id=${input.sourceId} and source_revision=${revision}`,
+            sql`select 1 from extraction_run r where organization_id=${context.organizationId} and source_id=${input.sourceId} and source_revision=${revision} and generation=(select max(generation) from processing_policy_snapshot p where p.organization_id=r.organization_id and p.source_id=r.source_id and p.source_revision=r.source_revision)`,
           );
           if (proposal.rows.length)
             throw new Abort("CONFLICT", "Source already has a proposal");
@@ -863,6 +903,97 @@ export function createProcessingRepository(db: Database) {
             );
       }
     },
+    async reprocessSource(
+      context: TenantContext,
+      input: {
+        sourceId: string;
+        expectedRevision: number;
+        idempotencyKey: string;
+      },
+    ): Promise<Result<{ generation: number }>> {
+      if (
+        !input?.sourceId ||
+        !input.idempotencyKey ||
+        !Number.isInteger(input.expectedRevision) ||
+        input.expectedRevision < 1
+      )
+        return fail(context, "VALIDATION", "Invalid reprocess command");
+      try {
+        return await db.transaction(async (tx) => {
+          if (!staff(await authorize(tx, context)))
+            return fail(context, "FORBIDDEN", "Review authority required");
+          await tx.execute(
+            sql`select pg_advisory_xact_lock(hashtextextended(${json([context.organizationId, "reprocess", input.idempotencyKey])},0))`,
+          );
+          const prior = await tx.execute(
+            sql`select source_id,source_revision,generation from processing_reprocess where organization_id=${context.organizationId} and idempotency_key=${input.idempotencyKey}`,
+          );
+          if (prior.rows[0]) {
+            const p = prior.rows[0];
+            if (
+              p.source_id !== input.sourceId ||
+              p.source_revision !== input.expectedRevision
+            )
+              throw new Abort("CONFLICT", "Idempotency key already used");
+            return success({ generation: p.generation as number });
+          }
+          const source = await tx.execute(
+            sql`select id from source where organization_id=${context.organizationId} and id=${input.sourceId} for update`,
+          );
+          if (!source.rows.length)
+            throw new Abort("NOT_FOUND", "Source not found");
+          const redacted = await tx.execute(
+            sql`select 1 from source_redaction where organization_id=${context.organizationId} and source_id=${input.sourceId}`,
+          );
+          if (redacted.rows.length)
+            throw new Abort("NOT_FOUND", "Source not found");
+          const latest = await tx.execute(
+            sql`select max(revision)::int as revision from source_revision where organization_id=${context.organizationId} and source_id=${input.sourceId}`,
+          );
+          if (latest.rows[0]?.revision !== input.expectedRevision)
+            throw new Abort("CONFLICT", "Source revision changed");
+          const work = await tx.execute(
+            sql`select lease_until>now() as active from processing_work where organization_id=${context.organizationId} and source_id=${input.sourceId} and source_revision=${input.expectedRevision} for update`,
+          );
+          if (work.rows[0]?.active)
+            throw new Abort("CONFLICT", "Source processing is active");
+          await tx.execute(
+            sql`select id from organization where id=${context.organizationId} for update`,
+          );
+          const policy = await tx.execute(
+            sql`select automation_policy,policy_version from organization_settings where organization_id=${context.organizationId} for share`,
+          );
+          const generationRows = await tx.execute(
+            sql`select max(generation)::int as generation from processing_policy_snapshot where organization_id=${context.organizationId} and source_id=${input.sourceId} and source_revision=${input.expectedRevision}`,
+          );
+          const generation =
+            ((generationRows.rows[0]?.generation as number | null) ?? 0) + 1;
+          const mode =
+            (policy.rows[0]?.automation_policy as string | undefined) ??
+            "review-all";
+          const version =
+            (policy.rows[0]?.policy_version as string | undefined) ?? "1";
+          await tx.execute(
+            sql`insert into processing_policy_snapshot(organization_id,source_id,source_revision,generation,automation_policy,policy_version) values (${context.organizationId},${input.sourceId},${input.expectedRevision},${generation},${mode},${version})`,
+          );
+          await tx.execute(
+            sql`insert into processing_work(organization_id,source_id,source_revision,generation) values (${context.organizationId},${input.sourceId},${input.expectedRevision},${generation}) on conflict(organization_id,source_id,source_revision) do update set generation=excluded.generation,attempts=0,failed=false,lease_token=null,lease_until=null,retry_after=null`,
+          );
+          await tx.execute(
+            sql`insert into processing_reprocess(organization_id,idempotency_key,source_id,source_revision,generation,actor,correlation_id) values (${context.organizationId},${input.idempotencyKey},${input.sourceId},${input.expectedRevision},${generation},${json(context.actor)}::jsonb,${context.correlationId})`,
+          );
+          return success({ generation });
+        });
+      } catch (error) {
+        return error instanceof Abort
+          ? fail(context, error.code, error.message)
+          : fail(
+              context,
+              "DEPENDENCY_UNAVAILABLE",
+              "Processing storage unavailable",
+            );
+      }
+    },
     async applyValidatedPolicy(
       source: SourceEnvelope,
     ): Promise<Result<{ applied: boolean }>> {
@@ -875,7 +1006,7 @@ export function createProcessingRepository(db: Database) {
         return fail(context, "VALIDATION", "Invalid automatic source");
       try {
         const rows = await db.execute(
-          sql`select run_id,proposal from extraction_run where organization_id=${source.organizationId} and source_id=${source.sourceId} and source_revision=${source.revision}`,
+          sql`select run_id,proposal from extraction_run r where organization_id=${source.organizationId} and source_id=${source.sourceId} and source_revision=${source.revision} and generation=(select max(p.generation) from processing_policy_snapshot p where p.organization_id=r.organization_id and p.source_id=r.source_id and p.source_revision=r.source_revision)`,
         );
         const row = rows.rows[0];
         if (!row) return success({ applied: false });
@@ -1132,9 +1263,10 @@ async function requireValidatedPolicy(
   organizationId: string,
   proposal: ExtractionProposal,
   source: SourceEnvelope,
+  generation: number,
 ): Promise<void> {
   const settings = await tx.execute(
-    sql`select automation_policy,policy_version from organization_settings where organization_id=${organizationId} for share`,
+    sql`select automation_policy,policy_version from processing_policy_snapshot where organization_id=${organizationId} and source_id=${source.sourceId} and source_revision=${source.revision} and generation=${generation}`,
   );
   if (
     settings.rows[0]?.automation_policy !== "validated-auto-record" ||
@@ -1148,7 +1280,7 @@ async function requireValidatedPolicy(
   )
     throw new Abort("CONFLICT", "Proposal requires review");
   const prior = await tx.execute(
-    sql`select 1 from extraction_run where organization_id=${organizationId} and source_id=${source.sourceId} and source_revision<${source.revision} and status='accepted' limit 1`,
+    sql`select 1 from extraction_run where organization_id=${organizationId} and source_id=${source.sourceId} and (source_revision<${source.revision} or (source_revision=${source.revision} and generation<${generation})) and status='accepted' limit 1`,
   );
   if (prior.rows.length)
     throw new Abort("CONFLICT", "Prior source effects require review");
@@ -1244,11 +1376,12 @@ async function createProvisionalNeeds(
   context: TenantContext,
   source: SourceEnvelope,
   proposal: ExtractionProposal,
+  generation: number,
 ): Promise<void> {
   for (const item of proposal.items) {
     if (item.kind !== "need" || item.urgency !== "urgent") continue;
     const prior = await tx.execute(
-      sql`select 1 from review_effect e join extraction_run r on (r.organization_id,r.run_id)=(e.organization_id,e.run_id) where r.organization_id=${context.organizationId} and r.source_id=${source.sourceId} and r.source_revision<${source.revision} and r.status='accepted' and e.kind='need' and e.item_key=${item.key} limit 1`,
+      sql`select 1 from review_effect e join extraction_run r on (r.organization_id,r.run_id)=(e.organization_id,e.run_id) where r.organization_id=${context.organizationId} and r.source_id=${source.sourceId} and (r.source_revision<${source.revision} or (r.source_revision=${source.revision} and r.generation<${generation})) and r.status='accepted' and e.kind='need' and e.item_key=${item.key} limit 1`,
     );
     if (prior.rows.length) continue;
     const now = new Date();
@@ -1386,9 +1519,10 @@ async function withdrawEarlierProvisional(
   tx: Executor,
   context: TenantContext,
   proposal: ExtractionProposal,
+  generation: number,
 ): Promise<void> {
   const rows = await tx.execute(
-    sql`select p.need_id from provisional_need p join extraction_run r on (r.organization_id,r.run_id)=(p.organization_id,p.run_id) where r.organization_id=${context.organizationId} and r.source_id=${proposal.sourceId} and r.source_revision<${proposal.sourceRevision} and r.status='review'`,
+    sql`select p.need_id from provisional_need p join extraction_run r on (r.organization_id,r.run_id)=(p.organization_id,p.run_id) where r.organization_id=${context.organizationId} and r.source_id=${proposal.sourceId} and (r.source_revision<${proposal.sourceRevision} or (r.source_revision=${proposal.sourceRevision} and r.generation<${generation})) and r.status='review'`,
   );
   for (const row of rows.rows)
     await updateProvisional(

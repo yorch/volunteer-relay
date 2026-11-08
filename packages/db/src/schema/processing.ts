@@ -20,12 +20,48 @@ import {
 import { sourceRevision } from "./core.ts";
 import { need } from "./ledger.ts";
 
+export const processingPolicySnapshot = pgTable(
+  "processing_policy_snapshot",
+  {
+    organizationId: text("organization_id").notNull(),
+    sourceId: text("source_id").notNull(),
+    sourceRevision: integer("source_revision").notNull(),
+    generation: integer("generation").notNull(),
+    automationPolicy: text("automation_policy").notNull(),
+    policyVersion: text("policy_version").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    primaryKey({
+      name: "processing_policy_snapshot_pk",
+      columns: [t.organizationId, t.sourceId, t.sourceRevision, t.generation],
+    }),
+    check(
+      "processing_policy_mode_check",
+      sql`${t.automationPolicy} in ('review-all','validated-auto-record')`,
+    ),
+    check("processing_policy_generation_check", sql`${t.generation}>0`),
+    foreignKey({
+      name: "processing_policy_snapshot_source_fk",
+      columns: [t.organizationId, t.sourceId, t.sourceRevision],
+      foreignColumns: [
+        sourceRevision.organizationId,
+        sourceRevision.sourceId,
+        sourceRevision.revision,
+      ],
+    }),
+  ],
+);
+
 export const processingWork = pgTable(
   "processing_work",
   {
     organizationId: text("organization_id").notNull(),
     sourceId: text("source_id").notNull(),
     sourceRevision: integer("source_revision").notNull(),
+    generation: integer("generation").notNull().default(1),
     attempts: integer("attempts").notNull().default(0),
     leaseToken: text("lease_token"),
     leaseUntil: timestamp("lease_until", { withTimezone: true }),
@@ -35,6 +71,16 @@ export const processingWork = pgTable(
   (t) => [
     primaryKey({ columns: [t.organizationId, t.sourceId, t.sourceRevision] }),
     check("processing_work_attempts_check", sql`${t.attempts} between 0 and 3`),
+    foreignKey({
+      name: "processing_work_snapshot_fk",
+      columns: [t.organizationId, t.sourceId, t.sourceRevision, t.generation],
+      foreignColumns: [
+        processingPolicySnapshot.organizationId,
+        processingPolicySnapshot.sourceId,
+        processingPolicySnapshot.sourceRevision,
+        processingPolicySnapshot.generation,
+      ],
+    }),
     foreignKey({
       columns: [t.organizationId, t.sourceId, t.sourceRevision],
       foreignColumns: [
@@ -52,6 +98,7 @@ export const extractionRun = pgTable(
     runId: text("run_id").notNull(),
     sourceId: text("source_id").notNull(),
     sourceRevision: integer("source_revision").notNull(),
+    generation: integer("generation").notNull().default(1),
     proposal: jsonb("proposal").$type<ExtractionProposal>().notNull(),
     status: text("status").notNull().default("review"),
     revision: integer("revision").notNull().default(1),
@@ -61,7 +108,17 @@ export const extractionRun = pgTable(
   },
   (t) => [
     primaryKey({ columns: [t.organizationId, t.runId] }),
-    unique().on(t.organizationId, t.sourceId, t.sourceRevision),
+    unique().on(t.organizationId, t.sourceId, t.sourceRevision, t.generation),
+    foreignKey({
+      name: "extraction_run_snapshot_fk",
+      columns: [t.organizationId, t.sourceId, t.sourceRevision, t.generation],
+      foreignColumns: [
+        processingPolicySnapshot.organizationId,
+        processingPolicySnapshot.sourceId,
+        processingPolicySnapshot.sourceRevision,
+        processingPolicySnapshot.generation,
+      ],
+    }),
     check(
       "extraction_run_status_check",
       sql`${t.status} in ('review','accepted','rejected')`,
@@ -172,6 +229,35 @@ export const provisionalNeed = pgTable(
     foreignKey({
       columns: [t.organizationId, t.runId],
       foreignColumns: [extractionRun.organizationId, extractionRun.runId],
+    }),
+  ],
+);
+
+export const processingReprocess = pgTable(
+  "processing_reprocess",
+  {
+    organizationId: text("organization_id").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    sourceId: text("source_id").notNull(),
+    sourceRevision: integer("source_revision").notNull(),
+    generation: integer("generation").notNull(),
+    actor: jsonb("actor").$type<TenantContext["actor"]>().notNull(),
+    correlationId: text("correlation_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.organizationId, t.idempotencyKey] }),
+    foreignKey({
+      name: "processing_reprocess_snapshot_fk",
+      columns: [t.organizationId, t.sourceId, t.sourceRevision, t.generation],
+      foreignColumns: [
+        processingPolicySnapshot.organizationId,
+        processingPolicySnapshot.sourceId,
+        processingPolicySnapshot.sourceRevision,
+        processingPolicySnapshot.generation,
+      ],
     }),
   ],
 );
