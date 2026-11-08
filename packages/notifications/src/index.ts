@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type {
   DomainEvent,
   NeedRecord,
@@ -9,7 +10,7 @@ import nodemailer, { type Transporter } from "nodemailer";
 
 type Message = Parameters<NotificationTransport["deliver"]>[1];
 type Accepted = { providerId: string; status: "accepted" };
-type Delivery = (message: Message) => Promise<string>;
+type Delivery = (context: TenantContext, message: Message) => Promise<string>;
 const ok = (providerId: string): Result<Accepted> => ({
   ok: true,
   value: { providerId, status: "accepted" },
@@ -51,12 +52,23 @@ export function escapeHtml(text: string): string {
     (c) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
         c
-      ]!,
+      ] ?? c,
+  );
+}
+
+function isTimeout(cause: unknown): boolean {
+  return (
+    cause instanceof Error &&
+    (cause.name === "TimeoutError" ||
+      ("code" in cause && cause.code === "ETIMEDOUT"))
   );
 }
 
 function transport(send: Delivery): NotificationTransport {
-  const replay = new Map<string, string>();
+  const replay = new Map<
+    string,
+    { digest: string; pending?: Promise<string> }
+  >();
   return {
     async deliver(context, message) {
       const path = safeAppPath(message.appPath);
@@ -75,16 +87,49 @@ function transport(send: Delivery): NotificationTransport {
             retryable: false,
           },
         };
-      const cached = replay.get(message.deliveryKey);
-      if (cached) return ok(cached);
+      const scope = JSON.stringify([
+        context.organizationId,
+        message.recipientId,
+        message.deliveryKey,
+      ]);
+      const digest = createHash("sha256")
+        .update(JSON.stringify([message.template, path]))
+        .digest("hex");
+      const existing = replay.get(scope);
+      if (existing && existing.digest !== digest)
+        return {
+          ok: false,
+          error: {
+            code: "CONFLICT",
+            message: "Delivery key was reused with different content",
+            correlationId: context.correlationId,
+            retryable: false,
+          },
+        };
+      if (existing?.pending) {
+        try {
+          return ok(await existing.pending);
+        } catch (cause) {
+          return error(
+            context,
+            isTimeout(cause)
+              ? "Delivery outcome indeterminate after timeout"
+              : "Notification provider unavailable",
+            true,
+          );
+        }
+      }
+      const pending = send(context, { ...message, appPath: path });
+      replay.set(scope, { digest, pending });
       try {
-        const providerId = await send({ ...message, appPath: path });
-        replay.set(message.deliveryKey, providerId);
+        const providerId = await pending;
+        replay.set(scope, { digest, pending: Promise.resolve(providerId) });
         return ok(providerId);
       } catch (cause) {
+        replay.set(scope, { digest });
         return error(
           context,
-          cause instanceof Error && cause.name === "TimeoutError"
+          isTimeout(cause)
             ? "Delivery outcome indeterminate after timeout"
             : "Notification provider unavailable",
           true,
@@ -94,12 +139,17 @@ function transport(send: Delivery): NotificationTransport {
   };
 }
 
-export function createSafeTestTransport(): NotificationTransport {
+export function createSafeTestTransport(
+  deliver?: Delivery,
+): NotificationTransport {
   let sequence = 0;
-  return transport(async (message) => {
-    sequence++;
-    return `test-${sequence}-${message.deliveryKey}`;
-  });
+  return transport(
+    deliver ??
+      (async (_context, message) => {
+        sequence++;
+        return `test-${sequence}-${message.deliveryKey}`;
+      }),
+  );
 }
 
 export type SmtpOptions = {
@@ -108,7 +158,7 @@ export type SmtpOptions = {
   secure: boolean;
   auth?: { user: string; pass: string };
   from: string;
-  resolveRecipient(id: string): Promise<string | null>;
+  resolveRecipient(organizationId: string, id: string): Promise<string | null>;
   timeoutMs?: number;
 };
 export function createSmtpTransport(
@@ -123,10 +173,13 @@ export function createSmtpTransport(
     greetingTimeout: options.timeoutMs ?? 10_000,
     socketTimeout: options.timeoutMs ?? 10_000,
   });
-  return transport(async (message) => {
-    const to = await options.resolveRecipient(message.recipientId);
+  return transport(async (context, message) => {
+    const to = await options.resolveRecipient(
+      context.organizationId,
+      message.recipientId,
+    );
     if (!to) throw new Error("Recipient unavailable");
-    const path = safeAppPath(message.appPath)!;
+    const path = message.appPath;
     const result = await client.sendMail({
       from: options.from,
       to,
@@ -141,7 +194,10 @@ export function createSmtpTransport(
 
 export type TelegramOptions = {
   botToken: string;
-  resolveChat(recipientId: string): Promise<string | null>;
+  resolveChat(
+    organizationId: string,
+    recipientId: string,
+  ): Promise<string | null>;
   fetch?: typeof fetch;
   timeoutMs?: number;
 };
@@ -149,8 +205,11 @@ export function createTelegramTransport(
   options: TelegramOptions,
 ): NotificationTransport {
   const fetcher = options.fetch ?? fetch;
-  return transport(async (message) => {
-    const chat_id = await options.resolveChat(message.recipientId);
+  return transport(async (context, message) => {
+    const chat_id = await options.resolveChat(
+      context.organizationId,
+      message.recipientId,
+    );
     if (!chat_id) throw new Error("Recipient unavailable");
     const controller = new AbortController();
     const timer = setTimeout(

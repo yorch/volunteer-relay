@@ -1,7 +1,9 @@
 import type { NeedRecord, TenantContext } from "@relay/contracts";
+import nodemailer from "nodemailer";
 import { describe, expect, it, vi } from "vitest";
 import {
   createSafeTestTransport,
+  createSmtpTransport,
   createTelegramTransport,
   evaluateNeedDeadlines,
   routeNeedNotification,
@@ -51,19 +53,118 @@ describe("notification adapters and routing", () => {
       (await adapter.deliver(context, { ...msg, appPath: "https://evil.test" }))
         .ok,
     ).toBe(false);
+    expect(
+      await adapter.deliver(context, { ...msg, template: "different" }),
+    ).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
     expect(safeAppPath("//evil.test/workspace")).toBeNull();
   });
 
+  it("isolates tenant keys and shares concurrent deliveries", async () => {
+    let resolve!: (value: string) => void;
+    const send = vi.fn(
+      () =>
+        new Promise<string>((done) => {
+          resolve = done;
+        }),
+    );
+    const adapter = createSafeTestTransport(send);
+    const message = {
+      deliveryKey: "same",
+      recipientId: "same",
+      template: "urgent",
+      appPath: "/workspace/inbox",
+    };
+    const first = adapter.deliver(context, message);
+    const duplicate = adapter.deliver(context, message);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(
+      await adapter.deliver(context, { ...message, template: "changed" }),
+    ).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+    resolve("provider-1");
+    expect(await first).toEqual(await duplicate);
+    const other = adapter.deliver(
+      { ...context, organizationId: "other" },
+      message,
+    );
+    expect(send).toHaveBeenCalledTimes(2);
+    resolve("provider-2");
+    expect(await other).toMatchObject({
+      ok: true,
+      value: { providerId: "provider-2" },
+    });
+  });
+
+  it("retains payload identity after a failed delivery while permitting a retry", async () => {
+    const send = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("unavailable"))
+      .mockResolvedValueOnce("accepted");
+    const adapter = createSafeTestTransport(send);
+    const message = {
+      deliveryKey: "d",
+      recipientId: "m",
+      template: "urgent",
+      appPath: "/workspace/inbox",
+    };
+    expect((await adapter.deliver(context, message)).ok).toBe(false);
+    expect(
+      await adapter.deliver(context, {
+        ...message,
+        appPath: "/workspace/other",
+      }),
+    ).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+    expect(await adapter.deliver(context, message)).toMatchObject({ ok: true });
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it("resolves SMTP recipients within their organization", async () => {
+    const sendMail = vi.fn().mockResolvedValue({ messageId: "mail" });
+    const create = vi
+      .spyOn(nodemailer, "createTransport")
+      .mockReturnValue({ sendMail } as never);
+    try {
+      const resolveRecipient = vi
+        .fn()
+        .mockResolvedValue("synthetic@example.test");
+      const adapter = createSmtpTransport({
+        host: "localhost",
+        port: 25,
+        secure: false,
+        from: "synthetic@example.test",
+        resolveRecipient,
+      });
+      const message = {
+        deliveryKey: "d",
+        recipientId: "m",
+        template: "urgent",
+        appPath: "/workspace/inbox",
+      };
+      await adapter.deliver(context, message);
+      await adapter.deliver({ ...context, organizationId: "other" }, message);
+      expect(resolveRecipient.mock.calls).toEqual([
+        ["org", "m"],
+        ["other", "m"],
+      ]);
+      expect(sendMail).toHaveBeenCalledTimes(2);
+    } finally {
+      create.mockRestore();
+    }
+  });
+
   it("posts only to fixed Telegram endpoint and returns acceptance without human acknowledgment", async () => {
+    const tenants: string[] = [];
     const fetch = vi.fn(
-      async (url: string | URL | Request, init?: RequestInit) =>
+      async (_url: string | URL | Request, _init?: RequestInit) =>
         new Response(JSON.stringify({ ok: true, result: { message_id: 8 } }), {
           status: 200,
         }),
     );
     const adapter = createTelegramTransport({
       botToken: "secret",
-      resolveChat: async () => "chat",
+      resolveChat: async (organizationId) => {
+        tenants.push(organizationId);
+        return "chat";
+      },
       fetch,
     });
     const result = await adapter.deliver(context, {
@@ -79,6 +180,7 @@ describe("notification adapters and routing", () => {
     expect(String(fetch.mock.calls[0]?.[0])).toBe(
       "https://api.telegram.org/botsecret/sendMessage",
     );
+    expect(tenants).toEqual(["org"]);
   });
 
   it("classifies timeout as retryable with an indeterminate outcome and reuses fetch injection", async () => {
