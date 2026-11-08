@@ -145,7 +145,6 @@ A completed P0-12 setup: bounded event-driven native CLI supervisor, compact boa
 
 Root verify passed 13 files / 99 tests, Biome, strict types and web/worker builds. Controlled supervisor lifecycle tests and a real isolated native CLI write/commit/structured-result/explicit-resume smoke passed. No dependencies or migrations changed. B/P1-06 subsequently reported ready at f86665c (author-reported 79 PostgreSQL tests), awaiting canonical type adoption and independent review/verification; no acceptance is claimed. E/P1-07 can independently build controlled auth components on frozen shared inputs while B/R/A complete the server gate. M1/M2 remain open.
 
-
 ## Authentication lifecycle accepted — 2026-11-07
 
 Accepted P1-06 source 2f4c098 as integration 76ef4f3 using A-owned clean rebase onto 8a309c3 followed by fast-forward only. Aggregate binary patches matched byte-for-byte; three focused Conventional Commits retained and B's submitted history untouched. R's initial three findings were required corrections: password reset and session revocation now share a supported transaction, unexpected authorization rejections resolve safely, and session renewal/selection headers reach per-call collectors. R recheck be472652 at the exact source found no actionable issues. A independently passed Node 26.11.1 root verify (99 tests), real serial PostgreSQL (85 tests), and combined integration verify (102 tests/builds). No migration, dependency, environment or canonical wire change; resources retained.
