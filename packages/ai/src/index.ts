@@ -6,6 +6,7 @@ export {
   DETERMINISTIC_PROMPT_VERSION,
   requireSpan,
 } from "./deterministic.ts";
+export { boundedFailureDetail } from "./diagnostics.ts";
 export type {
   EvaluationCaseResult,
   EvaluationReport,

@@ -1,4 +1,5 @@
 import {
+  boundedFailureDetail,
   createExtractionService,
   createOpenAIProvider,
   OPENAI_PROMPT_VERSION,
@@ -243,9 +244,22 @@ try {
                 JSON.stringify({
                   service: "worker",
                   event: "extraction_failed",
+                  // Without a source identifier the detail cannot be tied to a
+                  // source when more than one is failing, and the rejected
+                  // proposal is not persisted to join against.
+                  sourceId: source.sourceId,
+                  revision: source.revision,
+                  // One correlationId per extraction attempt, so repeated
+                  // failures for the same source can be told apart.
+                  correlationId: context.correlationId,
                   reason: result.error.code,
                   retryable: result.error.retryable,
                   reservation,
+                  // Positions and machine codes only — the service keeps this
+                  // detail free of source text, and it is capped before logging.
+                  // Without it a rejection says only "VALIDATION" and the
+                  // operator has to reconstruct the provider call by hand.
+                  detail: boundedFailureDetail(result.error.fields),
                 }),
               );
               continue;
