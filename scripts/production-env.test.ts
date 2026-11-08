@@ -71,10 +71,24 @@ it("documents only variables the production profile reads", () => {
   }
 });
 
-it("pins image digests instead of tags", () => {
+// Production consumes what the release workflow published, not a local build:
+// a tag can move, and a locally built image has no reviewed release behind it.
+it("pins the release workflow's GHCR images by digest", () => {
   const { active } = assignments(operator);
-  for (const name of ["RELAY_WEB_IMAGE", "RELAY_WORKER_IMAGE"]) {
-    expect(active.get(name) ?? "").toMatch(/@sha256:/);
+  const images: [string, string][] = [
+    ["RELAY_WEB_IMAGE", "-web"],
+    ["RELAY_WORKER_IMAGE", "-worker"],
+  ];
+  for (const [name, suffix] of images) {
+    const value = active.get(name) ?? "";
+    expect(value.startsWith("ghcr.io/"), `${name} must come from ghcr.io`).toBe(
+      true,
+    );
+    expect(value.includes("@sha256:"), `${name} must pin a digest`).toBe(true);
+    expect(
+      value.split("@")[0]?.endsWith(suffix),
+      `${name} must be the ${suffix} image`,
+    ).toBe(true);
   }
 });
 
