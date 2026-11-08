@@ -303,3 +303,31 @@ select {
   background: #faf6ec;
   overflow-wrap: anywhere;
 }
+
+.agents {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 14px;
+}
+.agent-card {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  overflow-wrap: anywhere;
+}
+.agent-card h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+.agent-card dl {
+  margin: 0;
+  font-size: 12px;
+}
+.agent-card dt {
+  color: var(--muted);
+  margin-top: 10px;
+}
+.agent-card dd {
+  margin: 3px 0 0;
+}

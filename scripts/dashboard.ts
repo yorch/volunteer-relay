@@ -4,6 +4,8 @@ import { createServer } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { readHeadless } from "./dashboard/headless.ts";
+
 interface Message {
   id: string;
   at: string;
@@ -136,53 +138,7 @@ export async function monitorStatus(store: string, now = new Date()) {
   }
 }
 
-export async function headlessStatus(store: string) {
-  try {
-    const value = JSON.parse(
-      await readFile(join(store, "supervisor/state.json"), "utf8"),
-    ) as {
-      running: boolean;
-      checkedAt: string;
-      draining: boolean;
-      held: string[];
-      records: Record<
-        string,
-        {
-          lane: string;
-          task: string | null;
-          status: string;
-          reason: string;
-          startedAt?: string;
-          finishedAt?: string;
-        }
-      >;
-    };
-    const latest = new Map<string, (typeof value.records)[string]>();
-    for (const record of Object.values(value.records).sort((a, b) =>
-      (a.startedAt ?? "").localeCompare(b.startedAt ?? ""),
-    ))
-      latest.set(record.lane, record);
-    return {
-      state: !value.running
-        ? "stopped"
-        : Date.now() - Date.parse(value.checkedAt) > 45000
-          ? "stale"
-          : value.draining
-            ? "draining"
-            : "running",
-      checkedAt: value.checkedAt,
-      held: value.held,
-      lanes: [...latest.values()].map((r) => ({
-        lane: r.lane,
-        task: r.task,
-        status: r.status,
-        reason: r.reason,
-      })),
-    };
-  } catch {
-    return { state: "not-started", checkedAt: null, held: [], lanes: [] };
-  }
-}
+export const headlessStatus = readHeadless;
 
 export async function snapshot(root: string) {
   const board: Board = JSON.parse(
@@ -214,10 +170,34 @@ export async function snapshot(root: string) {
   });
   tasks.push(...plannedTasks(plan, new Set(tasks.map((task) => task.id))));
   tasks.sort((a, b) => a.id.localeCompare(b.id));
+  const headless = await headlessStatus(board.store);
+  const worktrees = execFileSync("git", ["worktree", "list", "--porcelain"], {
+    cwd: root,
+    encoding: "utf8",
+  })
+    .split("\n\n")
+    .map((entry) => ({
+      path: entry.match(/^worktree (.+)$/m)?.[1],
+      branch: entry.match(/^branch refs\/heads\/(.+)$/m)?.[1] ?? "detached",
+    }));
+  const agents = headless.lanes.map((lane) => {
+    const task =
+      board.tasks.find((t) => t.task === lane.task) ??
+      board.tasks.find((t) => t.assignment.owner === lane.lane && !t.accepted);
+    const worktree = lane.worktree ?? task?.claim?.worktree ?? null;
+    return {
+      ...lane,
+      task: lane.task ?? task?.task ?? null,
+      worktree,
+      branch: worktrees.find((w) => w.path === worktree)?.branch ?? null,
+      taskStatus: task?.status?.state ?? (task ? "assigned" : null),
+      acceptedCommit: task?.accepted?.commit ?? null,
+    };
+  });
   return {
     updatedAt: new Date().toISOString(),
     monitor: await monitorStatus(board.store),
-    headless: await headlessStatus(board.store),
+    headless: { ...headless, lanes: agents },
     tasks,
     messages: board.messages,
     unanswered: board.unanswered,

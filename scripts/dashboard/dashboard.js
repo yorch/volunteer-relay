@@ -93,14 +93,54 @@ function render() {
   $("headless-note").textContent = headless?.checkedAt
     ? `Checked ${date(headless.checkedAt)} · Held lanes: ${headless.held.join(", ") || "none"}`
     : "Not started. Dedicated sessions require an exclusive ownership handover.";
+  const budgets = headless?.budgets;
+  $("headless-budgets").textContent = budgets
+    ? `Limits: ${budgets.maxParallel} concurrent lanes · ${budgets.maxRunMinutes} minutes/run · ${budgets.maxRunsPerHour} runs/lane/hour · heartbeat interval ${budgets.intervalSeconds}s`
+    : "Supervisor budgets unavailable";
   $("headless-lanes").replaceChildren(
-    ...(headless?.lanes ?? []).map((lane) =>
-      el(
-        "p",
-        `${lane.lane} · ${lane.task ?? "coordination/review"} · ${lane.status} · ${lane.reason}`,
-        "watch-alert",
-      ),
-    ),
+    ...(headless?.lanes ?? []).map((lane) => {
+      const card = el("article", undefined, "agent-card");
+      card.append(el("h3", `Agent ${lane.lane} · ${lane.status}`));
+      const rows = [
+        ["Harness", lane.harness],
+        ["Configured model", lane.configuredModel],
+        ["Observed model", lane.observedModel ?? "Not recorded"],
+        [
+          "Task report",
+          `${lane.task ?? "No task / coordination"} · ${lane.taskStatus ?? "No report"}`,
+        ],
+        [
+          "Verified acceptance",
+          lane.acceptedCommit ?? "None recorded for this task",
+        ],
+        ["Worktree", lane.worktree ?? "No run recorded"],
+        ["Branch", lane.branch ?? "Unknown"],
+        ["Native session", lane.sessionId ?? "Not recorded"],
+        [
+          "Process",
+          `PID ${lane.pid ?? "unknown"} · liveness ${lane.processAlive === null ? "unknown" : lane.processAlive ? "observed alive" : "not alive"} · reported ${lane.reportedProcessStatus ?? "none"}`,
+        ],
+        ["Last start", lane.startedAt ? date(lane.startedAt) : "Not recorded"],
+        [
+          "Last finish",
+          lane.finishedAt ? date(lane.finishedAt) : "Not recorded",
+        ],
+        [
+          "Supervisor heartbeat",
+          lane.heartbeatAt ? date(lane.heartbeatAt) : "Not recorded",
+        ],
+        ["Reason / pause / failure", lane.reason],
+        [
+          "Recorded usage (latest session)",
+          `${lane.usage.inputTokens ?? "unknown"} input / ${lane.usage.outputTokens ?? "unknown"} output tokens · ${lane.usage.runsLastHour} runs in last hour`,
+        ],
+      ];
+      const list = el("dl");
+      for (const [label, value] of rows)
+        list.append(el("dt", label), el("dd", value));
+      card.append(list);
+      return card;
+    }),
   );
   const monitor = data.monitor;
   $("monitor-status").textContent = monitor?.state ?? "not-started";
