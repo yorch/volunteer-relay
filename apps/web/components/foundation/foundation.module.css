@@ -101,13 +101,17 @@
 }
 .root h2 {
   font-size: 1.2rem;
+}
+/* Default flow margins sit at zero specificity so any screen's own
+   `> * { margin: 0 }` reset (grid cards) wins instead of stacking on the gap. */
+:where(.root) h2 {
   margin: 0 0 1rem;
 }
 .root h3 {
   font-size: 1rem;
   margin: 0;
 }
-.root p {
+:where(.root) p {
   margin: 0.5rem 0 1rem;
 }
 .root :is(a, button, input, select, textarea, summary):focus-visible {
@@ -226,6 +230,8 @@
 }
 .badge {
   display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
   align-items: center;
   gap: var(--relay-space-1);
   padding: var(--relay-space-1) var(--relay-space-3);
