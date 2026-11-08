@@ -100,6 +100,23 @@ test("report reader sees only summary and is denied inbox", async ({
       json: { ok: false, error: { code: "DEPENDENCY_UNAVAILABLE" } },
     }),
   );
+  await page.route("**/api/product/reports*", (route) =>
+    route.fulfill({
+      json: {
+        ok: true,
+        value: {
+          query: {},
+          timezone: "UTC",
+          ledger: reader.summary,
+          approvedHours: 1.5,
+          openNeeds: 0,
+          resolvedNeeds: 0,
+          averageAcknowledgmentMinutes: null,
+          excludedUnknownDate: 2,
+        },
+      },
+    }),
+  );
   await page.goto("/workspace/reports");
   await expect(page.getByText("Approved minutes")).toBeVisible();
   await expect(page.getByText("90", { exact: true })).toBeVisible();
@@ -319,4 +336,84 @@ test("removing a selected source never carries its reason to another", async ({
   await expect(page.getByLabel("Review reason", { exact: false })).toHaveValue(
     "",
   );
+});
+
+test("report filters and CSV use the same query", async ({ page }) => {
+  await page.route("**/api/product/workspace", (route) =>
+    route.fulfill({
+      json: {
+        ok: true,
+        value: {
+          ...snapshot,
+          organization: { ...organization, role: "coordinator" },
+          members: [{ membershipId: "member-1", name: "Alex" }],
+        },
+      },
+    }),
+  );
+  await page.route("**/api/auth/organizations", (route) =>
+    route.fulfill({ status: 503, json: { ok: false } }),
+  );
+  const urls: string[] = [];
+  await page.route("**/api/product/reports?*", (route) => {
+    urls.push(route.request().url());
+    return route.fulfill({
+      json: {
+        ok: true,
+        value: {
+          query: {},
+          timezone: "UTC",
+          ledger: {
+            approvedMinutes: 90,
+            approvedContributions: 1,
+            activitiesWithApprovedContributions: 1,
+            pendingContributions: 0,
+            pendingUnknownDuration: 0,
+            pendingUnresolvedVolunteer: 0,
+          },
+          approvedHours: 1.5,
+          openNeeds: 1,
+          resolvedNeeds: 2,
+          averageAcknowledgmentMinutes: null,
+          excludedUnknownDate: 3,
+        },
+      },
+    });
+  });
+  await page.route("**/api/product/reports", (route) =>
+    route.fulfill({
+      json: {
+        ok: true,
+        value: {
+          query: {},
+          timezone: "UTC",
+          ledger: {
+            approvedMinutes: 90,
+            approvedContributions: 1,
+            activitiesWithApprovedContributions: 1,
+            pendingContributions: 0,
+            pendingUnknownDuration: 0,
+            pendingUnresolvedVolunteer: 0,
+          },
+          approvedHours: 1.5,
+          openNeeds: 1,
+          resolvedNeeds: 2,
+          averageAcknowledgmentMinutes: null,
+          excludedUnknownDate: 3,
+        },
+      },
+    }),
+  );
+  await page.goto("/workspace/reports");
+  await page.getByLabel("From date").fill("2026-01-01");
+  await page.getByLabel("To date").fill("2026-01-31");
+  await page.getByLabel("Program").fill("Garden");
+  await page.getByLabel("Volunteer", { exact: true }).selectOption("member-1");
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await expect.poll(() => urls.length).toBe(1);
+  const expected = new URL(urls[0]).search;
+  await expect(
+    page.getByRole("link", { name: "Download aggregate CSV" }),
+  ).toHaveAttribute("href", `/api/product/reports.csv${expected}`);
+  await expect(page.getByText("Unknown", { exact: true })).toBeVisible();
 });

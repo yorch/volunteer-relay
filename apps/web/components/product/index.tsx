@@ -3,8 +3,10 @@
 import {
   type ContributionRecord,
   type NeedRecord,
+  type ProductReport,
   productEndpoints,
   type ReviewQueueEntry,
+  reportQuerySchema,
   type WorkspaceSnapshot,
 } from "@relay/contracts";
 import {
@@ -1006,37 +1008,143 @@ function Need({
   );
 }
 function Summary({ snapshot }: { snapshot: WorkspaceSnapshot }) {
-  const s = snapshot.summary;
+  const [query, setQuery] = useState("");
+  const [report, setReport] = useState<ProductReport | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let live = true;
+    setLoading(true);
+    void request<ProductReport>(
+      `/api/product/reports${query ? `?${query}` : ""}`,
+    ).then((result) => {
+      if (!live) return;
+      if (result.ok) {
+        setReport(result.value);
+        setError("");
+      } else {
+        setReport(null);
+        setError(errorMessage(result.error.code));
+      }
+      setLoading(false);
+    });
+    return () => {
+      live = false;
+    };
+  }, [query]);
+  function apply(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const draft = Object.fromEntries(
+      ["from", "to", "program", "membershipId"]
+        .map((name) => [name, String(f.get(name) || "").trim()])
+        .filter(([, value]) => value),
+    );
+    const parsed = reportQuerySchema.safeParse(draft);
+    if (!parsed.success) {
+      setError("Check the date range and filters.");
+      return;
+    }
+    setError("");
+    setQuery(
+      new URLSearchParams(
+        Object.entries(parsed.data).filter(
+          (entry): entry is [string, string] => entry[1] !== undefined,
+        ),
+      ).toString(),
+    );
+  }
+  const s = report?.ledger;
   return (
     <>
       <h1>Summary</h1>
       <p>Only approved contributions count toward recorded time.</p>
-      {s ? (
-        <div className={styles.metrics}>
-          <Card>
-            <h2>Approved minutes</h2>
-            <p>{s.approvedMinutes}</p>
-          </Card>
-          <Card>
-            <h2>Approved contributions</h2>
-            <p>{s.approvedContributions}</p>
-          </Card>
-          <Card>
-            <h2>Activities with approved contributions</h2>
-            <p>{s.activitiesWithApprovedContributions}</p>
-          </Card>
-          <Card>
-            <h2>Pending contributions</h2>
-            <p>{s.pendingContributions}</p>
-            <p>
-              {s.pendingUnknownDuration} with unknown duration ·{" "}
-              {s.pendingUnresolvedVolunteer} with unresolved volunteer
-            </p>
-          </Card>
-        </div>
-      ) : (
-        <p>Summary is unavailable.</p>
-      )}
+      <Card>
+        <h2>Filter report</h2>
+        <form onSubmit={apply}>
+          <label>
+            From date
+            <input type="date" name="from" />
+          </label>
+          <label>
+            To date
+            <input type="date" name="to" />
+          </label>
+          <label>
+            Program
+            <input name="program" maxLength={100} />
+          </label>
+          {snapshot.organization.role !== "report-reader" && (
+            <label>
+              Volunteer
+              <select name="membershipId">
+                <option value="">All volunteers</option>
+                {snapshot.members.map((m) => (
+                  <option key={m.membershipId} value={m.membershipId}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <button type="submit">Apply filters</button>
+        </form>
+      </Card>
+      {error && <p role="alert">{error}</p>}
+      {loading ? (
+        <p aria-live="polite">Loading report…</p>
+      ) : report && s ? (
+        <>
+          <p>Timezone: {report.timezone}</p>
+          <a href={`/api/product/reports.csv${query ? `?${query}` : ""}`}>
+            Download aggregate CSV
+          </a>
+          <div className={styles.metrics}>
+            <Card>
+              <h2>Approved minutes</h2>
+              <p>{s.approvedMinutes}</p>
+            </Card>
+            <Card>
+              <h2>Approved hours</h2>
+              <p>{report.approvedHours}</p>
+            </Card>
+            <Card>
+              <h2>Approved contributions</h2>
+              <p>{s.approvedContributions}</p>
+            </Card>
+            <Card>
+              <h2>Activities with approved contributions</h2>
+              <p>{s.activitiesWithApprovedContributions}</p>
+            </Card>
+            <Card>
+              <h2>Pending contributions</h2>
+              <p>{s.pendingContributions}</p>
+              <p>
+                {s.pendingUnknownDuration} with unknown duration ·{" "}
+                {s.pendingUnresolvedVolunteer} with unresolved volunteer
+              </p>
+            </Card>
+            <Card>
+              <h2>Needs</h2>
+              <p>
+                {report.openNeeds} open · {report.resolvedNeeds} resolved
+              </p>
+            </Card>
+            <Card>
+              <h2>Average acknowledgment time</h2>
+              <p>
+                {report.averageAcknowledgmentMinutes === null
+                  ? "Unknown"
+                  : `${report.averageAcknowledgmentMinutes} minutes`}
+              </p>
+            </Card>
+            <Card>
+              <h2>Unknown dates excluded</h2>
+              <p>{report.excludedUnknownDate}</p>
+            </Card>
+          </div>
+        </>
+      ) : null}
     </>
   );
 }
