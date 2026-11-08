@@ -18,6 +18,12 @@ const instructions = `Extract volunteer activities, individual contributions, ne
 export function createOpenAIProvider(options: {
   apiKey: string;
   fetch?: typeof fetch;
+  maxOutputTokens?: number;
+  beforeRequest?: () => Promise<void>;
+  onUsage?: (usage: {
+    inputTokens: number;
+    outputTokens: number;
+  }) => Promise<void>;
   readAttachment?: (storageKey: string) => Promise<Uint8Array>;
 }): ExtractionProvider {
   const request = options.fetch ?? fetch;
@@ -62,6 +68,7 @@ export function createOpenAIProvider(options: {
           detail: "low",
         });
       }
+      await options.beforeRequest?.();
       let response: Response;
       try {
         response = await request("https://api.openai.com/v1/responses", {
@@ -74,7 +81,7 @@ export function createOpenAIProvider(options: {
             model: versions.model,
             instructions,
             input: [{ role: "user", content }],
-            max_output_tokens: 6000,
+            max_output_tokens: options.maxOutputTokens ?? 6000,
             store: false,
             text: {
               format: {
@@ -97,6 +104,20 @@ export function createOpenAIProvider(options: {
           retryable: response.status === 429 || response.status >= 500,
         });
       const payload: unknown = await response.json();
+      const usage = z
+        .object({
+          usage: z.object({
+            input_tokens: z.number().int().nonnegative(),
+            output_tokens: z.number().int().nonnegative(),
+          }),
+        })
+        .passthrough()
+        .safeParse(payload);
+      if (options.onUsage && usage.success)
+        await options.onUsage({
+          inputTokens: usage.data.usage.input_tokens,
+          outputTokens: usage.data.usage.output_tokens,
+        });
       const parsed = z
         .object({
           status: z.string(),

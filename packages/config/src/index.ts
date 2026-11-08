@@ -14,6 +14,23 @@ export const environmentSchema = z
     LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
     OPENAI_MODEL: z.string().min(1).optional(),
     OPENAI_API_KEY: z.string().min(1).optional(),
+    OPENAI_INPUT_MICROUSD_PER_MILLION: z.coerce
+      .number()
+      .int()
+      .nonnegative()
+      .optional(),
+    OPENAI_OUTPUT_MICROUSD_PER_MILLION: z.coerce
+      .number()
+      .int()
+      .nonnegative()
+      .optional(),
+    OPENAI_INPUT_TOKEN_LIMIT: z.coerce.number().int().positive().optional(),
+    OPENAI_OUTPUT_TOKEN_LIMIT: z.coerce
+      .number()
+      .int()
+      .positive()
+      .max(16000)
+      .default(6000),
     OPENAI_MONTHLY_BUDGET_CENTS: z.coerce
       .number()
       .int()

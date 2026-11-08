@@ -59,3 +59,41 @@ describe("OpenAI structured extraction transport", () => {
     });
   });
 });
+
+it("never calls the provider without a durable reservation and reports billed usage", async () => {
+  const request = vi
+    .fn<typeof fetch>()
+    .mockResolvedValue(
+      Response.json({
+        status: "completed",
+        usage: { input_tokens: 123, output_tokens: 45 },
+        output: [
+          {
+            content: [
+              { type: "output_text", text: '{"items":[],"unresolved":[]}' },
+            ],
+          },
+        ],
+      }),
+    );
+  const denied = createOpenAIProvider({
+    apiKey: "synthetic",
+    fetch: request,
+    beforeRequest: async () => {
+      throw new Error("Budget exhausted");
+    },
+  });
+  await expect(denied.extract({ source, versions })).rejects.toThrow(
+    "Budget exhausted",
+  );
+  expect(request).not.toHaveBeenCalled();
+  const usage = vi.fn(async () => {});
+  const provider = createOpenAIProvider({
+    apiKey: "synthetic",
+    fetch: request,
+    beforeRequest: async () => {},
+    onUsage: usage,
+  });
+  await provider.extract({ source, versions });
+  expect(usage).toHaveBeenCalledWith({ inputTokens: 123, outputTokens: 45 });
+});

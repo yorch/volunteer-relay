@@ -158,6 +158,7 @@ export type SmtpOptions = {
   secure: boolean;
   auth?: { user: string; pass: string };
   from: string;
+  appUrl?: string;
   resolveRecipient(organizationId: string, id: string): Promise<string | null>;
   timeoutMs?: number;
 };
@@ -179,7 +180,9 @@ export function createSmtpTransport(
       message.recipientId,
     );
     if (!to) throw new Error("Recipient unavailable");
-    const path = message.appPath;
+    const path = options.appUrl
+      ? new URL(message.appPath, options.appUrl).href
+      : message.appPath;
     const result = await client.sendMail({
       from: options.from,
       to,
@@ -194,6 +197,7 @@ export function createSmtpTransport(
 
 export type TelegramOptions = {
   botToken: string;
+  appUrl?: string;
   resolveChat(
     organizationId: string,
     recipientId: string,
@@ -225,7 +229,7 @@ export function createTelegramTransport(
           signal: controller.signal,
           body: JSON.stringify({
             chat_id,
-            text: `${message.template}\n\n${message.appPath}`,
+            text: `${message.template}\n\n${options.appUrl ? new URL(message.appPath, options.appUrl).href : message.appPath}`,
             disable_web_page_preview: true,
           }),
         },
