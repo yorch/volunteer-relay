@@ -3,8 +3,8 @@
   "scenarioId": "video-hackathon-tidepath-2026-11",
   "targetMode": "local",
   "baseUrl": "http://127.0.0.1:3300",
-  "appCommit": "c71d69670a88924a431bf4aa154e891f563656cb",
-  "capturedAt": "2026-11-08T18:15:19.040Z",
+  "appCommit": "4ce24e6c5a4de70910c17464a3aeb5e25241ebc6",
+  "capturedAt": "2026-11-08T18:39:10.412Z",
   "scenes": [
     {
       "sceneId": "S02",
@@ -15,27 +15,27 @@
       "fps": 30,
       "origin": "local",
       "baseUrl": "http://127.0.0.1:3300",
-      "appCommit": "c71d69670a88924a431bf4aa154e891f563656cb",
+      "appCommit": "4ce24e6c5a4de70910c17464a3aeb5e25241ebc6",
       "scenarioId": "video-hackathon-tidepath-2026-11",
       "checkpointId": "baseline",
       "role": "coordinator",
-      "recordedAt": "2026-11-08T18:12:20.663Z",
+      "recordedAt": "2026-11-08T18:36:19.582Z",
       "markers": [
         {
           "label": "checkpoint:baseline",
-          "atSeconds": 1.199
+          "atSeconds": 0.991
         },
         {
           "label": "inbox-loading",
-          "atSeconds": 1.212
+          "atSeconds": 0.998
         },
         {
           "label": "queue-verified",
-          "atSeconds": 1.212
+          "atSeconds": 0.998
         },
         {
           "label": "hold-complete",
-          "atSeconds": 24.115
+          "atSeconds": 24.114
         }
       ]
     },
@@ -48,68 +48,68 @@
       "fps": 30,
       "origin": "local",
       "baseUrl": "http://127.0.0.1:3300",
-      "appCommit": "c71d69670a88924a431bf4aa154e891f563656cb",
+      "appCommit": "4ce24e6c5a4de70910c17464a3aeb5e25241ebc6",
       "scenarioId": "video-hackathon-tidepath-2026-11",
       "checkpointId": "baseline",
       "role": "coordinator",
-      "recordedAt": "2026-11-08T18:12:49.523Z",
+      "recordedAt": "2026-11-08T18:36:47.813Z",
       "markers": [
         {
           "label": "checkpoint:baseline",
-          "atSeconds": 1.145
+          "atSeconds": 0.945
         },
         {
           "label": "inbox-ready",
-          "atSeconds": 1.146
+          "atSeconds": 0.945
         },
         {
           "label": "review-opened",
-          "atSeconds": 1.251
+          "atSeconds": 1.044
         },
         {
           "label": "proposal-verified",
-          "atSeconds": 1.266
+          "atSeconds": 1.054
         },
         {
           "label": "hold-complete",
-          "atSeconds": 23.502
+          "atSeconds": 23.501
         }
       ]
     },
     {
       "sceneId": "S04",
       "file": "captures/S04.mp4",
-      "durationSeconds": 28.933333,
+      "durationSeconds": 29,
       "width": 1920,
       "height": 1080,
       "fps": 30,
       "origin": "local",
       "baseUrl": "http://127.0.0.1:3300",
-      "appCommit": "c71d69670a88924a431bf4aa154e891f563656cb",
+      "appCommit": "4ce24e6c5a4de70910c17464a3aeb5e25241ebc6",
       "scenarioId": "video-hackathon-tidepath-2026-11",
       "checkpointId": "baseline",
       "role": "coordinator",
-      "recordedAt": "2026-11-08T18:13:17.493Z",
+      "recordedAt": "2026-11-08T18:37:15.117Z",
       "markers": [
         {
           "label": "checkpoint:baseline",
-          "atSeconds": 1.121
+          "atSeconds": 0.843
         },
         {
           "label": "proposal-open",
-          "atSeconds": 1.205
+          "atSeconds": 0.918
         },
         {
           "label": "accepted",
-          "atSeconds": 1.315
+          "atSeconds": 1.032
         },
         {
           "label": "ledger-visible",
-          "atSeconds": 1.831
+          "atSeconds": 1.393
         },
         {
           "label": "checkpoint:after-s04",
-          "atSeconds": 1.889
+          "atSeconds": 1.426
         },
         {
           "label": "hold-complete",
@@ -120,41 +120,41 @@
     {
       "sceneId": "S05",
       "file": "captures/S05.mp4",
-      "durationSeconds": 21.333333,
+      "durationSeconds": 21.433333,
       "width": 1920,
       "height": 1080,
       "fps": 30,
       "origin": "local",
       "baseUrl": "http://127.0.0.1:3300",
-      "appCommit": "c71d69670a88924a431bf4aa154e891f563656cb",
+      "appCommit": "4ce24e6c5a4de70910c17464a3aeb5e25241ebc6",
       "scenarioId": "video-hackathon-tidepath-2026-11",
       "checkpointId": "after-s04",
       "role": "coordinator",
-      "recordedAt": "2026-11-08T18:13:49.847Z",
+      "recordedAt": "2026-11-08T18:37:44.142Z",
       "markers": [
         {
           "label": "checkpoint:after-s04",
-          "atSeconds": 1.449
+          "atSeconds": 0.83
         },
         {
           "label": "duplicate-open",
-          "atSeconds": 1.589
+          "atSeconds": 0.899
         },
         {
           "label": "reason-entered",
-          "atSeconds": 1.612
+          "atSeconds": 0.909
         },
         {
           "label": "rejected",
-          "atSeconds": 1.835
+          "atSeconds": 0.966
         },
         {
           "label": "checkpoint:after-s05",
-          "atSeconds": 1.934
+          "atSeconds": 0.997
         },
         {
           "label": "hold-complete",
-          "atSeconds": 21.502
+          "atSeconds": 21.5
         }
       ]
     },
@@ -167,39 +167,39 @@
       "fps": 30,
       "origin": "local",
       "baseUrl": "http://127.0.0.1:3300",
-      "appCommit": "c71d69670a88924a431bf4aa154e891f563656cb",
+      "appCommit": "4ce24e6c5a4de70910c17464a3aeb5e25241ebc6",
       "scenarioId": "video-hackathon-tidepath-2026-11",
       "checkpointId": "after-s05",
       "role": "owner",
-      "recordedAt": "2026-11-08T18:14:15.930Z",
+      "recordedAt": "2026-11-08T18:38:08.899Z",
       "markers": [
         {
           "label": "checkpoint:after-s05",
-          "atSeconds": 1.346
+          "atSeconds": 1.07
         },
         {
           "label": "needs-board",
-          "atSeconds": 1.355
+          "atSeconds": 1.078
         },
         {
           "label": "assignment-filled",
-          "atSeconds": 1.445
+          "atSeconds": 1.153
         },
         {
           "label": "assigned",
-          "atSeconds": 1.571
+          "atSeconds": 1.268
         },
         {
           "label": "acknowledged",
-          "atSeconds": 1.718
+          "atSeconds": 1.393
         },
         {
           "label": "checkpoint:after-s06",
-          "atSeconds": 1.798
+          "atSeconds": 1.432
         },
         {
           "label": "hold-complete",
-          "atSeconds": 26.392
+          "atSeconds": 26.389
         }
       ]
     },
@@ -212,27 +212,27 @@
       "fps": 30,
       "origin": "local",
       "baseUrl": "http://127.0.0.1:3300",
-      "appCommit": "c71d69670a88924a431bf4aa154e891f563656cb",
+      "appCommit": "4ce24e6c5a4de70910c17464a3aeb5e25241ebc6",
       "scenarioId": "video-hackathon-tidepath-2026-11",
       "checkpointId": "after-s06",
       "role": "coordinator",
-      "recordedAt": "2026-11-08T18:14:46.492Z",
+      "recordedAt": "2026-11-08T18:38:39.424Z",
       "markers": [
         {
           "label": "checkpoint:after-s06",
-          "atSeconds": 1.266
+          "atSeconds": 1.116
         },
         {
           "label": "report-filtered",
-          "atSeconds": 1.312
+          "atSeconds": 1.178
         },
         {
           "label": "pending-visible",
-          "atSeconds": 1.316
+          "atSeconds": 1.181
         },
         {
           "label": "hold-complete",
-          "atSeconds": 26.761
+          "atSeconds": 26.76
         }
       ]
     }

@@ -8,7 +8,7 @@ frozen copy so a reviewer can watch the result without running the toolchain.
 
 | Field               | Value                                                                                     |
 | ------------------- | ----------------------------------------------------------------------------------------- |
-| Captured app commit | `c71d696` (`main`, after the review-media commit)                                         |
+| Captured app commit | `4ce24e6` (`main` + video overlay fix, after the #19 review sweep)                        |
 | Capture origin      | **local** rehearsal (`http://127.0.0.1:3300`) — not the hosted deployment                 |
 | Narration           | **ElevenLabs** (`eleven_multilingual_v2`), one voice, 363-word draft, per-scene alignment |
 | Captions            | phrase-level, derived from provider character alignment (`alignment`)                     |

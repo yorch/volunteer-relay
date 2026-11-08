@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "mode": "proof",
+  "mode": "full",
   "narrationSource": "elevenlabs",
   "captureOrigin": "local",
   "manifestScenes": 8,
-  "output": "/Users/yorch/code/volunteer-relay/video/output/proof.mp4",
-  "bytes": 1692247,
+  "output": "/Users/yorch/code/volunteer-relay/video/output/final.mp4",
+  "bytes": 14320386,
   "measured": {
-    "path": "/Users/yorch/code/volunteer-relay/video/output/proof.mp4",
-    "durationSeconds": 18.005,
+    "path": "/Users/yorch/code/volunteer-relay/video/output/final.mp4",
+    "durationSeconds": 176.2,
     "width": 1920,
     "height": 1080,
     "fps": 30,
@@ -17,8 +17,8 @@
     "hasAudio": true
   },
   "loudness": {
-    "integratedLufs": -16.4,
-    "truePeakDb": -4.2
+    "integratedLufs": -16.5,
+    "truePeakDb": -4
   },
-  "renderedAt": "2026-11-08T18:33:25.598Z"
+  "renderedAt": "2026-11-08T18:43:49.009Z"
 }
