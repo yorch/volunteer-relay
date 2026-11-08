@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  REPORT_DETAIL_ACTIVITIES_LIMIT,
+  REPORT_DETAIL_WEEKS,
   REPORT_TOP_CONTRIBUTORS_LIMIT,
   REPORT_VOLUNTEERS_LIMIT,
   reportContributorSchema,
   reportDashboardSchema,
+  reportDetailActivitySchema,
+  reportDetailWeekSchema,
+  reportDetailWeekStarts,
   reportQuerySchema,
+  reportVolunteerDetailSchema,
   reportVolunteerSchema,
   reportWeekRange,
 } from "./reports.ts";
@@ -214,5 +220,136 @@ describe("report dashboard contract", () => {
     expect(
       reportQuerySchema.safeParse({ organizationId: "foreign" }).success,
     ).toBe(false);
+  });
+  it("accepts the optional CSV view and keeps existing queries unchanged", () => {
+    expect(reportQuerySchema.parse({ from: "2026-11-01" })).toEqual({
+      from: "2026-11-01",
+    });
+    expect(reportQuerySchema.parse({ view: "volunteers" })).toEqual({
+      view: "volunteers",
+    });
+    expect(reportQuerySchema.parse({ view: "summary" }).view).toBe("summary");
+    expect(reportQuerySchema.safeParse({ view: "sources" }).success).toBe(
+      false,
+    );
+    expect(reportQuerySchema.safeParse({ view: "" }).success).toBe(false);
+  });
+});
+
+describe("reportDetailWeekStarts", () => {
+  it("lists the Mondays of the last eight weeks, oldest first", () => {
+    expect(
+      reportDetailWeekStarts({ from: "2026-11-09", to: "2026-11-15" }),
+    ).toEqual([
+      "2026-09-21",
+      "2026-09-28",
+      "2026-10-05",
+      "2026-10-12",
+      "2026-10-19",
+      "2026-10-26",
+      "2026-11-02",
+      "2026-11-09",
+    ]);
+    expect(REPORT_DETAIL_WEEKS).toBe(8);
+  });
+  it("crosses a year boundary and honors a smaller count", () => {
+    expect(
+      reportDetailWeekStarts({ from: "2027-01-04", to: "2027-01-10" }, 2),
+    ).toEqual(["2026-12-28", "2027-01-04"]);
+  });
+});
+
+describe("volunteer detail contract", () => {
+  const weeks = [
+    "2026-09-21",
+    "2026-09-28",
+    "2026-10-05",
+    "2026-10-12",
+    "2026-10-19",
+    "2026-10-26",
+    "2026-11-02",
+    "2026-11-09",
+  ].map((weekStart) => ({ weekStart, approvedMinutes: 0 }));
+  const activity = {
+    activityId: "activity-1",
+    kind: "Garden",
+    localDate: "2026-11-10",
+    approvedMinutes: 30,
+    approvedContributions: 1,
+  };
+  const detail = {
+    membershipId: "member-a",
+    weeks,
+    unknownDateContributions: 0,
+    byActivity: [activity],
+    byActivityTruncated: false,
+  };
+  it("accepts zero-filled weeks, an unknown week and an unknown activity date", () => {
+    expect(reportVolunteerDetailSchema.safeParse(detail).success).toBe(true);
+    expect(
+      reportVolunteerDetailSchema.safeParse({ ...detail, weeks: null }).success,
+    ).toBe(true);
+    expect(
+      reportVolunteerDetailSchema.safeParse({
+        ...detail,
+        byActivity: [{ ...activity, localDate: null }],
+      }).success,
+    ).toBe(true);
+    expect(
+      reportDashboardSchema.safeParse({ volunteerDetail: detail }).success,
+    ).toBe(true);
+  });
+  it("requires exactly eight consecutive weeks, oldest first", () => {
+    expect(
+      reportVolunteerDetailSchema.safeParse({
+        ...detail,
+        weeks: weeks.slice(1),
+      }).success,
+    ).toBe(false);
+    expect(
+      reportVolunteerDetailSchema.safeParse({
+        ...detail,
+        weeks: [...weeks].reverse(),
+      }).success,
+    ).toBe(false);
+    expect(
+      reportVolunteerDetailSchema.safeParse({
+        ...detail,
+        weeks: weeks.map((w, i) =>
+          i === 3 ? { ...w, weekStart: "2026-10-13" } : w,
+        ),
+      }).success,
+    ).toBe(false);
+  });
+  it("bounds activities and rejects evidence keys, negative minutes or empty rows", () => {
+    expect(
+      reportVolunteerDetailSchema.safeParse({
+        ...detail,
+        byActivity: Array.from(
+          { length: REPORT_DETAIL_ACTIVITIES_LIMIT + 1 },
+          () => activity,
+        ),
+      }).success,
+    ).toBe(false);
+    expect(
+      reportDetailActivitySchema.safeParse({ ...activity, sourceId: "s" })
+        .success,
+    ).toBe(false);
+    expect(
+      reportDetailActivitySchema.safeParse({
+        ...activity,
+        approvedContributions: 0,
+      }).success,
+    ).toBe(false);
+    expect(
+      reportDetailWeekSchema.safeParse({
+        weekStart: "2026-11-09",
+        approvedMinutes: -5,
+      }).success,
+    ).toBe(false);
+    const { byActivityTruncated: _, ...missingFlag } = detail;
+    expect(reportVolunteerDetailSchema.safeParse(missingFlag).success).toBe(
+      false,
+    );
   });
 });

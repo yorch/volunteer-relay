@@ -7,9 +7,11 @@ import {
 import {
   type AttachmentStore,
   type AuthorizationService,
+  REPORT_DETAIL_ACTIVITIES_LIMIT,
   REPORT_VOLUNTEERS_LIMIT,
   type Receipt,
   type Result,
+  reportDetailWeekStarts,
   reportQuerySchema,
   reportWeekRange,
   type SourceRepository,
@@ -33,7 +35,12 @@ import sharp from "sharp";
 import { handleDemoReplay } from "./demo-replay.ts";
 import { type ProductProcessing, productFailure } from "./http.ts";
 import { prepareImportPhotos, readImportInput } from "./import-photos.ts";
-import { buildProductReport, reportCsv } from "./report-csv.ts";
+import {
+  buildProductReport,
+  reportCsv,
+  volunteerCsv,
+  volunteerDetail,
+} from "./report-csv.ts";
 
 const photoTransform = createPhotoTransform(sharp);
 
@@ -72,6 +79,8 @@ export function createProductExtensions(options: {
   store: PrivateBlobStore;
   maxBytes: number;
   timezone?: (organizationId: string) => Promise<string>;
+  /** Clock for the report's local week; defaults to the system time. */
+  now?: () => Date;
   /**
    * Builds the services used inside a write transaction from that
    * transaction, so reads share its connection and snapshot instead of
@@ -109,7 +118,18 @@ export function createProductExtensions(options: {
         Object.fromEntries(new URL(request.url).searchParams),
       );
       if (!parsed.success) return denied("VALIDATION");
-      const q = parsed.data;
+      // `view` only selects the CSV shape; the echoed query never carries it,
+      // so the default report and CSV stay exactly as before.
+      const { view = "summary", ...q } = parsed.data;
+      const volunteerCsvView = path === "reports.csv" && view === "volunteers";
+      // The per-volunteer export is staff-only, checked before any lookup.
+      if (volunteerCsvView) {
+        const staffPermission = await options.authorization.require(
+          context,
+          "review:write",
+        );
+        if (!staffPermission.ok) return denied("FORBIDDEN");
+      }
       const timezone =
         (await options.timezone?.(context.organizationId)) ?? "UTC";
       const result = await options.db.execute(sql`
@@ -134,7 +154,10 @@ export function createProductExtensions(options: {
       );
       // The current local week ignores the from/to filter but keeps the
       // program and volunteer filters; unknown-date activities never count.
-      const weekRange = reportWeekRange(timezone, new Date());
+      const weekRange = reportWeekRange(
+        timezone,
+        options.now?.() ?? new Date(),
+      );
       const week = weekRange
         ? await options.db.execute(
             sql`select coalesce(sum(c.duration_minutes),0)::int as minutes from contribution c join activity a on a.organization_id=c.organization_id and a.id=c.activity_id where c.organization_id=${context.organizationId} and c.status='approved' and a.local_date >= ${weekRange.from}::date and a.local_date <= ${weekRange.to}::date and (${q.program ?? null}::text is null or a.kind=${q.program ?? null}) and (${q.membershipId ?? null}::text is null or c.membership_id=${q.membershipId ?? null})`,
@@ -143,15 +166,17 @@ export function createProductExtensions(options: {
       // Per-member and queue facts need the staff permission that already
       // shows contributions and sources; aggregate-only readers never get them.
       const staff =
-        path === "reports" &&
-        (await options.authorization.require(context, "review:write")).ok;
-      const contributors = staff
+        volunteerCsvView ||
+        (path === "reports" &&
+          (await options.authorization.require(context, "review:write")).ok);
+      const dashboard = staff && path === "reports";
+      const contributors = dashboard
         ? await options.db.execute(
             sql`select c.membership_id, coalesce(sum(c.duration_minutes),0)::int as minutes, count(*)::int as approved from contribution c join activity a on a.organization_id=c.organization_id and a.id=c.activity_id where c.organization_id=${context.organizationId} and c.status='approved' and c.membership_id is not null and (${q.from ?? null}::date is null or a.local_date >= ${q.from ?? null}::date) and (${q.to ?? null}::date is null or a.local_date <= ${q.to ?? null}::date) and (${q.program ?? null}::text is null or a.kind=${q.program ?? null}) and (${q.membershipId ?? null}::text is null or c.membership_id=${q.membershipId ?? null}) group by c.membership_id order by minutes desc, approved desc, c.membership_id limit 5`,
           )
         : null;
       // Same current-queue predicate as ProcessingRepository.listQueue.
-      const oldest = staff
+      const oldest = dashboard
         ? await options.db.execute(
             sql`select min(r.created_at) as oldest from extraction_run r where r.organization_id=${context.organizationId} and r.status='review' and r.generation=(select max(p.generation) from processing_policy_snapshot p where p.organization_id=r.organization_id and p.source_id=r.source_id and p.source_revision=r.source_revision) and not exists (select 1 from source_redaction z where z.organization_id=r.organization_id and z.source_id=r.source_id) and not exists (select 1 from source_revision newer where newer.organization_id=r.organization_id and newer.source_id=r.source_id and newer.revision>r.source_revision)`,
           )
@@ -162,9 +187,12 @@ export function createProductExtensions(options: {
       // week as weekApprovedMinutes and ignores from/to. One extra row is
       // fetched so the mapper can flag truncation.
       const inRange = sql`(${q.from ?? null}::date is null or a.local_date >= ${q.from ?? null}::date) and (${q.to ?? null}::date is null or a.local_date <= ${q.to ?? null}::date)`;
+      // The display name is resolved inside the same organization; a former
+      // member (no current membership) has none.
       const roster = staff
         ? await options.db.execute(
             sql`select c.membership_id,
+              (select u.name from member m join "user" u on u.id=m.user_id where m.organization_id=${context.organizationId} and m.id=c.membership_id) as volunteer_name,
               coalesce(sum(c.duration_minutes) filter(where c.status='approved' and ${inRange}),0)::int as minutes,
               count(*) filter(where c.status='approved' and ${inRange})::int as approved,
               count(*) filter(where c.status='pending' and ${inRange})::int as pending,
@@ -182,6 +210,28 @@ export function createProductExtensions(options: {
             limit ${REPORT_VOLUNTEERS_LIMIT + 1}`,
           )
         : null;
+      // Staff detail for the volunteer filter. The weekly trend covers the
+      // last REPORT_DETAIL_WEEKS local weeks (program filter kept, from/to
+      // ignored, unknown dates counted apart); byActivity keeps every filter.
+      const member = dashboard ? q.membershipId : undefined;
+      const program = sql`(${q.program ?? null}::text is null or a.kind=${q.program ?? null})`;
+      const firstWeek = weekRange ? reportDetailWeekStarts(weekRange)[0] : null;
+      const detailWeeks =
+        member && weekRange && firstWeek
+          ? await options.db.execute(
+              sql`select (date_trunc('week', a.local_date::timestamp))::date::text as week_start, coalesce(sum(c.duration_minutes),0)::int as minutes from contribution c join activity a on a.organization_id=c.organization_id and a.id=c.activity_id where c.organization_id=${context.organizationId} and c.status='approved' and c.membership_id=${member} and a.local_date >= ${firstWeek}::date and a.local_date <= ${weekRange.to}::date and ${program} group by 1`,
+            )
+          : null;
+      const detailUnknown = member
+        ? await options.db.execute(
+            sql`select count(*)::int as count from contribution c join activity a on a.organization_id=c.organization_id and a.id=c.activity_id where c.organization_id=${context.organizationId} and c.status='approved' and c.membership_id=${member} and a.local_date is null and ${program}`,
+          )
+        : null;
+      const detailActivities = member
+        ? await options.db.execute(
+            sql`select a.id as activity_id, a.kind, a.local_date::text as local_date, coalesce(sum(c.duration_minutes),0)::int as minutes, count(*)::int as approved from contribution c join activity a on a.organization_id=c.organization_id and a.id=c.activity_id where c.organization_id=${context.organizationId} and c.status='approved' and c.membership_id=${member} and ${inRange} and ${program} group by a.id, a.kind, a.local_date order by minutes desc, a.id collate "C" limit ${REPORT_DETAIL_ACTIVITIES_LIMIT + 1}`,
+          )
+        : null;
       const value = buildProductReport({
         query: q,
         timezone,
@@ -193,7 +243,35 @@ export function createProductExtensions(options: {
         contributors: contributors ? contributors.rows : null,
         oldestQueued: oldest ? (oldest.rows[0] ?? {}) : null,
         volunteers: roster ? roster.rows : null,
+        volunteerDetail:
+          member && detailUnknown && detailActivities
+            ? volunteerDetail({
+                membershipId: member,
+                weekRange,
+                weeks: detailWeeks ? detailWeeks.rows : [],
+                unknownDate: detailUnknown.rows[0] ?? {},
+                activities: detailActivities.rows,
+              })
+            : null,
       });
+      if (volunteerCsvView) {
+        const names = new Map<string, string>();
+        for (const row of roster?.rows ?? []) {
+          if (
+            typeof row.membership_id === "string" &&
+            typeof row.volunteer_name === "string"
+          )
+            names.set(row.membership_id, row.volunteer_name);
+        }
+        return new Response(volunteerCsv(value.volunteers ?? [], names), {
+          headers: {
+            "content-type": "text/csv; charset=utf-8",
+            "content-disposition": "attachment; filename=volunteer-hours.csv",
+            "cache-control": "no-store",
+            "x-report-truncated": String(value.volunteersTruncated === true),
+          },
+        });
+      }
       if (path === "reports.csv") {
         return new Response(reportCsv(value), {
           headers: {
