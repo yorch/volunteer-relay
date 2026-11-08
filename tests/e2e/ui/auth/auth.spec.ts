@@ -1,4 +1,9 @@
 import { expect, test } from "@playwright/test";
+import {
+  chooseOption,
+  expectOption,
+  expectOptionTexts,
+} from "../helpers/controls.js";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/dev/auth");
@@ -48,7 +53,7 @@ test("labels, keyboard focus, safe sign-in payload and pending lock", async ({
 test("safe errors preserve drafts and thrown callbacks recover", async ({
   page,
 }) => {
-  await page.getByLabel("Simulated outcome").selectOption("error");
+  await chooseOption(page.getByLabel("Simulated outcome"), "error");
   const form = page.getByRole("form", { name: "Sign in", exact: true });
   await form.getByLabel("Email").fill("synthetic@example.invalid");
   await form
@@ -62,11 +67,11 @@ test("safe errors preserve drafts and thrown callbacks recover", async ({
   await expect(
     page.getByText("Synthetic private transport detail"),
   ).toHaveCount(0);
-  await page.getByLabel("Simulated outcome").selectOption("throw");
+  await chooseOption(page.getByLabel("Simulated outcome"), "throw");
   await form.getByRole("button").click();
   await expect(form.getByRole("alert")).toContainText("service is unavailable");
   await expect(form.getByRole("button")).toBeEnabled();
-  await page.getByLabel("Simulated outcome").selectOption("success");
+  await chooseOption(page.getByLabel("Simulated outcome"), "success");
   await form.getByRole("button").click();
   await expect(form.getByRole("status")).toContainText("completed");
   await expect(form.getByLabel("Password", { exact: true })).toHaveValue("");
@@ -127,22 +132,23 @@ test("organization choices are server supplied, empty choices lock actions", asy
 }) => {
   const form = page.getByRole("form", { name: "Switch organization" }).first();
   const choice = form.getByLabel("Organization", { exact: true });
-  await expect(choice).toHaveValue("synthetic-garden");
-  await expect(choice.locator("option")).toHaveText([
+  await expectOption(choice, "synthetic-garden");
+  await expectOptionTexts(choice, [
     "Choose an organization",
     "Synthetic Garden (volunteer)",
     "Synthetic Library (report-reader)",
   ]);
-  await choice.selectOption("synthetic-library");
+  await chooseOption(choice, "synthetic-library");
   await form.getByRole("button").click();
   await expect(choice).toBeDisabled();
   await expect(form.getByRole("status")).toContainText("completed");
-  await expect(
+  await expectOption(
     page
       .getByRole("form", { name: "Switch organization" })
       .first()
       .getByLabel("Organization", { exact: true }),
-  ).toHaveValue("synthetic-library");
+    "synthetic-library",
+  );
   const empty = page.getByRole("form", { name: "Switch organization" }).last();
   await expect(empty.getByRole("button")).toBeDisabled();
   await expect(
@@ -156,7 +162,7 @@ test("organization choices are server supplied, empty choices lock actions", asy
 test("every callback error releases its lock and keeps a safe retry available", async ({
   page,
 }) => {
-  await page.getByLabel("Simulated outcome").selectOption("error");
+  await chooseOption(page.getByLabel("Simulated outcome"), "error");
   const request = page.getByRole("form", { name: "Request a password reset" });
   await request.getByLabel("Email").fill("synthetic@example.invalid");
   const reset = page.getByRole("form", { name: "Choose a new password" });
@@ -175,9 +181,10 @@ test("every callback error releases its lock and keeps a safe retry available", 
   await expect(reset.getByLabel("New password")).toHaveValue(
     "synthetic-draft-password",
   );
-  await expect(
+  await expectOption(
     organization.getByLabel("Organization", { exact: true }),
-  ).toHaveValue("synthetic-garden");
+    "synthetic-garden",
+  );
 });
 
 test("preview layout remains readable with visible keyboard focus", async ({

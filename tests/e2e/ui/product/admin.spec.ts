@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { chooseOption, expectOption } from "../helpers/controls.js";
 
 const organization = {
   organizationId: "org",
@@ -165,7 +166,7 @@ test("member roster keeps roles visible and sends the selected invite role", asy
     page.locator("span[class*='roleBadge']").filter({ hasText: /^Owner$/ }),
   ).toBeVisible();
   await page.getByLabel("Email address").fill("new@example.org");
-  await page.getByLabel("Workspace role").selectOption("coordinator");
+  await chooseOption(page.getByLabel("Workspace role"), "coordinator");
   await page.getByRole("button", { name: "Send invitation" }).click();
   await expect.poll(() => inviteBody.email).toBe("new@example.org");
   expect(inviteBody).toEqual({ email: "new@example.org", role: "coordinator" });
@@ -229,8 +230,8 @@ test("staff must deliberately select and explain a candidate link", async ({
   await page.goto("/workspace/inbox");
   await page.getByRole("button", { name: "Source s1 · revision 1" }).click();
   const select = page.getByLabel("Link existing activity for a1");
-  await expect(select).toHaveValue("");
-  await select.selectOption("existing");
+  await expectOption(select, "");
+  await chooseOption(select, "existing");
   await expect(
     page.getByRole("button", { name: "Accept proposal" }),
   ).toBeDisabled();

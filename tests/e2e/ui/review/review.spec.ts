@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { chooseOption } from "../helpers/controls.js";
 
 test("review shows unknowns, field evidence, independent revision and safe state resets", async ({
   page,
@@ -64,9 +65,10 @@ test("review shows unknowns, field evidence, independent revision and safe state
   ).toBeVisible();
   // The preview adapter checks expectedRevision against the review aggregate (12), not source revision (1).
   await expect(page.getByText(/Preview review revision 13\./)).toBeVisible();
-  await page
-    .getByRole("combobox", { name: "Show updates" })
-    .selectOption("urgent");
+  await chooseOption(
+    page.getByRole("combobox", { name: "Show updates" }),
+    "urgent",
+  );
   await expect(
     page.getByRole("heading", { name: "Original source" }),
   ).toHaveCount(0);
@@ -178,9 +180,10 @@ test("rejection needs a reason, pending results stay with their source, conflict
   await expect(
     page.getByText("Simulated acceptance — no data saved", { exact: true }),
   ).toHaveCount(0);
-  await page
-    .getByRole("combobox", { name: "Preview response" })
-    .selectOption("conflict");
+  await chooseOption(
+    page.getByRole("combobox", { name: "Preview response" }),
+    "conflict",
+  );
   await page.getByRole("button", { name: /^Inez/ }).click();
   await reason.fill("Reason survives a conflict.");
   await page.getByRole("button", { name: "Accept preview" }).click();
@@ -200,9 +203,10 @@ test("rejection needs a reason, pending results stay with their source, conflict
 
 test("unavailable and empty inbox states stay explicit", async ({ page }) => {
   await page.goto("/dev/review");
-  await page
-    .getByRole("combobox", { name: "Preview response" })
-    .selectOption("error");
+  await chooseOption(
+    page.getByRole("combobox", { name: "Preview response" }),
+    "error",
+  );
   await page.getByRole("button", { name: /^Inez/ }).click();
   await page
     .getByRole("textbox", { name: "Review reason" })
@@ -217,9 +221,10 @@ test("unavailable and empty inbox states stay explicit", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Accept preview" }),
   ).toBeEnabled();
-  await page
-    .getByRole("combobox", { name: "Preview response" })
-    .selectOption("empty");
+  await chooseOption(
+    page.getByRole("combobox", { name: "Preview response" }),
+    "empty",
+  );
   await expect(
     page.getByRole("heading", { name: "No matching updates" }),
   ).toBeVisible();

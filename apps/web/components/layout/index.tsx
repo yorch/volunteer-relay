@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import { FoundationRoot } from "../foundation";
+import { FoundationRoot, Icon, type IconName } from "../foundation";
 import styles from "./layout.module.css";
 
-export type NavigationIcon = keyof typeof icons;
+export type NavigationIcon = string;
 export type NavigationItem = {
   href: string;
   label: string;
@@ -17,37 +17,22 @@ const adminPaths = new Set([
   "members",
   "retention",
 ]);
-const icons: Record<string, string> = {
-  workspace: "M3 10 12 3l9 7v10h-6v-6H9v6H3z",
-  inbox: "M4 4h16v12h-4l-2 3h-4l-2-3H4z M4 12h16",
-  needs: "M5 21V4m0 1h12l-2 4 2 4H5",
-  activities: "M12 3a9 9 0 1 0 9 9 9 9 0 0 0-9-9Zm0 4v5l3 2",
-  reports: "M4 20V10h4v10m4 0V4h4v16m4 0v-7h2v7",
-  import: "M12 3v11m-4-4 4 4 4-4M4 16v4h16v-4",
-  settings:
-    "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M19 5l-2 2M7 17l-2 2",
-  members:
-    "M16 20v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2m6-10a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7 4a4 4 0 0 1 3 4v2",
-  notifications: "M5 17h14l-2-3V9a5 5 0 0 0-10 0v5l-2 3Zm5 3h4",
-  history: "M4 5v5h5M5 10a8 8 0 1 1 1 7m6-9v4l3 2",
-  delivery: "M3 5h12v12H3z M15 9h3l3 3v5h-6z M6 20h2m9 0h2",
-  retention: "M4 6h16M9 6V4h6v2m-9 0 1 14h10l1-14M10 10v6m4-6v6",
-};
-function Icon({ path }: { path: string }) {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d={path} />
-    </svg>
-  );
-}
+const iconNames = new Set([
+  "workspace",
+  "inbox",
+  "needs",
+  "activities",
+  "reports",
+  "import",
+  "settings",
+  "members",
+  "notifications",
+  "history",
+  "delivery",
+  "retention",
+]);
+const navIcon = (name: string): IconName =>
+  (iconNames.has(name) ? name : "workspace") as IconName;
 export function Brand() {
   return (
     <a href="/" className={styles.brand}>
@@ -103,12 +88,14 @@ export function StaffShell({
           <details className={styles.menu}>
             <summary className={styles.menuToggle}>
               <span>Menu</span>
-              <span aria-hidden="true">☰</span>
+              <span aria-hidden="true" className={styles.menuIcon}>
+                <Icon name="menu" size={20} />
+              </span>
             </summary>
             <div className={styles.menuContents}>
               <div className={styles.organization}>
                 <span className={styles.orgMark} aria-hidden="true">
-                  ✳
+                  <Icon name="flag" size={20} />
                 </span>
                 <span>
                   <small>YOUR ORGANIZATION</small>
@@ -140,7 +127,7 @@ export function StaffShell({
                                       : undefined
                                   }
                                 >
-                                  <Icon path={icons[item.icon] ?? ""} />
+                                  <Icon name={navIcon(item.icon)} size={20} />
                                   <span>{item.label}</span>
                                   {item.count !== undefined && (
                                     <span className={styles.count}>
@@ -160,9 +147,9 @@ export function StaffShell({
               {account && (
                 <div className={styles.account}>
                   <span className={styles.accountIcon} aria-hidden="true">
-                    <Icon path="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM5 21v-2a7 7 0 0 1 14 0v2" />
+                    <Icon name="user" size={20} />
                   </span>
-                  <div>
+                  <div className={styles.accountBody}>
                     <strong>Account</strong>
                     <div>{account}</div>
                   </div>
@@ -174,7 +161,10 @@ export function StaffShell({
         <div className={styles.mainColumn}>
           <header className={styles.topbar}>
             <span>
-              {organization} <span className={styles.slash}>/</span>{" "}
+              {organization}
+              <span className={styles.slash} aria-hidden="true">
+                <Icon name="chevronRight" size={16} />
+              </span>
               <strong>{current?.label ?? "Workspace"}</strong>
             </span>
             <span className={styles.topbarNote}>

@@ -1,13 +1,34 @@
 .stack {
   display: grid;
-  gap: 1rem;
+  gap: var(--relay-space-4, 16px);
+  min-width: 0;
+}
+.stack dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--relay-space-2, 8px) var(--relay-space-4, 16px);
+  margin: 0 0 var(--relay-space-4, 16px);
+}
+.stack dt {
+  color: var(--relay-muted, #4d6058);
+  font-weight: 650;
+}
+.stack dd {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 .actions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 1rem;
+  gap: var(--relay-space-3, 12px);
 }
 .muted {
-  color: var(--relay-muted, #53675f);
+  margin: 0;
+  color: var(--relay-muted, #4d6058);
+}
+@media (max-width: 760px) {
+  .actions > button {
+    width: 100%;
+  }
 }

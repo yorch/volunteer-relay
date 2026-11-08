@@ -7,7 +7,8 @@ import type {
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { errorMessage, request } from "../api-client";
 import { Card as BaseCard, Live } from "../card";
-import styles from "./admin.module.css";
+import { Button, Icon, TextInput } from "../foundation";
+import styles from "./operations.module.css";
 
 const load = <T,>(url: string) => request<T>(url);
 const message = errorMessage;
@@ -115,21 +116,29 @@ export function History() {
       </header>
       <Card className={styles.searchCard}>
         <form className={styles.historySearch} onSubmit={search}>
-          <label>
+          <label className={styles.field} htmlFor="history-record-id">
             Record ID
-            <input
+            <TextInput
+              id="history-record-id"
               name="aggregateId"
               required
               placeholder="Paste a need, source or activity ID"
             />
           </label>
-          <label>
-            Before <span className={styles.optional}>(optional)</span>
-            <input name="before" type="datetime-local" />
+          <label className={styles.field} htmlFor="history-before">
+            <span>
+              Before <span className={styles.optional}>(optional)</span>
+            </span>
+            <TextInput
+              id="history-before"
+              name="before"
+              type="datetime-local"
+            />
           </label>
-          <button type="submit" disabled={pending}>
+          <Button type="submit" disabled={pending}>
+            <Icon name="search" size={16} />
             {pending ? "Loading history…" : "Find history"}
-          </button>
+          </Button>
         </form>
         <p className={styles.help}>
           Showing up to 100 changes, newest first. Add a date to look further
@@ -288,6 +297,9 @@ export function Delivery({ owner }: { owner: boolean }) {
         </div>
       </header>
       <aside className={styles.definitionNote}>
+        <span className={styles.noteIcon}>
+          <Icon name="info" size={20} />
+        </span>
         <strong>Delivery status has limits.</strong> Provider acceptance means a
         delivery request was accepted for processing. It does not confirm that a
         person received or acknowledged the need.

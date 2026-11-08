@@ -2,10 +2,13 @@ import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
   ReactNode,
-  SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
 import styles from "./foundation.module.css";
+import { Icon, type IconName } from "./icons";
+
+export { Select, type SelectChangeEvent, type SelectProps } from "./select";
+export { Icon, type IconName };
 
 export function FoundationRoot({ children }: { children: ReactNode }) {
   return <div className={styles.root}>{children}</div>;
@@ -16,7 +19,7 @@ export function Button({
   type = "button",
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "secondary" | "danger";
+  variant?: "primary" | "secondary" | "danger" | "ghost";
 }) {
   return (
     <button
@@ -64,7 +67,7 @@ export function Badge({
   tone = "neutral",
 }: {
   children: ReactNode;
-  tone?: "neutral" | "success" | "warning" | "danger";
+  tone?: "neutral" | "success" | "warning" | "danger" | "info" | "accent";
 }) {
   return <span className={`${styles.badge} ${styles[tone]}`}>{children}</span>;
 }
@@ -107,11 +110,6 @@ export function TextArea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
     />
   );
 }
-export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <select {...props} className={`${styles.input} ${props.className ?? ""}`} />
-  );
-}
 export function FileUpload({
   id,
   label,
@@ -139,17 +137,68 @@ export function EmptyState({
   title,
   children,
   action,
+  icon,
 }: {
   title: string;
   children: ReactNode;
   action?: ReactNode;
+  icon?: IconName;
 }) {
   return (
     <div className={styles.empty}>
+      {icon && (
+        <span className={styles.emptyIcon} aria-hidden="true">
+          <Icon name={icon} size={24} />
+        </span>
+      )}
       <h3>{title}</h3>
       <p>{children}</p>
       {action}
     </div>
+  );
+}
+export function Skeleton({
+  width,
+  height,
+  className = "",
+}: {
+  width?: string | number;
+  height?: string | number;
+  className?: string;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`${styles.skeleton} ${className}`}
+      style={{ width, height }}
+    />
+  );
+}
+export function Meter({
+  value,
+  max,
+  tone = "teal",
+  className = "",
+}: {
+  value: number | null;
+  max: number;
+  tone?: "teal" | "blue" | "clay" | "amber";
+  className?: string;
+}) {
+  const known = value !== null && max > 0;
+  const pct = known ? Math.min(100, Math.max(0, (value / max) * 100)) : 0;
+  return (
+    <span
+      aria-hidden="true"
+      className={`${styles.meter} ${known ? "" : styles.meterUnknown} ${className}`}
+    >
+      {known && pct > 0 && (
+        <span
+          className={`${styles.meterFill} ${styles[`meter-${tone}`]}`}
+          style={{ width: `${Math.max(pct, 2)}%` }}
+        />
+      )}
+    </span>
   );
 }
 export function Feedback({

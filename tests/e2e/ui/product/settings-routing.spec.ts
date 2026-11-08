@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { chooseOption, expectOption } from "../helpers/controls.js";
 
 const organization = {
   organizationId: "org",
@@ -80,9 +81,10 @@ test("category routing chooses eligible people by name", async ({ page }) => {
   await expect(
     page.getByRole("checkbox", { name: "Sam", exact: true }),
   ).toHaveCount(0);
-  await page
-    .getByLabel("Fallback member", { exact: false })
-    .selectOption("owner");
+  await chooseOption(
+    page.getByLabel("Fallback member", { exact: false }),
+    "owner",
+  );
   await page.getByRole("button", { name: "Save settings" }).click();
   await expect.poll(() => body).not.toBeNull();
   expect(body).toMatchObject({
@@ -131,7 +133,7 @@ test("unavailable fallback requires an explicit replacement or removal", async (
   await page.goto("/workspace/settings");
   const fallback = page.getByLabel("Fallback member", { exact: false });
   await expect(fallback).toBeEnabled();
-  await expect(fallback).toHaveValue("former-staff");
+  await expectOption(fallback, "former-staff");
   await page
     .getByLabel("Organization timezone", { exact: false })
     .fill("Europe/London");
@@ -142,7 +144,7 @@ test("unavailable fallback requires an explicit replacement or removal", async (
     ),
   ).toBeVisible();
   expect(body).toBeNull();
-  await fallback.selectOption("");
+  await chooseOption(fallback, "");
   await page.getByRole("button", { name: "Save settings" }).click();
   await expect.poll(() => body).not.toBeNull();
   expect(body).toMatchObject({
@@ -177,10 +179,10 @@ test("valid fallback survives delayed team loading and an unrelated edit", async
   await page.goto("/workspace/settings");
   const fallback = page.getByLabel("Fallback member", { exact: false });
   await expect(fallback).toBeDisabled();
-  await expect(fallback).toHaveValue("staff");
+  await expectOption(fallback, "staff");
   release();
   await expect(fallback).toBeEnabled();
-  await expect(fallback).toHaveValue("staff");
+  await expectOption(fallback, "staff");
   await page
     .getByLabel("Organization timezone", { exact: false })
     .fill("Europe/London");

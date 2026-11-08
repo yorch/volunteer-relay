@@ -16,6 +16,7 @@ import {
 } from "react";
 import { type ApiResult, errorMessage, request } from "../api-client";
 import { Card, Live } from "../card";
+import { Button, Icon, Select, TextInput } from "../foundation";
 import styles from "./admin.module.css";
 
 type Result<T> = ApiResult<T>;
@@ -143,9 +144,9 @@ export function Settings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
         {owner && staffError ? (
           <>
             <p>{staffError}</p>
-            <button type="button" onClick={() => void reloadStaff()}>
+            <Button variant="secondary" onClick={() => void reloadStaff()}>
               Retry team members
-            </button>
+            </Button>
           </>
         ) : (
           ""
@@ -166,9 +167,9 @@ export function Settings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
       ) : (
         <Panel>
           <Status error={data.error} />
-          <button type="button" onClick={() => void data.reload()}>
+          <Button variant="secondary" onClick={() => void data.reload()}>
             Try again
-          </button>
+          </Button>
         </Panel>
       )}
     </div>
@@ -196,6 +197,7 @@ function SettingsForm({
     })),
   );
   const [fallback, setFallback] = useState(initial.fallbackMembershipId ?? "");
+  const [policy, setPolicy] = useState<string>(initial.automationPolicy);
   const [localError, setLocalError] = useState("");
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -239,10 +241,10 @@ function SettingsForm({
       expectedRevision: initial.revision,
       idempotencyKey: "placeholder",
       timezone: String(f.get("timezone")),
-      automationPolicy: String(f.get("policy")),
+      automationPolicy: policy,
       policyVersion: String(f.get("version")),
       routing: routes,
-      fallbackMembershipId: String(f.get("fallback") || "") || null,
+      fallbackMembershipId: fallback || null,
       ackMinutes: Number(f.get("ack")),
       retentionDays: Number(f.get("retention")),
     };
@@ -282,22 +284,31 @@ function SettingsForm({
                 </p>
               </div>
               <div className={styles.formGrid}>
-                <label>
-                  Automation policy
-                  <select name="policy" defaultValue={initial.automationPolicy}>
+                <div className={styles.field}>
+                  <label htmlFor="automation-policy">Automation policy</label>
+                  <Select
+                    id="automation-policy"
+                    name="policy"
+                    value={policy}
+                    onChange={(event) => {
+                      writer.change();
+                      setPolicy(event.target.value);
+                    }}
+                  >
                     <option value="review-all">Review all</option>
                     <option value="validated-auto-record">
                       Validated auto-record
                     </option>
-                  </select>
+                  </Select>
                   <span className={styles.help}>
                     Auto-record applies only when server eligibility checks
                     pass. All other proposals wait for staff review.
                   </span>
-                </label>
-                <label>
+                </div>
+                <label className={styles.field} htmlFor="policy-version">
                   Policy version
-                  <input
+                  <TextInput
+                    id="policy-version"
                     name="version"
                     defaultValue={initial.policyVersion}
                     required
@@ -328,9 +339,13 @@ function SettingsForm({
                   {routing.map((row, index) => (
                     <fieldset className={styles.routingRule} key={row.key}>
                       <legend>Route {index + 1}</legend>
-                      <label>
+                      <label
+                        className={styles.field}
+                        htmlFor={`route-category-${row.key}`}
+                      >
                         Category
-                        <input
+                        <TextInput
+                          id={`route-category-${row.key}`}
                           value={row.category}
                           maxLength={100}
                           required
@@ -348,7 +363,10 @@ function SettingsForm({
                       </label>
                       <div className={styles.routingRecipients}>
                         {members.map((member) => (
-                          <label key={member.membershipId}>
+                          <label
+                            key={member.membershipId}
+                            className={styles.recipient}
+                          >
                             <input
                               type="checkbox"
                               checked={row.memberIds.includes(
@@ -388,10 +406,10 @@ function SettingsForm({
                               ),
                           )
                           .map((id) => (
-                            <div key={id} className={styles.help}>
+                            <div key={id} className={styles.unavailable}>
                               Unavailable team member
-                              <button
-                                type="button"
+                              <Button
+                                variant="secondary"
                                 onClick={() => {
                                   writer.change();
                                   setRouting((rows) =>
@@ -409,12 +427,13 @@ function SettingsForm({
                                 }}
                               >
                                 Remove unavailable member
-                              </button>
+                              </Button>
                             </div>
                           ))}
                       </div>
-                      <button
-                        type="button"
+                      <Button
+                        variant="danger"
+                        className={styles.routeRemove}
                         onClick={() => {
                           writer.change();
                           setRouting((rows) =>
@@ -423,11 +442,12 @@ function SettingsForm({
                         }}
                       >
                         Remove route
-                      </button>
+                      </Button>
                     </fieldset>
                   ))}
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
+                    className={styles.addRoute}
                     onClick={() => {
                       writer.change();
                       setRouting((rows) => [
@@ -441,14 +461,18 @@ function SettingsForm({
                     }}
                   >
                     Add category route
-                  </button>
+                  </Button>
                 </section>
-                <label>
-                  Fallback member
-                  <select
+                <div className={styles.field}>
+                  <label htmlFor="fallback-member">Fallback member</label>
+                  <Select
+                    id="fallback-member"
                     name="fallback"
                     value={fallback}
-                    onChange={(event) => setFallback(event.target.value)}
+                    onChange={(event) => {
+                      writer.change();
+                      setFallback(event.target.value);
+                    }}
                   >
                     <option value="">No fallback member</option>
                     {fallback &&
@@ -464,15 +488,16 @@ function SettingsForm({
                         {m.name}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                   <span className={styles.help}>
                     Used when a category has no matching route.
                   </span>
-                </label>
-                <label>
+                </div>
+                <label className={styles.field} htmlFor="ack-minutes">
                   Acknowledgment deadline
                   <span className={styles.inputWithUnit}>
-                    <input
+                    <TextInput
+                      id="ack-minutes"
                       name="ack"
                       type="number"
                       min="1"
@@ -500,9 +525,10 @@ function SettingsForm({
                 </p>
               </div>
               <div className={styles.formGrid}>
-                <label>
+                <label className={styles.field} htmlFor="org-timezone">
                   Organization timezone
-                  <input
+                  <TextInput
+                    id="org-timezone"
                     name="timezone"
                     defaultValue={initial.timezone}
                     required
@@ -511,10 +537,11 @@ function SettingsForm({
                     Use an IANA timezone such as America/Chicago.
                   </span>
                 </label>
-                <label>
+                <label className={styles.field} htmlFor="source-retention">
                   Source retention
                   <span className={styles.inputWithUnit}>
-                    <input
+                    <TextInput
+                      id="source-retention"
                       name="retention"
                       type="number"
                       min="1"
@@ -534,9 +561,9 @@ function SettingsForm({
             {owner && (
               <div className={styles.formFooter}>
                 <span>Saving creates a new settings revision.</span>
-                <button type="submit" disabled={writer.busy}>
+                <Button type="submit" disabled={writer.busy}>
                   {writer.busy ? "Saving…" : "Save settings"}
-                </button>
+                </Button>
               </div>
             )}
           </fieldset>
@@ -631,24 +658,27 @@ export function Notifications() {
                   key={n.id}
                 >
                   <span className={styles.notificationMark} aria-hidden="true">
-                    {n.readAt ? "✓" : "•"}
+                    {n.readAt ? <Icon name="check" size={16} /> : null}
                   </span>
                   <div className={styles.notificationBody}>
                     <strong>{n.title}</strong>
                     <span>{new Date(n.createdAt).toLocaleString()}</span>
                     <div className={styles.notificationActions}>
                       {/^\/(?![/\\])/.test(n.appPath) && (
-                        <a href={n.appPath}>Open related work</a>
+                        <a href={n.appPath}>
+                          Open related work
+                          <Icon name="arrowRight" size={16} />
+                        </a>
                       )}
                       {!n.readAt && (
-                        <button
-                          type="button"
-                          className={styles.secondaryButton}
+                        <Button
+                          variant="secondary"
+                          className={styles.smallButton}
                           disabled={writer.busy}
                           onClick={() => void read(n)}
                         >
                           Mark read
-                        </button>
+                        </Button>
                       )}
                       {n.readAt && (
                         <span className={styles.readLabel}>Read</span>
@@ -659,9 +689,9 @@ export function Notifications() {
               ))}
             </ul>
           ) : list.error ? (
-            <button type="button" onClick={() => void list.reload()}>
+            <Button variant="secondary" onClick={() => void list.reload()}>
               Try again
-            </button>
+            </Button>
           ) : (
             <p className={styles.empty}>
               You’re all caught up. New assignments and updates will appear
@@ -717,20 +747,20 @@ export function Notifications() {
                     </small>
                   </span>
                 </label>
-                <button type="submit" disabled={writer.busy}>
+                <Button
+                  type="submit"
+                  className={styles.formAction}
+                  disabled={writer.busy}
+                >
                   {writer.busy ? "Saving…" : "Save preferences"}
-                </button>
+                </Button>
               </form>
             ) : (
               <>
                 <Status error={prefs.error} />
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() => void prefs.reload()}
-                >
+                <Button variant="secondary" onClick={() => void prefs.reload()}>
                   Try loading preferences again
-                </button>
+                </Button>
               </>
             )}
           </Panel>
@@ -742,16 +772,14 @@ export function Notifications() {
               instruction expires after ten minutes.
             </p>
             <div className={styles.actions}>
-              <button
-                type="button"
+              <Button
                 disabled={writer.busy}
                 onClick={() => void linkTelegram()}
               >
                 Create link instruction
-              </button>
-              <button
-                className={styles.secondaryButton}
-                type="button"
+              </Button>
+              <Button
+                variant="secondary"
                 disabled={writer.busy}
                 onClick={async () => {
                   if ((await writer.write("telegram-unlink", {}, false)).ok) {
@@ -761,7 +789,7 @@ export function Notifications() {
                 }}
               >
                 Unlink Telegram
-              </button>
+              </Button>
             </div>
             {link &&
               (link.token ? (
@@ -770,15 +798,14 @@ export function Notifications() {
                     One-time instruction
                   </label>
                   <div className={styles.copyRow}>
-                    <input
+                    <TextInput
                       id="telegram-instruction"
                       readOnly
                       value={`/link ${link.token}`}
                       onFocus={(e) => e.currentTarget.select()}
                     />
-                    <button
-                      className={styles.secondaryButton}
-                      type="button"
+                    <Button
+                      variant="secondary"
                       onClick={async () => {
                         try {
                           await navigator.clipboard.writeText(
@@ -793,7 +820,7 @@ export function Notifications() {
                       }}
                     >
                       Copy
-                    </button>
+                    </Button>
                   </div>
                   <Live kind="polite">{copyMessage}</Live>
                   <p>Expires {new Date(link.expiresAt).toLocaleString()}</p>
@@ -822,9 +849,96 @@ const roleName: Record<ContractRole, string> = {
   "report-reader": "Report reader",
   volunteer: "Volunteer",
 };
+const roleOptions = (
+  <>
+    <option value="volunteer">Volunteer</option>
+    <option value="coordinator">Coordinator</option>
+    <option value="report-reader">Report reader</option>
+    <option value="owner">Owner</option>
+  </>
+);
+function initials(name: string) {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+function MemberRow({
+  member,
+  busy,
+  onChange,
+  onRole,
+  onRemove,
+}: {
+  member: Member;
+  busy: boolean;
+  onChange: () => void;
+  onRole: (member: Member, role: string) => Promise<void>;
+  onRemove: (member: Member) => Promise<void>;
+}) {
+  const [role, setRole] = useState<string>(member.role);
+  return (
+    <li className={styles.memberRow}>
+      <div className={styles.memberIdentity}>
+        <span className={styles.memberAvatar} aria-hidden="true">
+          {initials(member.name)}
+        </span>
+        <div>
+          <strong>{member.name}</strong>
+          <span>{member.email}</span>
+        </div>
+      </div>
+      <span
+        className={`${styles.roleBadge} ${styles[`role_${member.role.replace("-", "_")}`]}`}
+      >
+        {roleName[member.role]}
+      </span>
+      <form
+        className={styles.memberActions}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void onRole(member, role);
+        }}
+        onChange={onChange}
+      >
+        <label
+          className={styles.visuallyHidden}
+          htmlFor={`member-role-${member.membershipId}`}
+        >
+          Role for {member.name}
+        </label>
+        <Select
+          id={`member-role-${member.membershipId}`}
+          name="role"
+          value={role}
+          onChange={(event) => {
+            onChange();
+            setRole(event.target.value);
+          }}
+        >
+          {roleOptions}
+        </Select>
+        <Button type="submit" variant="secondary" disabled={busy}>
+          Update role
+        </Button>
+        <Button
+          variant="danger"
+          disabled={busy}
+          onClick={() => void onRemove(member)}
+        >
+          Remove
+        </Button>
+      </form>
+    </li>
+  );
+}
 export function Members() {
   const list = useLoad<Member[]>("members");
   const writer = useWrite();
+  const [inviteRole, setInviteRole] = useState("volunteer");
   async function invite(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
@@ -833,23 +947,34 @@ export function Members() {
       (
         await writer.write(
           "members/invite",
-          { email: String(f.get("email")), role: String(f.get("role")) },
+          { email: String(f.get("email")), role: inviteRole },
           false,
         )
       ).ok
     ) {
       form.reset();
+      setInviteRole("volunteer");
       await list.reload();
     }
   }
-  async function role(e: FormEvent<HTMLFormElement>, member: Member) {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
+  async function changeRole(member: Member, role: string) {
     if (
       (
         await writer.write(
           "members/role",
-          { membershipId: member.membershipId, role: String(f.get("role")) },
+          { membershipId: member.membershipId, role },
+          false,
+        )
+      ).ok
+    )
+      await list.reload();
+  }
+  async function remove(member: Member) {
+    if (
+      (
+        await writer.write(
+          "members/remove",
+          { membershipId: member.membershipId },
           false,
         )
       ).ok
@@ -888,9 +1013,10 @@ export function Members() {
           onChange={writer.change}
           className={styles.inviteForm}
         >
-          <label>
+          <label className={styles.field} htmlFor="invite-email">
             Email address
-            <input
+            <TextInput
+              id="invite-email"
               name="email"
               type="email"
               autoComplete="email"
@@ -898,15 +1024,23 @@ export function Members() {
               required
             />
           </label>
-          <label>
-            Workspace role
-            <select name="role" defaultValue="volunteer">
-              <Roles />
-            </select>
-          </label>
-          <button type="submit" disabled={writer.busy}>
+          <div className={styles.field}>
+            <label htmlFor="invite-role">Workspace role</label>
+            <Select
+              id="invite-role"
+              name="role"
+              value={inviteRole}
+              onChange={(event) => {
+                writer.change();
+                setInviteRole(event.target.value);
+              }}
+            >
+              {roleOptions}
+            </Select>
+          </div>
+          <Button type="submit" disabled={writer.busy}>
             {writer.busy ? "Sending…" : "Send invitation"}
-          </button>
+          </Button>
         </form>
       </Panel>
       <Panel>
@@ -920,81 +1054,22 @@ export function Members() {
           {list.loading ? "Loading members…" : ""}
         </Live>
         {list.loading ? null : list.value?.length ? (
-          <div className={styles.roster}>
+          <ul className={styles.roster}>
             {list.value.map((m) => (
-              <article className={styles.memberRow} key={m.membershipId}>
-                <div className={styles.memberIdentity}>
-                  <span className={styles.memberAvatar} aria-hidden="true">
-                    {m.name
-                      .trim()
-                      .split(/\s+/)
-                      .slice(0, 2)
-                      .map((s) => s[0])
-                      .join("")
-                      .toUpperCase()}
-                  </span>
-                  <div>
-                    <strong>{m.name}</strong>
-                    <span>{m.email}</span>
-                  </div>
-                </div>
-                <span
-                  className={`${styles.roleBadge} ${styles[`role_${m.role.replace("-", "_")}`]}`}
-                >
-                  {roleName[m.role]}
-                </span>
-                <form
-                  className={styles.memberActions}
-                  onSubmit={(e) => void role(e, m)}
-                  onChange={writer.change}
-                >
-                  <label
-                    className={styles.visuallyHidden}
-                    htmlFor={`member-role-${m.membershipId}`}
-                  >
-                    Role for {m.name}
-                  </label>
-                  <select
-                    id={`member-role-${m.membershipId}`}
-                    name="role"
-                    defaultValue={m.role}
-                  >
-                    <Roles />
-                  </select>
-                  <button
-                    type="submit"
-                    className={styles.secondaryButton}
-                    disabled={writer.busy}
-                  >
-                    Update role
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.removeButton}
-                    disabled={writer.busy}
-                    onClick={async () => {
-                      if (
-                        (
-                          await writer.write(
-                            "members/remove",
-                            { membershipId: m.membershipId },
-                            false,
-                          )
-                        ).ok
-                      )
-                        await list.reload();
-                    }}
-                  >
-                    Remove
-                  </button>
-                </form>
-              </article>
+              <MemberRow
+                key={`${m.membershipId}-${m.role}`}
+                member={m}
+                busy={writer.busy}
+                onChange={writer.change}
+                onRole={changeRole}
+                onRemove={remove}
+              />
             ))}
-          </div>
+          </ul>
         ) : list.error ? (
-          <button type="button" onClick={() => void list.reload()}>
+          <Button variant="secondary" onClick={() => void list.reload()}>
             Try again
-          </button>
+          </Button>
         ) : (
           <p className={styles.empty}>
             No members found. Invite someone to begin working together.
@@ -1005,15 +1080,5 @@ export function Members() {
         </p>
       </Panel>
     </div>
-  );
-}
-function Roles() {
-  return (
-    <>
-      <option value="volunteer">Volunteer</option>
-      <option value="coordinator">Coordinator</option>
-      <option value="report-reader">Report reader</option>
-      <option value="owner">Owner</option>
-    </>
   );
 }

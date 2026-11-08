@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { expectOption } from "../helpers/controls.js";
 
 for (const audience of ["staff", "volunteer"] as const) {
   test(`${audience} shell fits, labels states and supports keyboard input`, async ({
@@ -80,9 +81,10 @@ for (const audience of ["staff", "volunteer"] as const) {
     await expect(
       page.getByRole("textbox", { name: "Required detail" }),
     ).toHaveAccessibleDescription("Add a description before continuing.");
-    await expect(
+    await expectOption(
       page.getByRole("combobox", { name: "Display state" }),
-    ).toHaveValue("unknown");
+      "unknown",
+    );
     expect(errors).toEqual([]);
     await page.screenshot({
       path: testInfo.outputPath(`${audience}.png`),

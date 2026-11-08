@@ -6,8 +6,10 @@ import {
   Feedback,
   Field,
   FileUpload,
+  Meter,
   PageHeading,
   Select,
+  Skeleton,
   TextArea,
   TextInput,
 } from "../foundation";
@@ -60,6 +62,8 @@ export function FoundationPreview({
               <Badge tone="warning">Provisional alert</Badge>
               <Badge tone="success">Approved</Badge>
               <Badge tone="danger">Needs attention</Badge>
+              <Badge tone="info">Informational</Badge>
+              <Badge tone="accent">Highlighted</Badge>
             </div>
             <p>
               Unknown minutes stay unknown. Provisional information is awaiting
@@ -94,10 +98,29 @@ export function FoundationPreview({
               <Button variant="danger">Destructive action</Button>
             </div>
           </Card>
+          <Card title="Choices and progress">
+            <div className={styles.stack}>
+              <label>
+                <input type="checkbox" defaultChecked /> Share a short summary
+              </label>
+              <label>
+                <input type="radio" name="preview-radio" defaultChecked />{" "}
+                Notify me by email
+              </label>
+              <label>
+                <input type="radio" name="preview-radio" /> Notify me in the app
+              </label>
+              <Meter value={3} max={5} />
+              <Skeleton height={16} />
+            </div>
+            <div className={styles.actions}>
+              <Button variant="ghost">Quiet action</Button>
+            </div>
+          </Card>
           <Feedback tone="danger" title="Updates could not be loaded">
             Your work has been kept. Try again when the connection returns.
           </Feedback>
-          <EmptyState title="No updates to show">
+          <EmptyState title="No updates to show" icon="search">
             Change your filters or check back later.
           </EmptyState>
         </div>

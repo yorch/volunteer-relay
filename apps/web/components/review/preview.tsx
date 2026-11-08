@@ -4,6 +4,7 @@ import { reviewDecisionSchema } from "@relay/contracts";
 import { useState } from "react";
 import { Field, Select } from "../foundation";
 import { ReviewInbox } from "./index";
+import styles from "./review.module.css";
 
 export function ReviewPreview({
   entries,
@@ -14,19 +15,21 @@ export function ReviewPreview({
 }) {
   const [scenario, setScenario] = useState("success");
   return (
-    <>
-      <Field id="review-scenario" label="Preview response">
-        <Select
-          id="review-scenario"
-          value={scenario}
-          onChange={(event) => setScenario(event.target.value)}
-        >
-          <option value="success">Simulated success</option>
-          <option value="conflict">Simulated revision conflict</option>
-          <option value="error">Simulated unavailable service</option>
-          <option value="empty">Empty inbox</option>
-        </Select>
-      </Field>
+    <div className={styles.preview}>
+      <div className={styles.scenario}>
+        <Field id="review-scenario" label="Preview response">
+          <Select
+            id="review-scenario"
+            value={scenario}
+            onChange={(event) => setScenario(event.target.value)}
+          >
+            <option value="success">Simulated success</option>
+            <option value="conflict">Simulated revision conflict</option>
+            <option value="error">Simulated unavailable service</option>
+            <option value="empty">Empty inbox</option>
+          </Select>
+        </Field>
+      </div>
       <ReviewInbox
         key={scenario}
         entries={scenario === "empty" ? [] : entries}
@@ -64,6 +67,6 @@ export function ReviewPreview({
           return { ok: true, value: { revision: entry.revision + 1 } };
         }}
       />
-    </>
+    </div>
   );
 }
