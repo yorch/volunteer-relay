@@ -795,3 +795,99 @@ test("volunteer recognizes and opens their own update evidence", async ({
     page.getByText("This is your original update, shown read-only."),
   ).toBeVisible();
 });
+
+test("switching volunteer updates clears old evidence and errors", async ({
+  page,
+}) => {
+  await page.route("**/api/product/workspace", (route) =>
+    route.fulfill({
+      json: {
+        ok: true,
+        value: {
+          ...snapshot,
+          sources: [
+            {
+              sourceId: "source-a",
+              revision: 1,
+              status: "accepted",
+              preview: "First update",
+            },
+            {
+              sourceId: "source-b",
+              revision: 1,
+              status: "accepted",
+              preview: "Second update",
+            },
+          ],
+        },
+      },
+    }),
+  );
+  await page.route("**/api/auth/organizations", (route) =>
+    route.fulfill({ status: 503, json: { ok: false } }),
+  );
+  let denyA = false;
+  let holdB = true;
+  let releaseB: () => void = () => {};
+  const delayedB = new Promise<void>((resolve) => {
+    releaseB = resolve;
+  });
+  await page.route("**/api/product/source?*", async (route) => {
+    const id = new URL(route.request().url()).searchParams.get("sourceId");
+    if (id === "source-a" && denyA) {
+      await route.fulfill({
+        status: 403,
+        json: { ok: false, error: { code: "FORBIDDEN" } },
+      });
+      return;
+    }
+    if (id === "source-b" && holdB) await delayedB;
+    await route.fulfill({
+      json: {
+        ok: true,
+        value: {
+          sourceId: id,
+          revision: 1,
+          channel: "web",
+          receivedAt: "2026-01-01T00:00:00Z",
+          text:
+            id === "source-a"
+              ? "Private evidence from first update"
+              : "Evidence from second update",
+          attachments: id === "source-a" ? [{ id: "photo-a" }] : [],
+        },
+      },
+    });
+  });
+  await page.goto("/workspace/volunteer");
+  const updates = page.getByRole("button", { name: "View my update" });
+  await updates.nth(0).click();
+  await expect(
+    page.getByText("Private evidence from first update"),
+  ).toBeVisible();
+  await expect(
+    page.getByAltText("Source attachment photo-a, revision 1"),
+  ).toBeVisible();
+  await updates.nth(1).click();
+  await expect(page.getByText("Source source-b · your update")).toBeVisible();
+  await expect(page.getByText("Loading source evidence…")).toBeVisible();
+  await expect(
+    page.getByText("Private evidence from first update"),
+  ).toHaveCount(0);
+  await expect(
+    page.getByAltText("Source attachment photo-a, revision 1"),
+  ).toHaveCount(0);
+  holdB = false;
+  releaseB();
+  await expect(page.getByText("Evidence from second update")).toBeVisible();
+  denyA = true;
+  await updates.nth(0).click();
+  await expect(
+    page.getByText("You do not have permission to access this workspace."),
+  ).toBeVisible();
+  await updates.nth(1).click();
+  await expect(page.getByText("Evidence from second update")).toBeVisible();
+  await expect(
+    page.getByText("You do not have permission to access this workspace."),
+  ).toHaveCount(0);
+});
