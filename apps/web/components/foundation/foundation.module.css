@@ -3,14 +3,14 @@
   --relay-paper: #fff;
   --relay-ink: #253b38;
   --relay-muted: #53675f;
-  --relay-line: #c5d0c6;
+  --relay-line: #dce5dc;
   --relay-teal: #196c5b;
   --relay-sage: #edf0e8;
   --relay-focus: #895311;
   color: var(--relay-ink);
   background: var(--relay-bg);
   font:
-    400 1rem / 1.6 "DM Sans",
+    400 0.9375rem / 1.6 var(--font-dm-sans),
     system-ui,
     sans-serif;
   min-height: 100dvh;
@@ -24,7 +24,7 @@
 .root h1,
 .root h2,
 .root h3 {
-  font-family: Manrope, system-ui, sans-serif;
+  font-family: var(--font-manrope), system-ui, sans-serif;
   line-height: 1.3;
 }
 .root h1 {
@@ -89,7 +89,7 @@
 .card {
   background: var(--relay-paper);
   border: 1px solid var(--relay-line);
-  border-radius: 0.8rem;
+  border-radius: 0.6rem;
   padding: clamp(1rem, 2vw, 1.5rem);
   min-width: 0;
 }

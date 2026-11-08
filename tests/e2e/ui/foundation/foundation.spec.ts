@@ -29,12 +29,19 @@ for (const audience of ["staff", "volunteer"] as const) {
       ),
     ).toBe(true);
     if (audience === "staff") {
+      if ((page.viewportSize()?.width ?? 1440) <= 760) {
+        await expect(
+          page.getByRole("navigation", { name: "Workspace" }),
+        ).toBeHidden();
+        await page.getByText("Menu", { exact: true }).click();
+      }
       await expect(
         page.getByRole("navigation", { name: "Workspace" }),
       ).toBeVisible();
       await expect(
         page.getByRole("link", { name: "Foundation", exact: true }),
       ).toHaveAttribute("aria-current", "page");
+      if ((page.viewportSize()?.width ?? 1440) <= 760) await page.reload();
     } else {
       await expect(page.getByRole("navigation")).toHaveCount(0);
       await expect(

@@ -3,6 +3,7 @@
 import type { AuthOrganizationChoices, Result } from "@relay/contracts";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Button, FoundationRoot, PageHeading } from "../foundation";
+import { Brand } from "../layout";
 import {
   InvitationAcceptanceForm,
   OrganizationSwitcher,
@@ -20,17 +21,29 @@ import { loadOrganizations, mutateAuth } from "./transport";
 function Shell({ title, children }: { title: string; children: ReactNode }) {
   return (
     <FoundationRoot>
-      <main className={styles.preview}>
-        <PageHeading title={title} description="Volunteer Relay" />
-        {children}
-        <nav aria-label="Account navigation" className={styles.navigation}>
-          <a href="/sign-in">Sign in</a>
-          <a href="/sign-up">Create account</a>
-          <a href="/reset-password">Reset password</a>
-          <a href="/verify-email">Verify email</a>
-          <a href="/account">Account</a>
-        </nav>
-      </main>
+      <div className={styles.authShell}>
+        <header className={styles.authHeader}>
+          <Brand />
+          <a href="/">Back to home</a>
+        </header>
+        <main className={styles.preview}>
+          <div className={styles.intro}>
+            <span className={styles.eyebrow}>VOLUNTEER RELAY</span>
+            <PageHeading
+              title={title}
+              description="A little clarity. More care."
+            />
+          </div>
+          <div className={styles.authCard}>{children}</div>
+          <nav aria-label="Account navigation" className={styles.navigation}>
+            <a href="/sign-in">Sign in</a>
+            <a href="/sign-up">Create account</a>
+            <a href="/reset-password">Reset password</a>
+            <a href="/verify-email">Verify email</a>
+            <a href="/account">Account</a>
+          </nav>
+        </main>
+      </div>
     </FoundationRoot>
   );
 }
