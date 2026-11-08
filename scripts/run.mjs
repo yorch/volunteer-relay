@@ -3,11 +3,11 @@ import { cp, mkdir } from "node:fs/promises";
 
 if (process.versions.node !== "26.11.1")
   throw new Error(`Use Node 26.11.1; got ${process.versions.node}`);
-const run = (args) =>
+const run = (args, extraEnv = {}) =>
   new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, {
       stdio: "inherit",
-      env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" },
+      env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1", ...extraEnv },
     });
     child.on("error", reject);
     child.on("exit", (code) =>
@@ -22,15 +22,20 @@ if (mode === "e2e:web") {
   const port = Number(process.env.PLAYWRIGHT_PORT ?? "3190");
   if (!Number.isInteger(port) || port < 1024 || port > 65535)
     throw new Error("Invalid PLAYWRIGHT_PORT");
-  await run([
-    ...next,
-    "dev",
-    "apps/web",
-    "--hostname",
-    "127.0.0.1",
-    "--port",
-    String(port),
-  ]);
+  // Browser runs keep their own build directory so a concurrent `next build`,
+  // `next typegen` or `next dev` in .next cannot reload the served app.
+  await run(
+    [
+      ...next,
+      "dev",
+      "apps/web",
+      "--hostname",
+      "127.0.0.1",
+      "--port",
+      String(port),
+    ],
+    { RELAY_NEXT_DIST_DIR: ".next-e2e" },
+  );
 } else if (mode === "web") await run([...next, "dev", "apps/web"]);
 else if (mode === "dev")
   await Promise.all([
