@@ -6,24 +6,23 @@ Multi-organization volunteer operations for receiving updates, preserving eviden
 
 Install Node **26.11.1**, Bun **1.4.1**, and Docker Compose. With fnm: `fnm use` after installing the version from `.node-version`. Node must be on PATH before invoking Bun scripts; Bun dispatches explicit Node processes and never runs the application or tests itself.
 
+For a fresh host-run development setup, use an isolated local database. The following creates `.env.local` only if it does not already exist, generates a private auth secret and retention signing key, and keeps attachments in this checkout's ignored local directory:
+
 ```sh
 bun install --frozen-lockfile
-bun run verify
-docker compose up -d postgres mailpit
-bun run dev
+umask 077
+if [ -e .env.local ]; then echo ".env.local already exists; preserve it and configure it manually" >&2; exit 1; fi
+cp .env.example .env.local
+mkdir -p .relay-local/attachments
+node -e 'const fs = require("node:fs"); const path = require("node:path"); const crypto = require("node:crypto"); const file = ".env.local"; const env = fs.readFileSync(file, "utf8").replace(/^ATTACHMENT_ROOT=.*$/m, "ATTACHMENT_ROOT=" + JSON.stringify(path.resolve(".relay-local/attachments"))); fs.writeFileSync(file, env + "\nBETTER_AUTH_SECRET=" + crypto.randomBytes(32).toString("hex") + "\nRETENTION_LEDGER_KEY=" + crypto.randomBytes(32).toString("hex") + "\n", { mode: 0o600 });'
+docker compose up -d --wait postgres mailpit
+node --env-file=.env.local packages/db/src/migrate.ts
+node --env-file=.env.local scripts/run.mjs dev
 ```
 
-The web app is at http://localhost:3000 and `/api/health` reports the actual Node runtime. The worker processes configured extraction, delivery and maintenance work; behavior depends on provider and budget configuration. Mailpit is at http://localhost:8025. Local database credentials are `relay:relay`, database `relay`; do not expose these services publicly. Environment defaults permit local startup; copy `.env.example` to `.env` only if needed and pass it to Node commands using Node's `--env-file` option, or export variables in your shell. Local auth and provider configuration are described in `.env.example`; never use development credentials for production. Node worker scripts do not automatically load `.env`.
+Run `bun run verify` separately for the code checks. The web app is at http://localhost:3000, `/api/health` reports the actual Node runtime, and Mailpit is at http://localhost:8025. Local Compose database credentials are `relay:relay`, database `relay`; do not expose these services publicly. Node worker scripts do not automatically load `.env.local`: use `node --env-file=.env.local` or export the required variables. Keep the generated file private and never use its development secrets in production. Model extraction and external channels require their own configuration; see `.env.example`. For synthetic demo accounts and a separate product integration test database, follow [demo guidance](docs/demo.md).
 
-To run the entire local stack in containers:
-
-```sh
-docker compose up --build -d --wait
-curl --fail http://localhost:3000/api/health
-docker compose exec -T postgres psql -U relay -d relay -c 'select 1'
-docker compose logs worker
-docker compose down
-```
+The development Compose file also defines container web and worker services, but they require explicit application environment configuration and migrations before authenticated use. The host-run commands above start only Compose PostgreSQL and Mailpit; use the [production profile](docs/operations.md) for a production-style topology.
 
 Use either host web/worker or container web/worker to avoid port conflicts. If a host port is occupied, set `RELAY_POSTGRES_PORT`, `RELAY_WEB_PORT`, `RELAY_MAILPIT_UI_PORT` or `RELAY_SMTP_PORT` in a Compose env file and pass `docker compose --env-file <path> ...`. Host-run processes must use matching DATABASE_URL/APP_URL/SMTP_PORT values; container-internal service ports stay fixed. Compose persists database and private attachment volumes; `down` retains data. The Dockerfiles install with Bun and launch with Node. Local Compose builds the unpublished `dev` target (full workspace, Next development server, NODE_ENV=development) for web and the slim production `worker` target. The separate [production profile](docs/operations.md) provides Caddy, migration gating, private storage and backup/restore; fresh-host and live-provider gates remain open.
 
