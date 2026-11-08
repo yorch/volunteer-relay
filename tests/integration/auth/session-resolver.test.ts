@@ -5,6 +5,11 @@ import {
   createRecordingMailer,
   createSessionResolver,
 } from "../../../apps/web/lib/auth/index.ts";
+import type {
+  AuthorizationService,
+  Result,
+  TenantContext,
+} from "../../../packages/contracts/src/index.ts";
 import {
   createMembershipReader,
   type Database,
@@ -48,7 +53,6 @@ function resolver(options: { mailConfigured?: boolean } = {}) {
     auth,
     authorization: createAuthorizationService({ memberships }),
     memberships,
-    db,
     appUrl,
     mailConfigured: options.mailConfigured ?? true,
   });
@@ -289,5 +293,161 @@ describe("organization switching", () => {
       correlationId: "corr-signout",
     });
     expect(await auth.api.getSession({ headers: person.headers })).toBeNull();
+  });
+});
+
+describe("resolver failure and response header boundaries", () => {
+  function withAuthorization(authorization: AuthorizationService) {
+    return createSessionResolver({
+      auth,
+      authorization,
+      memberships,
+      appUrl,
+      mailConfigured: true,
+    });
+  }
+
+  async function ageSession(userId: string) {
+    await db.execute(
+      sql`update "session" set expires_at = now() + interval '1 hour', updated_at = now() - interval '2 days' where user_id = ${userId}`,
+    );
+  }
+
+  it("sanitizes unexpected authorization failures on both paths and preserves renewal cookies", async () => {
+    const person = await signUp("throwing-auth@example.invalid");
+    const authorization = createAuthorizationService({ memberships });
+    const throwing = withAuthorization({
+      ...authorization,
+      async resolve() {
+        throw new Error("private driver and token sentinel");
+      },
+    });
+    for (const method of [
+      "resolveVerifiedContext",
+      "switchOrganization",
+    ] as const) {
+      await ageSession(person.user.id);
+      const responseHeaders = new Headers();
+      const result = await throwing[method]({
+        headers: person.headers,
+        organizationId: "tidepath",
+        correlationId: "corr-throws",
+        responseHeaders,
+      });
+      expect(result).toEqual({
+        ok: false,
+        error: {
+          code: "DEPENDENCY_UNAVAILABLE",
+          message: "Authorization service is unavailable",
+          correlationId: "corr-throws",
+          retryable: true,
+        },
+      });
+      expect(
+        responseHeaders
+          .getSetCookie()
+          .some((cookie) => cookie.startsWith("better-auth.session_token=")),
+      ).toBe(true);
+      expect(JSON.stringify(result)).not.toContain("sentinel");
+    }
+    const [stored] = await db
+      .select({ active: session.activeOrganizationId })
+      .from(session)
+      .where(sql`${session.userId} = ${person.user.id}`);
+    expect(stored?.active).toBeNull();
+  });
+
+  it("preserves explicit canonical denials and their renewal headers on both paths", async () => {
+    const person = await signUp("denied-auth@example.invalid");
+    const denial: Result<TenantContext> = {
+      ok: false,
+      error: {
+        code: "FORBIDDEN",
+        message: "Synthetic canonical denial",
+        correlationId: "corr-denial",
+        retryable: false,
+      },
+    };
+    const authorization = createAuthorizationService({ memberships });
+    const denied = withAuthorization({
+      ...authorization,
+      async resolve() {
+        return denial;
+      },
+    });
+    for (const method of [
+      "resolveVerifiedContext",
+      "switchOrganization",
+    ] as const) {
+      await ageSession(person.user.id);
+      const responseHeaders = new Headers();
+      expect(
+        await denied[method]({
+          headers: person.headers,
+          organizationId: "tidepath",
+          correlationId: "corr-denial",
+          responseHeaders,
+        }),
+      ).toBe(denial);
+      expect(responseHeaders.getSetCookie().length).toBeGreaterThan(0);
+    }
+  });
+
+  it("collects renewal and selection cookies separately for each call", async () => {
+    const person = await signUp("headers@example.invalid");
+    await addMembership({
+      id: "header-member",
+      userId: person.user.id,
+      organizationId: "tidepath",
+      role: "volunteer",
+    });
+    await ageSession(person.user.id);
+    const renewedHeaders = new Headers({ "x-adapter-marker": "retained" });
+    expect(
+      await resolver().resolveVerifiedContext({
+        headers: person.headers,
+        organizationId: "tidepath",
+        correlationId: "corr-renew",
+        responseHeaders: renewedHeaders,
+      }),
+    ).toMatchObject({ ok: true });
+    const renewalCookies = renewedHeaders.getSetCookie();
+    expect(
+      renewalCookies.some((cookie) =>
+        cookie.startsWith("better-auth.session_token="),
+      ),
+    ).toBe(true);
+    expect(renewedHeaders.get("x-adapter-marker")).toBe("retained");
+    await ageSession(person.user.id);
+    const selectionHeaders = new Headers();
+    expect(
+      await resolver().switchOrganization({
+        headers: person.headers,
+        organizationId: "tidepath",
+        correlationId: "corr-select",
+        responseHeaders: selectionHeaders,
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      selectionHeaders
+        .getSetCookie()
+        .some((cookie) => cookie.startsWith("better-auth.session_token=")),
+    ).toBe(true);
+    // Both getSession renewal and setActiveOrganization issue their own cookie.
+    expect(
+      selectionHeaders
+        .getSetCookie()
+        .filter((cookie) => cookie.startsWith("better-auth.session_token="))
+        .length,
+    ).toBe(2);
+    expect(renewedHeaders.getSetCookie()).toEqual(renewalCookies);
+    const emptyHeaders = new Headers();
+    await resolver().resolveVerifiedContext({
+      headers: new Headers(),
+      organizationId: "tidepath",
+      correlationId: "corr-anon-headers",
+      responseHeaders: emptyHeaders,
+    });
+    expect(emptyHeaders.getSetCookie()).toEqual([]);
   });
 });

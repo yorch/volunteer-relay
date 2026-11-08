@@ -5,8 +5,9 @@ import type {
   Result,
   TenantContext,
 } from "@relay/contracts";
-import { type Database, type MembershipReader, sql } from "@relay/db";
+import type { MembershipReader } from "@relay/db";
 import { isContractRole } from "@relay/domain/auth";
+import { APIError } from "better-auth/api";
 import type { Auth } from "./auth.ts";
 
 type Failure = Extract<Result<never>, { ok: false }>;
@@ -20,13 +21,12 @@ function failure(
   return { ok: false, error: { code, message, correlationId, retryable } };
 }
 
+// Callers forward a per-call responseHeaders collector to their HTTP response,
+// including when a later authorization step returns a denial.
 export interface SessionResolverDependencies {
   auth: Auth;
   authorization: AuthorizationService;
   memberships: MembershipReader;
-  // Needed to invalidate sessions after a password reset and to report
-  // transport failures without exposing payloads.
-  db: Database;
   mailFailures?: Array<{ kind: "reset" | "invitation" }>;
   // Application origin used to constrain password-reset redirect targets.
   appUrl: string;
@@ -44,7 +44,6 @@ export function createSessionResolver({
   auth,
   authorization,
   memberships,
-  db,
   mailFailures = [],
   appUrl,
   mailConfigured,
@@ -52,10 +51,18 @@ export function createSessionResolver({
   async function verifiedUserId(
     headers: Headers,
     correlationId: string,
+    responseHeaders?: Headers,
   ): Promise<Result<string>> {
-    let session: Awaited<ReturnType<typeof auth.api.getSession>>;
     try {
-      session = await auth.api.getSession({ headers });
+      const result = await auth.api.getSession({
+        headers,
+        returnHeaders: true,
+      });
+      collectHeaders(result.headers, responseHeaders);
+      // Absent, expired or malformed cookies all read as no session.
+      if (!result.response?.user?.id)
+        return failure("UNAUTHENTICATED", "Sign-in is required", correlationId);
+      return { ok: true, value: result.response.user.id };
     } catch {
       return failure(
         "DEPENDENCY_UNAVAILABLE",
@@ -64,10 +71,23 @@ export function createSessionResolver({
         true,
       );
     }
-    // Absent, expired or malformed cookies all read as no session.
-    if (!session?.user?.id)
-      return failure("UNAUTHENTICATED", "Sign-in is required", correlationId);
-    return { ok: true, value: session.user.id };
+  }
+
+  async function resolveMembership(
+    userId: string,
+    organizationId: string,
+    correlationId: string,
+  ): Promise<Result<TenantContext>> {
+    try {
+      return await authorization.resolve(userId, organizationId, correlationId);
+    } catch {
+      return failure(
+        "DEPENDENCY_UNAVAILABLE",
+        "Authorization service is unavailable",
+        correlationId,
+        true,
+      );
+    }
   }
 
   function allowedRedirect(redirectTo: string | undefined): string | undefined {
@@ -84,10 +104,15 @@ export function createSessionResolver({
   return {
     async resolveVerifiedContext(input: {
       headers: Headers;
+      responseHeaders?: Headers;
       organizationId: string | null | undefined;
       correlationId: string;
     }): Promise<Result<TenantContext>> {
-      const verified = await verifiedUserId(input.headers, input.correlationId);
+      const verified = await verifiedUserId(
+        input.headers,
+        input.correlationId,
+        input.responseHeaders,
+      );
       if (!verified.ok) return verified;
       if (!input.organizationId)
         return failure(
@@ -96,7 +121,7 @@ export function createSessionResolver({
           input.correlationId,
         );
       // Live membership decides; a session active-organization value never does.
-      return authorization.resolve(
+      return resolveMembership(
         verified.value,
         input.organizationId,
         input.correlationId,
@@ -105,9 +130,14 @@ export function createSessionResolver({
 
     async listAvailableOrganizations(input: {
       headers: Headers;
+      responseHeaders?: Headers;
       correlationId: string;
     }): Promise<Result<AuthOrganizationOption[]>> {
-      const verified = await verifiedUserId(input.headers, input.correlationId);
+      const verified = await verifiedUserId(
+        input.headers,
+        input.correlationId,
+        input.responseHeaders,
+      );
       if (!verified.ok) return verified;
 
       let rows: Awaited<ReturnType<MembershipReader["listMembershipsForUser"]>>;
@@ -137,10 +167,15 @@ export function createSessionResolver({
 
     async switchOrganization(input: {
       headers: Headers;
+      responseHeaders?: Headers;
       organizationId: string;
       correlationId: string;
     }): Promise<Result<{ organizationId: string }>> {
-      const verified = await verifiedUserId(input.headers, input.correlationId);
+      const verified = await verifiedUserId(
+        input.headers,
+        input.correlationId,
+        input.responseHeaders,
+      );
       if (!verified.ok) return verified;
       if (!input.organizationId)
         return failure(
@@ -151,7 +186,7 @@ export function createSessionResolver({
 
       // Membership is checked live before the session selection changes, so a
       // foreign or removed membership can never become the active organization.
-      const resolved = await authorization.resolve(
+      const resolved = await resolveMembership(
         verified.value,
         input.organizationId,
         input.correlationId,
@@ -159,10 +194,12 @@ export function createSessionResolver({
       if (!resolved.ok) return resolved;
 
       try {
-        await auth.api.setActiveOrganization({
+        const response = await auth.api.setActiveOrganization({
           body: { organizationId: input.organizationId },
           headers: input.headers,
+          returnHeaders: true,
         });
+        collectHeaders(response.headers, input.responseHeaders);
       } catch {
         return failure(
           "DEPENDENCY_UNAVAILABLE",
@@ -176,12 +213,21 @@ export function createSessionResolver({
 
     async signOutEverywhere(input: {
       headers: Headers;
+      responseHeaders?: Headers;
       correlationId: string;
     }): Promise<Result<void>> {
-      const verified = await verifiedUserId(input.headers, input.correlationId);
+      const verified = await verifiedUserId(
+        input.headers,
+        input.correlationId,
+        input.responseHeaders,
+      );
       if (!verified.ok) return verified;
       try {
-        await auth.api.revokeSessions({ headers: input.headers });
+        const response = await auth.api.revokeSessions({
+          headers: input.headers,
+          returnHeaders: true,
+        });
+        collectHeaders(response.headers, input.responseHeaders);
       } catch {
         return failure(
           "DEPENDENCY_UNAVAILABLE",
@@ -197,6 +243,7 @@ export function createSessionResolver({
     // pending invitation for retry; authorization is the library's owner-only rule.
     async createInvitation(input: {
       headers: Headers;
+      responseHeaders?: Headers;
       organizationId: string;
       email: string;
       role: string;
@@ -223,6 +270,7 @@ export function createSessionResolver({
         });
         created = response.response;
         responseHeaders = response.headers;
+        collectHeaders(response.headers, input.responseHeaders);
       } catch {
         return failure(
           "DEPENDENCY_UNAVAILABLE",
@@ -259,18 +307,22 @@ export function createSessionResolver({
     // library enforces recipient, expiry, single-use and email verification.
     async acceptInvitation(input: {
       headers: Headers;
+      responseHeaders?: Headers;
       invitationId: string;
       correlationId: string;
     }): Promise<Result<{ organizationId: string | null }>> {
       try {
-        const accepted = await auth.api.acceptInvitation({
+        const response = await auth.api.acceptInvitation({
           body: { invitationId: input.invitationId },
           headers: input.headers,
+          returnHeaders: true,
         });
+        collectHeaders(response.headers, input.responseHeaders);
         return {
           ok: true,
           value: {
-            organizationId: accepted?.invitation.organizationId ?? null,
+            organizationId:
+              response.response?.invitation.organizationId ?? null,
           },
         };
       } catch {
@@ -288,42 +340,25 @@ export function createSessionResolver({
       newPassword: string;
       correlationId: string;
     }): Promise<Result<{ reset: true }>> {
-      let ownerId: string | null = null;
       try {
-        const rows = await db.execute(resetTokenLookup(input.token));
-        const row = rows.rows[0] as { value?: string } | undefined;
-        ownerId = row?.value ?? null;
-      } catch {
+        await auth.api.resetPassword({
+          body: { newPassword: input.newPassword, token: input.token },
+        });
+      } catch (error) {
+        // Expected input/token denials remain validation failures; unexpected
+        // adapter failures are safe and retryable after the reset rolls back.
+        if (error instanceof APIError && error.statusCode < 500)
+          return failure(
+            "VALIDATION",
+            "Password reset cannot be completed",
+            input.correlationId,
+          );
         return failure(
           "DEPENDENCY_UNAVAILABLE",
           "Password reset is unavailable",
           input.correlationId,
           true,
         );
-      }
-      try {
-        await auth.api.resetPassword({
-          body: { newPassword: input.newPassword, token: input.token },
-        });
-      } catch {
-        // Expired, used or unknown tokens all fail closed without detail.
-        return failure(
-          "VALIDATION",
-          "Password reset cannot be completed",
-          input.correlationId,
-        );
-      }
-      if (ownerId) {
-        try {
-          await db.execute(revokeSessionsForUser(ownerId));
-        } catch {
-          return failure(
-            "DEPENDENCY_UNAVAILABLE",
-            "Session invalidation is unavailable",
-            input.correlationId,
-            true,
-          );
-        }
       }
       return { ok: true, value: { reset: true } };
     },
@@ -368,12 +403,15 @@ export function createSessionResolver({
   };
 }
 
-// Single-use token owner, read before the library consumes the row.
-const resetTokenLookup = (token: string) =>
-  sql`select value from "verification" where identifier = ${`reset-password:${token}`} limit 1`;
-
-// Password reset invalidates every prior session for that account.
-const revokeSessionsForUser = (userId: string) =>
-  sql`delete from "session" where user_id = ${userId}`;
+// Preserve separate Set-Cookie values (Expires may contain commas) and append
+// successive renewal/selection cookies in order. The collector belongs to one call.
+function collectHeaders(source: Headers, target?: Headers): void {
+  if (!target) return;
+  for (const [name, value] of source) {
+    if (name.toLowerCase() !== "set-cookie") target.set(name, value);
+  }
+  for (const cookie of source.getSetCookie())
+    target.append("set-cookie", cookie);
+}
 
 export type SessionResolver = ReturnType<typeof createSessionResolver>;

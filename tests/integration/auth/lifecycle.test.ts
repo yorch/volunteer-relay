@@ -167,6 +167,107 @@ describe("password reset lifecycle", () => {
     expect(await countRows(db, "verification")).toBe(0);
   });
 
+  it("revokes all sessions on the direct library reset path", async () => {
+    const first = await signUp("direct-reset@example.invalid");
+    const second = await auth.api.signInEmail({
+      body: { email: first.user.email, password },
+      returnHeaders: true,
+    });
+    expect(await countRows(db, "session")).toBe(2);
+    await auth.api.requestPasswordReset({ body: { email: first.user.email } });
+    await auth.api.resetPassword({
+      body: {
+        token: mail.resetMessages[0]?.token ?? "",
+        newPassword: "synthetic-password-new",
+      },
+    });
+    expect(await countRows(db, "session")).toBe(0);
+    expect(await auth.api.getSession({ headers: first.headers })).toBeNull();
+    expect(
+      await auth.api.getSession({
+        headers: cookieHeaders(second.headers.get("set-cookie")),
+      }),
+    ).toBeNull();
+    await expect(
+      auth.api.signInEmail({ body: { email: first.user.email, password } }),
+    ).rejects.toThrow();
+    expect(
+      await auth.api.signInEmail({
+        body: { email: first.user.email, password: "synthetic-password-new" },
+      }),
+    ).toMatchObject({ user: { id: first.user.id } });
+  });
+
+  it.each(["direct", "helper"])(
+    "rolls back token, password and sessions when %s reset revocation fails",
+    async (path) => {
+      const person = await signUp("rollback@example.invalid");
+      await auth.api.requestPasswordReset({
+        body: { email: person.user.email },
+      });
+      const token = mail.resetMessages[0]?.token ?? "";
+      const before = await db.execute(
+        sql`select password from account where user_id = ${person.user.id}`,
+      );
+      // Test-private fault injection, removed before any subsequent suite reset.
+      await db.execute(
+        sql`create function b_test_fail_reset_revocation() returns trigger language plpgsql as $$ begin raise exception 'synthetic revocation failure'; end $$`,
+      );
+      await db.execute(
+        sql`create trigger fail_reset_revocation before delete on "session" for each row execute function b_test_fail_reset_revocation()`,
+      );
+      try {
+        const input = {
+          token,
+          newPassword: "synthetic-password-new",
+          correlationId: "corr-rollback",
+        };
+        if (path === "direct") {
+          await expect(
+            auth.api.resetPassword({ body: input }),
+          ).rejects.toThrow();
+        } else {
+          const result = await createSessionResolver({
+            auth,
+            authorization: createAuthorizationService({
+              memberships: createMembershipReader(db),
+            }),
+            memberships: createMembershipReader(db),
+            appUrl,
+            mailConfigured: true,
+          }).resetPassword(input);
+          expect(result).toMatchObject({
+            ok: false,
+            error: { code: "DEPENDENCY_UNAVAILABLE", retryable: true },
+          });
+          expect(JSON.stringify(result)).not.toContain(
+            "synthetic revocation failure",
+          );
+          expect(JSON.stringify(result)).not.toContain(token);
+        }
+        expect(await countRows(db, "session")).toBe(1);
+        expect(
+          await auth.api.getSession({ headers: person.headers }),
+        ).not.toBeNull();
+        expect(
+          await db.execute(
+            sql`select password from account where user_id = ${person.user.id}`,
+          ),
+        ).toMatchObject({ rows: before.rows });
+        expect(await countRows(db, "verification")).toBe(1);
+      } finally {
+        await db.execute(sql`drop trigger fail_reset_revocation on "session"`);
+        await db.execute(sql`drop function b_test_fail_reset_revocation()`);
+      }
+      // The same token remains usable after the failed transaction.
+      await auth.api.resetPassword({
+        body: { token, newPassword: "synthetic-password-retry" },
+      });
+      expect(await countRows(db, "verification")).toBe(0);
+      expect(await countRows(db, "session")).toBe(0);
+    },
+  );
+
   it("does not enumerate unknown accounts", async () => {
     await signUp("mira@example.invalid");
     const known = await auth.api.requestPasswordReset({
@@ -448,7 +549,6 @@ describe("settled lifecycle boundaries", () => {
         memberships: createMembershipReader(db),
       }),
       memberships: createMembershipReader(db),
-      db,
       appUrl,
       mailConfigured: true,
     });

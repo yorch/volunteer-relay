@@ -139,7 +139,7 @@ export function createAuth({
   return betterAuth({
     secret,
     baseURL,
-    database: drizzleAdapter(db, { provider: "pg", schema }),
+    database: drizzleAdapter(db, { provider: "pg", schema, transaction: true }),
     session: {
       expiresIn: policy.sessionExpiresInSec,
       updateAge: policy.sessionUpdateAgeSec,
@@ -147,6 +147,7 @@ export function createAuth({
     emailAndPassword: {
       enabled: true,
       disableSignUp: !policy.allowCredentialSignUp,
+      revokeSessionsOnPasswordReset: true,
       resetPasswordTokenExpiresIn: policy.resetTokenExpiresInSec,
       ...(sendResetPassword ? { sendResetPassword } : {}),
     },
