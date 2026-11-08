@@ -1336,6 +1336,7 @@ async function requireValidatedPolicy(
     } else if (item.kind === "contribution") {
       if (
         !item.membershipId ||
+        item.membershipId !== source.author.membershipId ||
         !item.durationMinutes ||
         item.durationMinutes > 1440 ||
         !activityKeys.has(item.activityKey)

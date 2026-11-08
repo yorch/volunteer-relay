@@ -1027,6 +1027,7 @@ it.each([
   "correction",
   "candidate",
   "removed member",
+  "other live member",
   "stale policy",
 ])("applies only eligible validated policy: %s", async (scenario) => {
   await resetAuthTables(fixture.db);
@@ -1052,6 +1053,11 @@ it.each([
   if (scenario === "unknown") {
     const c = ready.items.find((x) => x.kind === "contribution");
     if (c?.kind === "contribution") c.durationMinutes = null;
+  }
+  if (scenario === "other live member") {
+    const contribution = ready.items.find((x) => x.kind === "contribution");
+    if (contribution?.kind !== "contribution") throw new Error("fixture");
+    contribution.membershipId = "tidepath-sol";
   }
   if (scenario === "urgent") {
     const n = ready.items.find((x) => x.kind === "need");
@@ -1138,6 +1144,12 @@ it.each([
     ok: true,
     value: { applied: scenario === "validated" || scenario === "stale policy" },
   });
+  if (scenario === "other live member") {
+    const totals = await fixture.db.execute(
+      sql`select count(*)::int as count from contribution where status='approved'`,
+    );
+    expect(totals.rows[0]?.count).toBe(0);
+  }
   if (scenario === "validated" || scenario === "stale policy") {
     expect(await repo.applyValidatedPolicy(source)).toEqual(result);
     const records = await fixture.db.execute(
