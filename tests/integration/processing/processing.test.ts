@@ -120,10 +120,18 @@ it("persists review and applies once with audit, events, and live authorization"
     "tidepath",
     "review",
   );
-  expect(await repo.pendingSources(10)).toEqual([source]);
+  const [lease] = await repo.pendingSources(10);
+  expect(lease?.source).toEqual(source);
+  if (!lease) throw new Error("missing lease");
   expect(
-    (await repo.persistProposal(systemContext("tidepath"), source, proposal))
-      .ok,
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        source,
+        proposal,
+        lease.leaseToken,
+      )
+    ).ok,
   ).toBe(true);
   expect((await repo.listQueue(staff)).ok).toBe(true);
   const command = {
@@ -163,7 +171,8 @@ it("rejects forged evidence and rolls back a failed decision", async () => {
     "tidepath",
     "review",
   );
-  await repo.pendingSources(10);
+  const [lease] = await repo.pendingSources(10);
+  if (!lease) throw new Error("missing lease");
   const forged = structuredClone(proposal);
   const forgedItem = forged.items[0];
   const firstEvidence = evidence[0];
@@ -171,13 +180,25 @@ it("rejects forged evidence and rolls back a failed decision", async () => {
     throw new Error("fixture missing evidence");
   forgedItem.evidence[0] = { ...firstEvidence, quote: "forged" };
   expect(
-    await repo.persistProposal(systemContext("tidepath"), source, forged),
+    await repo.persistProposal(
+      systemContext("tidepath"),
+      source,
+      forged,
+      lease.leaseToken,
+    ),
   ).toMatchObject({ ok: false, error: { code: "VALIDATION" } });
   const invalid = structuredClone(proposal);
   const c = invalid.items[1];
   if (c?.kind === "contribution") c.membershipId = "missing";
   expect(
-    (await repo.persistProposal(systemContext("tidepath"), source, invalid)).ok,
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        source,
+        invalid,
+        lease.leaseToken,
+      )
+    ).ok,
   ).toBe(true);
   expect(
     await repo.decide(staff, {
@@ -211,10 +232,17 @@ it("hides evidence from other tenants and refuses stale proposals", async () => 
     ok: false,
     error: { code: "NOT_FOUND" },
   });
-  await repo.pendingSources(10);
+  const [lease] = await repo.pendingSources(10);
+  if (!lease) throw new Error("missing lease");
   expect(
-    (await repo.persistProposal(systemContext("tidepath"), source, proposal))
-      .ok,
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        source,
+        proposal,
+        lease.leaseToken,
+      )
+    ).ok,
   ).toBe(true);
   const sourceRepo = createSourceRepository({
     authorization: fixture.authorization,
@@ -258,10 +286,17 @@ it("rolls back every effect when the outbox write fails", async () => {
     "tidepath",
     "review",
   );
-  await repo.pendingSources(10);
+  const [lease] = await repo.pendingSources(10);
+  if (!lease) throw new Error("missing lease");
   expect(
-    (await repo.persistProposal(systemContext("tidepath"), source, proposal))
-      .ok,
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        source,
+        proposal,
+        lease.leaseToken,
+      )
+    ).ok,
   ).toBe(true);
   await fixture.db.execute(
     sql`alter table outbox_event add constraint processing_test_outbox_failure check (type <> 'ledger.changed')`,
@@ -304,9 +339,11 @@ it("bounds retries and recovers expired leases without approving work", async ()
     "review",
   );
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    expect(await repo.pendingSources(1)).toEqual([source]);
+    const [lease] = await repo.pendingSources(1);
+    expect(lease?.source).toEqual(source);
+    if (!lease) throw new Error("missing lease");
     expect(await repo.pendingSources(1)).toEqual([]);
-    await repo.markFailure(source);
+    await repo.markFailure(source, lease.leaseToken);
     await fixture.db.execute(
       sql`update processing_work set retry_after=now()-interval '1 second'`,
     );
@@ -326,10 +363,17 @@ it("records reasoned staff edits and retains the original proposal", async () =>
     "tidepath",
     "review",
   );
-  await repo.pendingSources(1);
+  const [lease] = await repo.pendingSources(1);
+  if (!lease) throw new Error("missing lease");
   expect(
-    (await repo.persistProposal(systemContext("tidepath"), source, proposal))
-      .ok,
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        source,
+        proposal,
+        lease.leaseToken,
+      )
+    ).ok,
   ).toBe(true);
   const items = structuredClone(proposal.items);
   const contribution = items[1];
@@ -360,3 +404,371 @@ it("records reasoned staff edits and retains the original proposal", async () =>
   });
   expect(rows.rows[0]?.edits).toBe(3);
 });
+
+it("amends a reviewed source revision in place without inflating approved minutes", async () => {
+  const repo = createProcessingRepository(fixture.db);
+  const staff = await context(
+    fixture.authorization,
+    "user-kai",
+    "tidepath",
+    "review",
+  );
+  const mira = await context(
+    fixture.authorization,
+    "user-mira",
+    "tidepath",
+    "source",
+  );
+  const [first] = await repo.pendingSources(1);
+  if (!first) throw new Error("missing first lease");
+  expect(
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        source,
+        proposal,
+        first.leaseToken,
+      )
+    ).ok,
+  ).toBe(true);
+  expect(
+    (
+      await repo.decide(staff, {
+        runId: "r1",
+        expectedRevision: 1,
+        idempotencyKey: "review-1",
+        decision: "accept",
+        reason: "",
+      })
+    ).ok,
+  ).toBe(true);
+  const revised = {
+    ...source,
+    revision: 2,
+    replacesRevision: 1,
+    idempotencyKey: "s2",
+    text: "Helped for 90 minutes",
+    original: { mediaType: "text/plain", payload: "Helped for 90 minutes" },
+  };
+  const sourceRepo = createSourceRepository({
+    authorization: fixture.authorization,
+    store: createSourceStore(fixture.db),
+  });
+  expect((await sourceRepo.accept(mira, revised)).ok).toBe(true);
+  const next = structuredClone(proposal);
+  next.sourceRevision = 2;
+  next.runId = "r2";
+  for (const item of next.items)
+    for (const ev of item.evidence) ev.sourceRevision = 2;
+  const contribution = next.items[1];
+  if (contribution?.kind !== "contribution") throw new Error("bad fixture");
+  contribution.durationMinutes = 90;
+  const [second] = await repo.pendingSources(1);
+  if (!second) throw new Error("missing second lease");
+  expect(
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        revised,
+        next,
+        second.leaseToken,
+      )
+    ).ok,
+  ).toBe(true);
+  expect(
+    await repo.decide(staff, {
+      runId: "r2",
+      expectedRevision: 1,
+      idempotencyKey: "review-2",
+      decision: "accept",
+      reason: "",
+    }),
+  ).toEqual({ ok: true, value: { revision: 2 } });
+  expect(await fixture.ledger.summarize(staff)).toMatchObject({
+    ok: true,
+    value: { approvedMinutes: 90, approvedContributions: 1 },
+  });
+  const rows = await fixture.db.execute(
+    sql`select aggregate_revision,before,after from domain_audit_event where aggregate_type='contribution' order by aggregate_revision`,
+  );
+  // Audit table names its revision aggregate_revision, so inspect snapshots directly.
+  expect(
+    rows.rows.map(
+      (row) => (row.after as { durationMinutes: number }).durationMinutes,
+    ),
+  ).toEqual([60, 90]);
+});
+
+it("prevents a stale lease from changing a new claim", async () => {
+  const repo = createProcessingRepository(fixture.db);
+  const [old] = await repo.pendingSources(1);
+  if (!old) throw new Error("missing lease");
+  await fixture.db.execute(
+    sql`update processing_work set lease_until=now()-interval '1 second'`,
+  );
+  const [current] = await repo.pendingSources(1);
+  if (!current) throw new Error("missing new lease");
+  expect(current.leaseToken).not.toBe(old.leaseToken);
+  await repo.markFailure(source, old.leaseToken);
+  expect(
+    await repo.persistProposal(
+      systemContext("tidepath"),
+      source,
+      proposal,
+      old.leaseToken,
+    ),
+  ).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+  expect(
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        source,
+        proposal,
+        current.leaseToken,
+      )
+    ).ok,
+  ).toBe(true);
+});
+it("rejects duplicate participants and leaves the ledger untouched", async () => {
+  const repo = createProcessingRepository(fixture.db);
+  const staff = await context(
+    fixture.authorization,
+    "user-kai",
+    "tidepath",
+    "review",
+  );
+  const repeated = structuredClone(proposal);
+  const item = repeated.items[1];
+  if (item?.kind !== "contribution") throw new Error("bad fixture");
+  repeated.items.push({ ...item, key: "duplicate" });
+  const [lease] = await repo.pendingSources(1);
+  if (!lease) throw new Error("missing lease");
+  expect(
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        source,
+        repeated,
+        lease.leaseToken,
+      )
+    ).ok,
+  ).toBe(true);
+  expect(
+    await repo.decide(staff, {
+      runId: "r1",
+      expectedRevision: 1,
+      idempotencyKey: "duplicate",
+      decision: "accept",
+      reason: "",
+    }),
+  ).toMatchObject({ ok: false, error: { code: "VALIDATION" } });
+  expect(await fixture.ledger.summarize(staff)).toMatchObject({
+    ok: true,
+    value: { approvedMinutes: 0, approvedContributions: 0 },
+  });
+});
+
+it("applies an explicit same-tenant correction with a revision guard and reason", async () => {
+  const repo = createProcessingRepository(fixture.db);
+  const staff = await context(
+    fixture.authorization,
+    "user-kai",
+    "tidepath",
+    "review",
+  );
+  const [first] = await repo.pendingSources(1);
+  if (!first) throw new Error("missing lease");
+  expect(
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        source,
+        proposal,
+        first.leaseToken,
+      )
+    ).ok,
+  ).toBe(true);
+  expect(
+    (
+      await repo.decide(staff, {
+        runId: "r1",
+        expectedRevision: 1,
+        idempotencyKey: "initial",
+        decision: "accept",
+        reason: "",
+      })
+    ).ok,
+  ).toBe(true);
+  const found = await fixture.db.execute(sql`select id from contribution`);
+  const id = found.rows[0]?.id as string;
+  const mira = await context(
+    fixture.authorization,
+    "user-mira",
+    "tidepath",
+    "source",
+  );
+  const revised = {
+    ...source,
+    revision: 2,
+    replacesRevision: 1,
+    idempotencyKey: "correction-source",
+  };
+  const sourceRepo = createSourceRepository({
+    authorization: fixture.authorization,
+    store: createSourceStore(fixture.db),
+  });
+  expect((await sourceRepo.accept(mira, revised)).ok).toBe(true);
+  const correction: ExtractionProposal = {
+    ...proposal,
+    runId: "correction-run",
+    sourceRevision: 2,
+    items: [
+      {
+        kind: "correction",
+        key: "fix",
+        targetId: id,
+        expectedRevision: 1,
+        durationMinutes: 90,
+        reason: "Volunteer clarified",
+        evidence: evidence.map((entry) => ({ ...entry, sourceRevision: 2 })),
+      },
+    ],
+  };
+  const [second] = await repo.pendingSources(1);
+  if (!second) throw new Error("missing lease");
+  expect(
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        revised,
+        correction,
+        second.leaseToken,
+      )
+    ).ok,
+  ).toBe(true);
+  expect(
+    (
+      await repo.decide(staff, {
+        runId: "correction-run",
+        expectedRevision: 1,
+        idempotencyKey: "correction",
+        decision: "accept",
+        reason: "",
+      })
+    ).ok,
+  ).toBe(true);
+  expect(await fixture.ledger.summarize(staff)).toMatchObject({
+    ok: true,
+    value: { approvedMinutes: 90, approvedContributions: 1 },
+  });
+  const history = await fixture.db.execute(
+    sql`select reason from domain_audit_event where aggregate_type='contribution' and aggregate_revision=2`,
+  );
+  expect(history.rows[0]?.reason).toBe("Volunteer clarified");
+});
+it.each(["independent edit", "changed identity"])(
+  "stops reconciliation on %s",
+  async (scenario) => {
+    const repo = createProcessingRepository(fixture.db);
+    const staff = await context(
+      fixture.authorization,
+      "user-kai",
+      "tidepath",
+      "review",
+    );
+    const mira = await context(
+      fixture.authorization,
+      "user-mira",
+      "tidepath",
+      "source",
+    );
+    const [first] = await repo.pendingSources(1);
+    if (!first) throw new Error("missing lease");
+    expect(
+      (
+        await repo.persistProposal(
+          systemContext("tidepath"),
+          source,
+          proposal,
+          first.leaseToken,
+        )
+      ).ok,
+    ).toBe(true);
+    expect(
+      (
+        await repo.decide(staff, {
+          runId: "r1",
+          expectedRevision: 1,
+          idempotencyKey: "initial",
+          decision: "accept",
+          reason: "",
+        })
+      ).ok,
+    ).toBe(true);
+    if (scenario === "independent edit") {
+      const rows = await fixture.db.execute(sql`select id from contribution`);
+      expect(
+        (
+          await fixture.ledger.transitionContribution(staff, {
+            schemaVersion: 1,
+            idempotencyKey: "staff-correction",
+            contributionId: rows.rows[0]?.id as string,
+            expectedRevision: 1,
+            action: "correct",
+            durationMinutes: 75,
+            reason: "Staff confirmed",
+          })
+        ).ok,
+      ).toBe(true);
+    }
+    const revised = {
+      ...source,
+      revision: 2,
+      replacesRevision: 1,
+      idempotencyKey: "s2",
+    };
+    const sourceRepo = createSourceRepository({
+      authorization: fixture.authorization,
+      store: createSourceStore(fixture.db),
+    });
+    expect((await sourceRepo.accept(mira, revised)).ok).toBe(true);
+    const next = structuredClone(proposal);
+    next.sourceRevision = 2;
+    next.runId = "r2";
+    for (const item of next.items)
+      for (const ev of item.evidence) ev.sourceRevision = 2;
+    const contribution = next.items[1];
+    if (contribution?.kind !== "contribution") throw new Error("bad fixture");
+    contribution.durationMinutes = 90;
+    if (scenario === "changed identity")
+      contribution.membershipId = "tidepath-sol";
+    const [second] = await repo.pendingSources(1);
+    if (!second) throw new Error("missing lease");
+    expect(
+      (
+        await repo.persistProposal(
+          systemContext("tidepath"),
+          revised,
+          next,
+          second.leaseToken,
+        )
+      ).ok,
+    ).toBe(true);
+    expect(
+      await repo.decide(staff, {
+        runId: "r2",
+        expectedRevision: 1,
+        idempotencyKey: "conflict",
+        decision: "accept",
+        reason: "",
+      }),
+    ).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+    expect(await fixture.ledger.summarize(staff)).toMatchObject({
+      ok: true,
+      value: {
+        approvedMinutes: scenario === "independent edit" ? 75 : 60,
+        approvedContributions: 1,
+      },
+    });
+  },
+);

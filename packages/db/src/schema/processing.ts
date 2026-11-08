@@ -26,6 +26,7 @@ export const processingWork = pgTable(
     sourceId: text("source_id").notNull(),
     sourceRevision: integer("source_revision").notNull(),
     attempts: integer("attempts").notNull().default(0),
+    leaseToken: text("lease_token"),
     leaseUntil: timestamp("lease_until", { withTimezone: true }),
     retryAfter: timestamp("retry_after", { withTimezone: true }),
     failed: boolean("failed").notNull().default(false),
@@ -92,6 +93,32 @@ export const reviewDecision = pgTable(
   (t) => [
     primaryKey({ columns: [t.organizationId, t.idempotencyKey] }),
     unique().on(t.organizationId, t.runId),
+    foreignKey({
+      columns: [t.organizationId, t.runId],
+      foreignColumns: [extractionRun.organizationId, extractionRun.runId],
+    }),
+  ],
+);
+
+// Each accepted run records which item affected which aggregate and the exact
+// resulting revision. This is the optimistic reconciliation boundary.
+export const reviewEffect = pgTable(
+  "review_effect",
+  {
+    organizationId: text("organization_id").notNull(),
+    runId: text("run_id").notNull(),
+    itemKey: text("item_key").notNull(),
+    kind: text("kind").notNull(),
+    aggregateId: text("aggregate_id").notNull(),
+    aggregateRevision: integer("aggregate_revision").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.organizationId, t.runId, t.itemKey] }),
+    check(
+      "review_effect_kind_check",
+      sql`${t.kind} in ('activity','contribution','need')`,
+    ),
+    check("review_effect_revision_check", sql`${t.aggregateRevision} > 0`),
     foreignKey({
       columns: [t.organizationId, t.runId],
       foreignColumns: [extractionRun.organizationId, extractionRun.runId],
