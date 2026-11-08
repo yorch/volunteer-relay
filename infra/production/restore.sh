@@ -4,6 +4,9 @@ set -eu
 [ "$#" -eq 1 ] || { echo "Usage: restore.sh BACKUP_DIRECTORY" >&2; exit 1; }
 backup_dir=$(CDPATH= cd -- "$1" && pwd)
 require_quiesced
+: "${RELAY_REDACTION_LEDGER:?Set the absolute path to the CURRENT deployment-wide signed redaction ledger}"
+case "$RELAY_REDACTION_LEDGER" in /*) ;; *) echo "Ledger path must be absolute" >&2; exit 1;; esac
+[ -f "$RELAY_REDACTION_LEDGER" ] || { echo "Current redaction ledger missing" >&2; exit 1; }
 (cd "$backup_dir" && sha256sum -c SHA256SUMS)
 # Refuse anything but a new, empty target: no drop, clean or overwrite flags.
 objects=$(compose --profile tools run --rm -T --no-deps tools psql -At -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_toast%' AND c.relkind IN ('r','p','v','m','S','f');")
@@ -14,4 +17,6 @@ tar -tf "$backup_dir/attachments.tar" | awk 'substr($0,1,1)=="/" || $0 ~ /(^|\/)
 tar -tvf "$backup_dir/attachments.tar" | awk 'substr($0,1,1)!="-" && substr($0,1,1)!="d" {exit 1}' || { echo "Unsupported attachment archive member" >&2; exit 1; }
 compose --profile tools run --rm -T --no-deps tools sh -c 'exec pg_restore --exit-on-error --single-transaction --no-owner --no-privileges -d "$PGDATABASE"' < "$backup_dir/database.dump"
 compose --profile tools run --rm -T --no-deps tools tar -C /data/attachments --no-same-owner -xf - < "$backup_dir/attachments.tar"
-echo "Restore completed; validate before starting application services."
+compose run --rm -T --no-deps runtime-grants
+compose run --rm -T --no-deps -v "$RELAY_REDACTION_LEDGER:/run/retention-ledger.json:ro" worker node scripts/retention.ts restore-all --file /run/retention-ledger.json
+echo "Restore and signed redaction replay completed; validate before starting application services."

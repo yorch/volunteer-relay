@@ -9,6 +9,7 @@ backup_dir=$(CDPATH= cd -- "$1" && pwd)
 trap 'echo "Backup incomplete; discard the new directory before retrying" >&2' EXIT HUP INT TERM
 compose --profile tools run --rm -T --no-deps tools pg_dump --format=custom --no-owner --no-privileges > "$backup_dir/database.dump"
 compose --profile tools run --rm -T --no-deps tools tar -C /data/attachments -cf - . > "$backup_dir/attachments.tar"
-(cd "$backup_dir" && sha256sum database.dump attachments.tar > SHA256SUMS)
+compose run --rm -T --no-deps worker node scripts/retention.ts export-all --file - > "$backup_dir/redaction-ledger.json"
+(cd "$backup_dir" && sha256sum database.dump attachments.tar redaction-ledger.json > SHA256SUMS)
 trap - EXIT HUP INT TERM
 echo "Backup written to $backup_dir"

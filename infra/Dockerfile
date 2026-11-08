@@ -28,6 +28,7 @@ RUN bun install --frozen-lockfile --production --filter @relay/worker
 # attachment volume is writable; everything else stays root-owned.
 FROM node AS runtime
 ENV NODE_ENV=production
+ENV NODE_USE_ENV_PROXY=1
 RUN mkdir -p /data/attachments && chown node:node /data/attachments
 
 FROM runtime AS web
@@ -45,5 +46,6 @@ COPY --from=worker-deps /app/node_modules /app/node_modules
 COPY --from=worker-deps /app/package.json /app/package.json
 COPY --from=worker-deps /app/apps/worker /app/apps/worker
 COPY --from=worker-deps /app/packages /app/packages
+COPY --from=worker-deps /app/scripts/retention.ts /app/scripts/retention.ts
 USER node
 CMD ["node", "apps/worker/src/index.ts"]
