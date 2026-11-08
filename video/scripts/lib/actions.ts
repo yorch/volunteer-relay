@@ -228,25 +228,30 @@ export const sceneActions: Record<string, SceneAction> = {
       mark("needs-board");
       await context.region("heading", pageHeading(context));
 
-      async function selectAction(desired: "assign" | "acknowledge") {
-        for (let attempt = 0; attempt < 8; attempt += 1) {
-          const summary = card.locator("details").first().locator("summary");
-          const select = card.getByLabel("Action");
-          if (!(await select.isVisible())) await context.click(summary);
+      /**
+       * The revamped UI uses a custom combobox (trigger + listbox) rather than a
+       * native <select>, so choose by role and option text.
+       */
+      async function selectAction(desired: "Assign" | "Acknowledge") {
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          const trigger = card.getByRole("combobox", { name: "Action" });
+          if (!(await trigger.isVisible())) {
+            await context.click(
+              card.locator("details").first().locator("summary"),
+            );
+            continue;
+          }
+          await context.click(trigger);
+          const option = page.getByRole("option", {
+            name: desired,
+            exact: true,
+          });
           try {
-            await select.waitFor({ state: "visible", timeout: 2_000 });
-            const available = await select
-              .locator("option")
-              .evaluateAll((options) =>
-                options.map((option) => (option as HTMLOptionElement).value),
-              );
-            if (available.includes(desired)) {
-              await context.click(select);
-              await select.selectOption(desired);
-              return;
-            }
+            await option.waitFor({ state: "visible", timeout: 2_000 });
+            await option.click();
+            return;
           } catch {
-            // Detached mid-render; retry with the fresh node.
+            // List closed or re-rendered; retry.
           }
         }
         throw new Error(
@@ -254,10 +259,12 @@ export const sceneActions: Record<string, SceneAction> = {
         );
       }
 
-      await selectAction("assign");
-      const owner = card.getByLabel("Owner");
+      await selectAction("Assign");
+      const owner = card.getByRole("combobox", { name: "Owner" });
       await context.click(owner);
-      await owner.selectOption({ label: "Demo Owner" });
+      await page
+        .getByRole("option", { name: "Demo Owner", exact: true })
+        .click();
       await context.fill(card.getByLabel("Acknowledge by"), "2026-11-12T17:00");
       mark("assignment-filled");
       await context.click(card.getByRole("button", { name: "Update need" }));
@@ -265,7 +272,7 @@ export const sceneActions: Record<string, SceneAction> = {
       await card.getByText("assigned", { exact: true }).waitFor();
       mark("assigned");
 
-      await selectAction("acknowledge");
+      await selectAction("Acknowledge");
       await context.click(card.getByRole("button", { name: "Update need" }));
       await page.getByText("Need updated.").waitFor();
       await card.getByText("acknowledged", { exact: true }).waitFor();
