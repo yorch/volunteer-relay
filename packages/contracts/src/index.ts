@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 export * from "./product.ts";
 
 export const CONTRACT_VERSION = 1 as const;
@@ -407,8 +408,19 @@ export const reviewDecisionSchema = z
     idempotencyKey: id,
     decision: z.enum(["accept", "reject"]),
     reason: z.string(),
+    replacementItems: z.array(proposalItemSchema).max(100).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((command, ctx) => {
+    if (
+      command.replacementItems !== undefined &&
+      (command.decision !== "accept" || command.reason.trim().length === 0)
+    )
+      ctx.addIssue({
+        code: "custom",
+        message: "Edited acceptance requires a staff reason",
+      });
+  });
 export type ReviewDecision = z.infer<typeof reviewDecisionSchema>;
 export const reviewOutcomeSchema = z
   .object({ revision: z.number().int().positive() })
