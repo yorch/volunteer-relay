@@ -22,6 +22,7 @@ import {
 import { loadOrganizations, mutateAuth } from "../auth/transport";
 import { StaffShell, VolunteerShell } from "../layout";
 import { Members, Notifications, Settings } from "./admin";
+import { Delivery, History } from "./operations";
 import styles from "./product.module.css";
 
 type Page =
@@ -33,7 +34,9 @@ type Page =
   | "import"
   | "settings"
   | "members"
-  | "notifications";
+  | "notifications"
+  | "history"
+  | "delivery";
 type ResponseResult<T> =
   | { ok: true; value: T }
   | { ok: false; error: { code: string } };
@@ -220,6 +223,8 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
         { href: "/workspace/import", label: "Import" },
         { href: "/workspace/reports", label: "Summary" },
         { href: "/workspace/settings", label: "Settings" },
+        { href: "/workspace/history", label: "History" },
+        { href: "/workspace/delivery", label: "Delivery" },
         ...(role === "owner"
           ? [{ href: "/workspace/members", label: "Members" }]
           : []),
@@ -259,6 +264,10 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
         <Activities snapshot={snapshot} mutate={mutate} />
       ) : activePage === "needs" ? (
         <Needs snapshot={snapshot} mutate={mutate} />
+      ) : activePage === "history" ? (
+        <History />
+      ) : activePage === "delivery" ? (
+        <Delivery owner={role === "owner"} />
       ) : activePage === "settings" ? (
         <Settings snapshot={snapshot} />
       ) : activePage === "members" ? (
@@ -1639,6 +1648,14 @@ function Summary({ snapshot }: { snapshot: WorkspaceSnapshot }) {
                 {report.averageAcknowledgmentMinutes === null
                   ? "Unknown"
                   : `${report.averageAcknowledgmentMinutes} minutes`}
+              </p>
+            </Card>
+            <Card>
+              <h2>Average resolution time</h2>
+              <p>
+                {report.averageResolutionMinutes == null
+                  ? "Unknown"
+                  : `${report.averageResolutionMinutes} minutes`}
               </p>
             </Card>
             <Card>
