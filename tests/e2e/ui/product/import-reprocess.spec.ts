@@ -159,3 +159,33 @@ test("status filters show only the selected processing queue", async ({
     page.getByRole("button", { name: "Source queued-one · revision 1" }),
   ).toHaveCount(0);
 });
+
+test("duplicate author matches are rejected before preview", async ({
+  page,
+}) => {
+  let previews = 0;
+  await page.route("**/api/product/import-preview", (route) => {
+    previews++;
+    return route.fulfill({
+      json: {
+        ok: true,
+        value: { sources: [], errors: [], ambiguousDuplicates: [] },
+      },
+    });
+  });
+  await page.goto("/workspace/import");
+  await page
+    .getByLabel("Import text")
+    .fill("id,author,text,timestamp\n1,Alex,Helped,2026-01-01");
+  await page.getByRole("button", { name: "Add author match" }).click();
+  await page.getByRole("button", { name: "Add author match" }).click();
+  await page.getByLabel("Author name").nth(0).fill("Alex");
+  await page.getByLabel("Author name").nth(1).fill(" Alex ");
+  await page.getByRole("button", { name: "Preview import" }).click();
+  await expect(
+    page.getByText("Each author name can be matched only once.", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  expect(previews).toBe(0);
+});
