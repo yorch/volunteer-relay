@@ -1466,7 +1466,8 @@ async function updateProvisional(
   const revision = (row.revision as number) + 1;
   const now = new Date();
   const status = action === "withdraw" ? "cancelled" : (row.status as string);
-  const provisional = action === "withdraw";
+  const provisional =
+    action === "withdraw" ? true : (item?.provisional ?? true);
   const after = {
     ...before,
     revision,

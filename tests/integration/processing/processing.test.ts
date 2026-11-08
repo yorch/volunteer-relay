@@ -1420,7 +1420,7 @@ it.each(["accept", "reject"] as const)(
     expect(after.rows[0]).toMatchObject({
       id: before.rows[0]?.id,
       status: decision === "accept" ? "new" : "cancelled",
-      provisional: decision === "reject",
+      provisional: true,
       revision: 2,
     });
     const events = await fixture.db.execute(
@@ -1743,4 +1743,52 @@ it("prevents an older pending review from being decided after reprocessing start
     }),
   ).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
   expect(await repo.listQueue(staff)).toEqual({ ok: true, value: [] });
+});
+
+it("confirms the same urgent need only when a reasoned edit clears provisional", async () => {
+  const repo = createProcessingRepository(fixture.db);
+  const staff = await context(
+    fixture.authorization,
+    "user-kai",
+    "tidepath",
+    "review",
+  );
+  const urgent = structuredClone(proposal);
+  const item = urgent.items.find((x) => x.kind === "need");
+  if (item?.kind !== "need") throw new Error("fixture");
+  item.urgency = "urgent";
+  item.provisional = true;
+  const [lease] = await repo.pendingSources(1);
+  if (!lease) throw new Error("missing lease");
+  expect(
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        source,
+        urgent,
+        lease.leaseToken,
+      )
+    ).ok,
+  ).toBe(true);
+  const before = await fixture.db.execute(sql`select id from need`);
+  const replacement = structuredClone(urgent.items);
+  const edited = replacement.find((x) => x.kind === "need");
+  if (edited?.kind !== "need") throw new Error("fixture");
+  edited.provisional = false;
+  const command = {
+    runId: "r1",
+    expectedRevision: 1,
+    idempotencyKey: "confirm",
+    decision: "accept" as const,
+    reason: "Confirmed with the volunteer",
+    replacementItems: replacement,
+  };
+  expect((await repo.decide(staff, command)).ok).toBe(true);
+  expect((await repo.decide(staff, command)).ok).toBe(true);
+  const after = await fixture.db.execute(
+    sql`select id,provisional,revision from need`,
+  );
+  expect(after.rows).toEqual([
+    { id: before.rows[0]?.id, provisional: false, revision: 2 },
+  ]);
 });
