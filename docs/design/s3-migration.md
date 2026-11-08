@@ -85,13 +85,27 @@ The lock is the same one every upload path, `pruneUnreferencedBlob` and
 
 - A concurrent redaction that wins the lock first removes the reference, so the
   re-check sees it and the key is not copied.
-- A redaction that arrives during the copy waits, then finds the bytes referenced
-  by nobody and erases them from the target as well (both-store erase, §4).
-- A not-fully-quiesced deployment cannot resurrect erased bytes through the
-  migration.
+- A redaction committed while the copy ran is invisible to the first check but
+  visible on a fresh read, so the fence re-checks the reference **after** copying
+  and, if the key stopped being live, erases the copy it just wrote and reports
+  `reverted`. The default isolation level makes that second read see newly
+  committed data.
+- A not-fully-quiesced deployment cannot make the migration _resurrect_ content.
+
+What the lock cannot do is make the still-active filesystem deployment erase the
+bucket. The erasure job a redaction enqueues runs against the store the process
+is configured with, which during the migration window is the filesystem. So a
+redaction that commits **after** a key was copied leaves a bucket copy the
+erasure record does not cover. Three things bound that:
+
+1. The runbook stops web and worker, which stops erasure, for the whole copy.
+2. The fence reverts anything that committed during its own transaction.
+3. After cutover, bucket reconciliation deletes unreferenced objects older than
+   the age floor, so the residual window closes itself on S3.
 
 Cost: a database transaction and an advisory lock are held across remote I/O.
-Accepted for a maintenance tool, and bounded by per-key adapter timeouts. The
+Accepted for a maintenance tool. Object-storage calls carry a 15 s abort signal;
+filesystem calls are unbounded, so a hung network volume can hold the lock. The
 copy is not run concurrently with itself for the same key because the lock is
 per key.
 
@@ -112,8 +126,13 @@ A composed `PrivateBlobStore` for the bake window.
   store still holds the bytes would record a completed erasure that never
   happened.
 - `capacity` → primary.
-- `probe` → both. A missing fallback volume means live attachments are
-  unreachable, so readiness must fail rather than serve 503s per request.
+- `probe` → both, and the factory refuses to build the composed store at all
+  unless `BLOB_FALLBACK_ROOT` already exists as a directory. Without that
+  startup check the filesystem probe would create an empty directory where the
+  volume should be and report readiness while every old attachment vanished. A
+  volume detached _while running_ is still indistinguishable from an empty one;
+  the pre-cutover `--verify-only` run is what proves the fallback holds the live
+  set.
 - `lifecycle` → primary's intent log, scan and reconciliation.
 
 Fallback-only orphans: the old store is frozen, so it produces no new writes.
@@ -187,8 +206,12 @@ node scripts/blob-migrate.ts --drain-pending --from <root>
   may not describe what is actually on disk. (The default recovery is unsuitable:
   it caps at 100 settlements per call, skips intents younger than an hour and
   ignores malformed records.)
-- Exit zero only when `missing === 0 && corrupt === 0 && failed === 0` and every
-  live key is accounted for as `copied`, `alreadyPresent` or `verified`.
+- Exit zero only when `missing === 0 && corrupt === 0 && failed === 0`. A copy
+  pass also runs a **verify pass over a freshly read live set** and requires it
+  to be complete. Counting what a paginated pass saw cannot prove set coverage: a
+  key inserted behind the cursor stays invisible while the counts still match.
+  The separate `--verify-only` run immediately before the flip is the cutover
+  gate, because even a fresh internal pass is a few seconds behind the flip.
 - Counts only in output. No keys, no digests: a digest of a private image is a
   stable identifier even though it is not the bytes.
 
@@ -245,12 +268,39 @@ attachments and include since-redacted ones.
   bucket reconciliation after cutover once older than the age floor.
 - An outage during `--verify-only` reports `missing > 0` and exits non-zero. That
   is the intended failure direction.
-- Copying holds a transaction across remote I/O, as noted in §3.
+- Copying holds a transaction across remote I/O, as noted in §3, and a hung
+  filesystem call has no timeout of its own.
 - Backup/restore and the signed ledger are unchanged by this work: an S3
   deployment still needs the bucket snapshot procedure in `docs/operations.md`,
   and a restore still requires the current signed redaction ledger.
 
-## 9. Failure modes covered by tests
+## 9. What the diff review changed
+
+An adversarial review of the implementation (codex, read-only) found four real
+defects, all fixed here:
+
+1. **Copied bytes could outlive an erasure.** The lock serialises with
+   redaction, but the erasure job runs against the active store only, so a
+   redaction committing right after a copy left the bucket copy behind. The
+   fence now re-checks liveness after copying, while still holding the lock, and
+   reverts its own write (`reverted`). The residual window is documented above.
+2. **Equal counts are not equal sets.** A paginated copy plus a separately read
+   total could pass while a key inserted behind the cursor was never copied. A
+   copy run now finishes with a verify pass over a fresh live set.
+3. **An unmounted fallback passed readiness**, because the filesystem probe
+   creates the directory. The factory now requires the root to exist before the
+   composed store is built.
+4. **The CLI bypassed S3 validation** while `BLOB_STORE=filesystem`, so a
+   production migration could use a plaintext endpoint or half a credential
+   pair. `createS3StoreFromEnvironment` now validates independently of the
+   deployment's active backend.
+
+Also tightened: progress reporting can no longer fail a migration, iterator pulls
+are serialised so the engine does not depend on async-generator internals,
+`processed` counts completed keys, and the pool test measures real in-flight
+writes instead of a synchronous callback.
+
+## 10. Failure modes covered by tests
 
 Source present / target absent → `copied` and verified. Target present and
 correct → `alreadyPresent`, no source read. Target present but truncated →
