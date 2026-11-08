@@ -1,3 +1,5 @@
+> Historical extracted-runtime design. The implementation is maintained in Crewplane v0.2.0, not Relay scripts. This card grants no new work; current operation follows docs/agents/README.md and HEADLESS.md.
+
 # Fair scheduler v1 frozen pure port
 
 C/P0-28 exception: ONLY scripts/fair-scheduler.ts/test. Export typed evaluateSchedule(input) pure deterministic result; no I/O/config/CLI mutation. A supplies coordinator-authorized metadata and integrates runtime. Independent fixtures suffice; no dependency on future dashboard/usage.

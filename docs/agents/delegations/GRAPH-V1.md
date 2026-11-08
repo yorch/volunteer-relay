@@ -1,3 +1,5 @@
+> Historical extracted-runtime design. The implementation is maintained in Crewplane v0.2.0, not Relay scripts. This card grants no new work; current operation follows docs/agents/README.md and HEADLESS.md.
+
 # Frozen graph renderer v1
 
 D owns ONLY scripts/dashboard/graph-renderer.js, graph-renderer.css, graph-renderer.test.ts. A owns projection builder, core dashboard/API/integration. No model/provider/supervisor/evidence changes. Export `renderGraph(document, host, snapshot, options)` returning `{update(snapshot),destroy()}`; options.onSelect receives `{kind:'task'|'run'|'thread'|'lane',id:string}` with opaque IDs, never URLs.

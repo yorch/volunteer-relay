@@ -61,7 +61,9 @@ The [interactive prototype](design/reference/prototype.html) is a standalone vis
 
 ## Running multiple agents
 
-Start with one coordinator and three workers (B data/auth, D extraction, E UI). The [operating kit](docs/agents/README.md) provides shared guidelines, six copy/paste prompts, task dispatch/worktree setup, and a local question/progress board across harnesses. `bun run agents init`, `bun run agents prompt A`, and `bun run agents board` work without additional dependencies. Setup does not launch agents or implement later phases.
+Coordination uses the separately installed [Crewplane](https://github.com/yorch/crewplane) release pinned in `.crewplane-version`. Relay keeps its project policy and harness prompts; it no longer carries a second orchestration engine. See the [installation and cutover guide](docs/agents/README.md). After installing the pinned binary, `bun run crewplane init`, `bun run agents prompt A`, `bun run agents board` and `bun run agents:dashboard` use the shared private Crewplane store. The dashboard is read-only at http://127.0.0.1:4310. Initialization does not launch agents.
+
+Existing `.relay-coordination` data stays untouched. Start with a fresh stopped namespace; do not resume old sessions or copy their private configuration. Explicit supervised activation is a separate operator action. Relay continues to use Node 26.11.1 for application processes/scripts/tests and Bun 1.4.1 for installation/script dispatch; the external standalone tool bundles its own runtime.
 
 ## Browser smoke checks
 

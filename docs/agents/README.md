@@ -1,150 +1,71 @@
-# Local multi-agent operating kit
+# Crewplane operating kit for Volunteer Relay
 
-## Recommended starting size
+Crewplane v0.2.0 is the external orchestration engine, installed from its own public repository. `.crewplane-version` pins the supported release and the Node26 launcher refuses another version. `crewplane.json` maps Relay's A/B/C/D/E/F/R/V roles, explicit R code/V visual review and existing plan/status/task paths. Product code, Node26/Bun package tooling, project engineering rules and resource isolation remain unchanged.
 
-Start with **four active sessions: A coordinator/integrator + B data/auth/domain + D extraction/evals + E UI foundation**. This is a repository-specific starting estimate, not a universal optimum. B's tenant/domain persistence is the critical path; D and E have useful contract/fixture-backed work. A needs capacity to settle contracts, review migrations and integrate continuously. Six logical lanes remain defined, but do not start all six by default.
+## Install once, from upstream
 
-| Wave                    | Active sessions                                                                                | Completion / rotation rule                                                                 |
-| ----------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| First                   | A + B(P1-01) + D(P2-01) + E(P2-00)                                                             | Land small independent slices; no later screen/integration scope implied.                  |
-| M2 integration          | A + B(P1-02) + D(extraction wiring assigned separately) + E(P2-02)                             | Close the first reviewed web workflow and required live-provider smoke before claiming M2. |
-| Intake / follow-through | Keep A; rotate C(P3-01) and F(P0-05 or P5-01) in when a lane completes or is genuinely waiting | Pure adapter/fixture tasks may start earlier if a worker slot is available.                |
-
-Increase to five or six only when there are scoped, disjoint, unblocked tasks and A can review at their delivery rate. Observe completed accepted slices, rework, merge conflicts, review queue and idle/block time after the first two slices. Reduce concurrency if review queues grow or agents invent work while blocked. One session per logical lane; switching harnesses does not add capacity or change ownership.
-
-## What is shared
-
-`bun run agents ...` is a dependency-free Node 26 CLI. It reads task cards and writes JSON files to `<primary-checkout>/.relay-coordination/`, discovered from Git's common directory so linked worktrees use the same store. This directory is ignored by Git and Docker build contexts and is **not** inside .git. Put an overridden store outside the repository, or explicitly exclude that custom path from Git and build contexts too. No database, network service, external messages, harness API, daemon or automatic command execution is involved. All commands emit JSON except help and prompt output.
-
-Assignments validate the task card at the exact baseline commit and permit one active assignment per lane. Assignments, exclusive claims and messages publish complete files with atomic no-overwrite links; progress snapshots replace a file atomically. Separate message files avoid concurrent JSONL appends. Live state is advisory process coordination, not authentication or a secure sandbox: `--agent A` is a convention, not identity proof. Only run trusted local sessions. The task card limits paths; the tool does not prevent arbitrary filesystem/git/DB changes. A reviews diffs and checks path ownership before merging.
-
-Tracked docs contain durable decisions, scope and accepted milestone status. Live assignment/claim/progress/questions stay in the ignored store; workers never race to edit docs/STATUS.md. A carries accepted decisions into contracts/ADRs/task cards and reconciles STATUS. `ready` is not `accepted`, and `accepted` is a coordinator attestation plus an ancestry check, not automatic proof that tests ran.
-
-## Prepare sessions in any harness
-
-1. Activate Node 26.11.1 with your runtime manager (for example `fnm use`) and confirm `node --version` / `bun --version` report 26.11.1 / 1.4.1. Review AGENTS.md. Run `bun run agents init`; it prints the shared path. Set `RELAY_COORD_DIR` to the **same absolute path** in every session if a harness sandbox cannot use the default. Grant the required read/write access explicitly; do not bypass a harness permission rejection. The store checks its Git common directory; separate clones are not supported as one live board. Use linked worktrees of this repository.
-2. From the coordinator checkout, choose an integration commit containing this kit. Example once the first wave is dispatched:
+From the primary checkout, with no live legacy sessions:
 
 ```sh
-bun run agents assign --agent A --task P1-01 --owner B --ref HEAD --text 'Wave 1: identity/tenancy slice in P1-01 only'
-bun run agents assign --agent A --task P2-01 --owner D --ref HEAD --text 'Wave 1: deterministic extraction/eval slice only'
-bun run agents assign --agent A --task P2-00 --owner E --ref HEAD --text 'Wave 1: visual foundation only'
+version="v$(cat .crewplane-version)"
+curl -fsSL "https://raw.githubusercontent.com/yorch/crewplane/${version}/install.sh" -o /tmp/relay-crewplane-install.sh
+CREWPLANE_VERSION="$version" sh /tmp/relay-crewplane-install.sh
+export PATH="$HOME/.local/bin:$PATH"
+crewplane --version
 ```
 
-Workers create/resume their own linked worktree from the assignment's exact baseCommit using docs/agents/BOOTSTRAP.md. Setup may start before assignment using primary HEAD, but application work waits for dispatch/baseline verification. B provisions its own Compose PostgreSQL project on port 55431, development database relay_b_p1_01 and separate relay_b_p1_01_test; D needs no database/provider for its first slice; E previews on port 3103. Each worker creates ignored local environment/attachment/setup files. Do not start the same Compose project/ports or reset a shared database.
+The upstream installer downloads the matching release executable, verifies its published SHA-256 checksum and installs it under ~/.local/bin. No Bun/Node runtime is needed by that executable. Linux x86_64 and macOS arm64 are published for this pin; unsupported release architectures fail explicitly. Git, native harnesses, credentials and browsers remain external. Signing and real provider certification are not supplied by this adoption.
 
-3. Open each chosen harness in the primary checkout or its already-created worker worktree; its prompt tells it to create/resume its own worktree. To obtain the **full copy/paste initial prompt**, run `bun run agents prompt B` (or A–F) and give that output to the session. This concatenates BOOTSTRAP.md, COMMON.md and the lane prompt. Do not assume a particular harness's implicit instruction loader. No harness-specific command flags or cross-harness agent APIs are required. C/F prompts are ready but remain standby until assigned. The kit does not itself start any harness, worktree or application worker.
-4. Workers install with `bun install --frozen-lockfile`, read board/inbox/card, and claim from their linked worktree:
+`CREWPLANE_BIN=/absolute/path/to/crewplane` optionally selects an already installed binary (including sandboxes); its version must match. Missing/mismatched binaries fail with installation guidance; wrappers never download tools or silently fall back to copied scripts. Release upgrades are deliberate pin/compatibility changes, not automatic updates.
+
+## Cut over without resuming legacy execution
+
+1. Stop legacy supervisor, watcher, dashboard and all interactive/headless harnesses. Inspect recorded child/group liveness and existing resources; never delete leases to force a takeover. The migration PR itself starts none of these services.
+2. Preserve `.relay-coordination` and any custom legacy store, claims, traces/evidence, config, holds and worktrees. They remain historical evidence. Do not rename, copy or point Crewplane at them. Do not archive active resources merely to make a fresh board look empty.
+3. Clear both store overrides (`unset RELAY_COORD_DIR CREWPLANE_COORD_DIR`). Relay launchers reject legacy/custom redirects. An inherited native supervised CREWPLANE_COORD_DIR is permitted only when canonical discovery proves it is this same default namespace. Crewplane discovers `<primary>/.crewplane-state` through the Git common directory; linked worktrees share that namespace automatically. Separate clones are separate projects.
+4. After the adoption commit is integrated, run `bun run crewplane init` from a checkout containing it, then `bun run crewplane doctor` and `bun run agents board`. No runtime config, assignment, harness or supervisor is created by the PR. A fresh empty board is not proof that product work is complete: read docs/STATUS.md and phase gates.
+5. Before future work, A reviews accepted commits/resources and defines a new exact-base task assignment and scope. Never reconstruct authority from old process IDs, sessions, enabled lanes or allowlists. New reviewers get exact-SHA requests; corrections bind the current assignment and ready SHA.
+
+Private `.crewplane-state` and `.crewplane-local` are excluded from Git and Docker alongside the preserved legacy directories. Never commit provider payloads or source evidence. Existing unrelated working copies, media and product work are not part of this cutover.
+
+## Manual coordination in any harness
+
+Use Node26.11.1/Bun1.4.1 and grant normal permissions; do not bypass approval review. Initial prompts are still Relay-owned:
 
 ```sh
-bun run agents claim --agent B --task P1-01
-bun run agents status --agent B --task P1-01 --state working --text 'Schema proposal in progress; next: tenant FK review'
+bun run agents prompt B
+bun run agents brief
 bun run agents inbox --agent B
 ```
 
-The claim rejects another lane, a duplicate claim, the primary checkout for workers, or a branch lacking the assigned baseline. A worker resuming the same claim/worktree must inspect it and continue rather than claim again.
-
-## Questions, answers and handoffs
+`prompt` combines the primary checkout's BOOTSTRAP, COMMON and lane prompt; R/V receive their specialist protocol. Existing `node /absolute/primary/scripts/agents.mjs ...` calls remain compatible. Manual Codex, pi, OpenCode and Claude conversations can follow those prompts and use the CLI board; this does not imply a supervised adapter exists for every harness. Workers self-provision an isolated worktree and task-private database/ports as described in BOOTSTRAP.md, then claim only a newly approved assignment. One writer per task/lane; frozen ready submissions are preserved. Coordinator A serializes tracked STATUS changes.
 
 ```sh
-bun run agents send --agent D --to B --kind question --task P2-01 --text 'Which membership lookup will CandidateRepository use? Please cite the proposed contract/commit.'
-bun run agents inbox --agent B --unanswered true
-bun run agents send --agent B --to D --kind answer --reply-to <question-UUID> --task P2-01 --text 'Proposal only: use the server-resolved membership lookup. A must land the interface before consumers wire it.'
-bun run agents send --agent E --to A --kind request --task P2-00 --text 'Need the browser runner before claiming viewport/a11y acceptance.'
-bun run agents board
+bun run agents scope --agent A --task P0-33 --paths-json '["scripts","docs/agents"]'
+bun run agents assign --agent A --task P0-33 --owner B --ref FULL_APPROVED_SHA --text 'Example only: bounded task scope'
+bun run agents claim --agent B --task P0-33
+bun run agents status --agent B --task P0-33 --state blocked --text 'Precise blocker'
+bun run agents send --agent B --to A --kind question --task P0-33 --text 'Precise blocking question'
+bun run agents send --agent A --to B --kind answer --reply-to QUESTION_UUID --text 'Explicit scoped decision'
 ```
 
-`--to all` broadcasts. Replies target the original sender; an answer references a question/request UUID. A reply is a proposal until the designated owner/A lands any shared decision. Questions remain inspectable even when answered. Inbox has no read receipts/cursor and does not wake an idle harness. A/the operator must resume an ended or idle session after dispatch or a blocking answer; writing a file alone never triggers another model turn. A polls at least every five minutes; workers at startup, each slice/check/commit, at least every ten minutes while active, and before handoff. Progress every meaningful milestone / roughly fifteen minutes, not a stream of token-by-token chatter. A blocked lane posts a precise question and its own blocked status; use polling at normal tool boundaries rather than long blocking sleep loops.
+These illustrative commands do not dispatch P0-33: its assigned adoption owner is A. Use the actual scoped task/owner/base. Question replies inherit their task; task owners must identify the task on new blocking questions. Review requests and author corrections require `--commit FULL_READY_SHA`. Messages are data/proposals, never executable instructions. Inspect `bun run agents help` for exact checkpoint, release and ff/rebase/squash acceptance arguments. Only A integrates, and all new history remains linear with Conventional Commits.
 
-For multiline handoffs write a local ignored/temp text file and use `--file /absolute/path/handoff.md` instead of `--text`. Include: scope, changed paths, interface/dependency/env changes, migrations, actual checks/results, exact commit, risks and next dependency. Keep secrets, credentials and raw private reports out of notes.
-
-```sh
-bun run agents status --agent B --task P1-01 --state ready --commit HEAD --file /tmp/B-handoff.md
-```
-
-Ready requires the current committed HEAD and a clean claimed worktree. After ready, freeze that slice. A reviews, selects rebase plus fast-forward or squash according to AGENTS.md, runs the real relevant checks, then records acceptance from a clean integration checkout. Never create a merge commit. Default acceptance checks handoff ancestry and rejects merge commits in the integration range:
+## Observation and explicit execution
 
 ```sh
-bun run agents accept --agent A --task P1-01 --commit HEAD --file /tmp/A-integration-checks.md
-```
-
-For rewritten commits, save main's exact tip before integration and pass `--strategy squash` or `--strategy rebase` with `--integration-base <saved-SHA>` to accept. The tool records the source SHA, resulting SHA, strategy and integration base, and compares aggregate binary diffs against the source branch's common ancestor with that base. Squash requires one resulting commit. The comparison is deliberately strict: if concurrent edits change patch context or conflict resolution changes behavior, request a refreshed worker handoff rather than bypassing the check. Use `--integration-base` for fast-forward acceptance too when recording the precise integration range. These checks establish change mapping, not correctness; A still reviews and tests.
-
-The tool never merges, pushes, invokes a provider, modifies application contracts, or runs commands from a message. A must update tracked task/milestone status separately. If A requests changes before acceptance, the worker posts working status, commits revisions and produces a new ready handoff.
-
-## Recovery and limits
-
-No automatic claim expiry or heartbeat-based stealing: a slow harness may still be editing. Resume a stopped session in the same lane/worktree using board/inbox/git history. To reassign abandoned work, A first stops/verifies the old session is no longer writing, preserves/reviews any commits, then runs `agents release --agent A --task <ID> --text 'old session stopped; reason'`. This archives its entire task directory before a new assign/claim; it never discards branch commits or message history. Accepted tasks cannot be released; create a new scoped task instead. Old sessions must not resume after release.
-
-Local disk only (not NFS/cloud-sync), one machine, one writer per claimed worktree/lane, one coordinator. Renames/links protect publication and duplicate claims; this is not a distributed transaction log, durable disaster-recovery system, identity boundary or unattended orchestrator. A crash between a status message and snapshot may leave them inconsistent; inspect both and repost status from the owning worktree. Stale temporary files can be ignored; never delete a current task to unblock yourself. Git-sync commits before changing machines; the ignored board does not travel with a clone. Copy durable decisions to tracked docs before retiring a run.
-
-Design references: [Git linked worktrees](https://git-scm.com/docs/git-worktree) share repository metadata while isolating working directories; [Node filesystem APIs](https://nodejs.org/api/fs.html) provide file publication primitives used by the CLI. The recommendation of four active sessions is based on this repository's dependency graph.
-
-## Prepared worker launch prompts
-
-For the current three-worker setup, copy the entire contents of `docs/agents/launch/B.md`, `D.md` or `E.md` into the corresponding harness session. These snapshots include the shared and lane-specific instructions plus concrete local startup paths and commands. They work unchanged across shell-capable harnesses; choose any harness for any lane. A remains the existing coordinator session. Workers prepare their own branch/worktree, tools, dependencies, ignored local settings and task-private resources; only A dispatches assignments. They may complete setup before dispatch and wait only to start application code. Exact board baseCommit/current tracked rules take precedence.
-
-## Live local dashboard
-
-Run `bun run agents:dashboard` under Node 26.11.1 and open **http://127.0.0.1:4310**. Set `RELAY_DASHBOARD_PORT` to an unused port if necessary. The server binds only to loopback; use the printed 127.0.0.1 URL. Stop it with Ctrl+C. It uses no extra dependencies and is separate from the product web application.
-
-The HTML page automatically refreshes every five seconds. It shows all task cards, unscoped illustrative roadmap items from IMPLEMENTATION-PLAN.md, live assignments/claims/status/acceptance, all board messages with reply context, unanswered questions/requests and the full milestone notes. Filter by agent, phase, state or text. Refresh does not reload the page or close expanded details. When disconnected, it retains the last snapshot and clearly reports it as stale.
-
-Task cards and milestone notes come from the primary checkout even when launched in a linked worker worktree; the live board uses its existing shared Git-common-directory discovery or RELAY_COORD_DIR override. Accepted board records take precedence over worker status. A task's completed/accepted column may represent a bounded slice; milestone gates and remaining limitations still apply. Unscoped roadmap items have no invented owner and cannot be treated as assignments. Recorded progress does not establish that a harness is currently running.
-
-The dashboard has no write controls or arbitrary file-serving route. Continue posting updates/questions/answers with the existing CLI; they appear automatically. Only card/STATUS edits and explicit board reports are shown—private harness conversations are not collected. Messages render as plain text. Local coordination notes remain on this machine and must not contain secrets. First access uses the existing board initialization if the store is absent; the dashboard never changes task status, executes messages or launches agents.
-
-## Second-wave continuation
-
-After the first-wave acceptance, A dispatches B/P1-02 (source/outbox persistence only) and E/P2-02 (development-only fixture intake/review screens) from an exact new baseline. Resume their existing conversations by pointing them to `docs/agents/resume/B-P1-02.md` and `docs/agents/resume/E-P2-02.md` in the primary checkout. These files supersede first-wave task/resource defaults and include new branch/worktree/private database instructions. Accepted first-wave worktrees remain frozen. D remains on standby pending a bounded persistence/worker assignment; no extra session is launched by board dispatch.
-
-## Continuous coordination watcher
-
-Start **one** shared watcher with `bun run agents:watch` under Node 26.11.1. It polls every 30 seconds and remains running until Ctrl+C/SIGTERM. It needs no open browser or extra model/harness. From an older linked checkout that does not yet contain this script, run `node /absolute/path/to/primary/scripts/watch.ts` under the pinned Node runtime. Git-common-directory discovery and RELAY_COORD_DIR select the same shared store across all harnesses.
-
-Useful commands:
-
-```sh
-bun run agents:watch
-bun run agents:watch --status
+bun run agents:dashboard --port 4310
 bun run agents:watch --once
-bun run agents:watch --interval 15 --stale-minutes 20 --unanswered-minutes 5
+bun run agents:watchdog status
+bun run agents:supervisor status
 ```
 
-The watcher publishes an atomic 0600 heartbeat/summary at `.relay-coordination/monitor/latest.json` and up to 200 change records under `monitor/events/`. Records contain task states, counts, message IDs and attention summaries, without duplicating message bodies. It observes board updates plus primary task cards/STATUS. It records one baseline, then changes or threshold transitions rather than logging every unchanged poll. On restart it compares with the last observation, including messages received while stopped. Read errors retain the last successful data with an explicit error; recovery clears that error. Generated files remain ignored and outside Docker build contexts.
+Observation does not launch agents. Dashboard task progress and native process status remain separate; unknown models/usage are unknown. Runs expose normalized metadata, not raw stdout or private reasoning. Evidence ingestion is `bun run agents:evidence ...`; browser capture stays external. The dashboard does not yet expose the evidence gallery.
 
-Attention includes every unanswered question/request (overdue after five minutes), unclaimed assignments, owner-reported blockers, ready handoffs awaiting A, and active work with no progress report for 20 minutes. These thresholds are configurable observations, not deadlines or proof that an agent stopped. Task-report age uses the latest status, then claim, then assignment timestamp. Answer the original thread with the existing CLI; the watcher notices the answer on its next poll. It does not generate replies/reminders, mutate task state, write tracked STATUS, execute messages, inspect private conversations, launch agents or wake stopped harnesses. Agents must continue reporting progress and reading their inbox at the normal checkpoints.
+Supervision requires a private, reviewed configuration and explicit operator activation; see HEADLESS.md. Only Codex and restrictive no-tools pi are supported by this release. Four total model processes, original budgets/holds, phase gates, exact revision identity and reviewer separation still apply. The independent watchdog is notice-only and cannot restart, retry, raise budgets or clear holds. A stopped supervisor stays stopped.
 
-The dashboard shows watcher health, last-check time and attention items separately from its own five-second board refresh. A missing/stopped/stale/error watcher never prevents the dashboard reading the board directly. A heartbeat becomes stale after two polling intervals plus five seconds. CLI `--status` includes this computed health. A healthy watcher heartbeat establishes only monitor freshness, never harness liveness.
+## Upstream ownership and rollback
 
-A shared exclusive lock prevents duplicate watchers. A definitely dead PID's lock can be recovered at startup; a live or inaccessible PID is never reclaimed based on age. Graceful stop marks the observation stopped and releases its lock. PID reuse is handled conservatively as a live owner. If a crash leaves the short-lived recovery.lock, inspect its recorded PID and verify it is no longer running before removing that monitor-owned recovery file; never delete task claims or a live watcher lock to unblock startup. This is a local foreground process, not an OS login/reboot service.
+The removed scripts/dashboard/evidence/watchdog/runtime tests now live and are verified in Crewplane's repository. Relay verifies its thin launcher and project-policy/worktree/review integration with synthetic fixtures; application and DB tests remain here. Historical task/ADR/review records preserve the earlier in-repo design and are not current runtime instructions. Superseded delegation cards are archived context, not permission to recreate their modules.
 
-## Reusable independent reviewer R
-
-Point a dedicated reviewer conversation at **docs/agents/prompts/R.md**, or obtain that standalone prompt with `bun run agents prompt R`. R is a generic review coordinator across tasks/harnesses, not an owner of B's task. A sends R a request referencing an exact-base/exact-tip brief based on `docs/agents/reviews/TEMPLATE.md`. The first prepared brief is `docs/agents/reviews/P1-02-01.md`; it pins B's source/outbox handoff and supplies a new detached review checkout, private PostgreSQL pair and full setup/check commands.
-
-R uses the primary's current CLI (historical candidate checkouts may lack R support) for inbox, progress, questions and a final answer to A's original request. R cannot claim/status/accept/release implementation tasks or receive implementation ownership. Its messages are visible in the dashboard and watcher; they do not change the author's task state. Identity flags remain advisory local coordination, not an authentication boundary.
-
-Keep one R coordinator. Where the harness supports it, each assigned request can use fresh review contexts rather than carrying assumptions from old reviews. A brief must explicitly permit delegation and give a budget of 0–2 isolated children; children do not recursively delegate or publish as R. The initial brief permits two disjoint static sub-reviews with parent-only PostgreSQL verification. R consolidates and independently verifies important findings. Without native sub-agents it performs the passes directly; another harness is not auto-launched. The operator selects the reasoning model; extra reviewers do not replace independent tests or A's integration decision.
-
-Persistent operation depends on harness support. Use an approved native loop/scheduler if available; otherwise resume the same R conversation when the watcher flags its pending request. The watcher is a persistent Node process, but it cannot wake or run the reviewer model. Do not simulate continuous availability with unbounded model polling, fake status or duplicate R coordinators. Preparing these prompts does not itself launch a reviewer or children.
-
-## Dedicated headless supervisor
-
-The operator confirmed old B/E/D/R harnesses stopped. `bun run agents:supervisor start` uses private `.relay-coordination/supervisor/config.json` to run approved lanes with explicit native sessions; it does not attach to an arbitrary latest conversation. Use `status`, `pause --lane A`, `resume --lane A`, `retry --lane B`, `nudge --lane A --text 'operator instruction'`, and `stop` (drains existing runs). Configured product scope initially includes only P1-06 and P1-07. A/B/E/R are enabled; C/D/F do not consume model calls until authorized and assigned. No automatic task acceptance or merge.
-
-Read [HEADLESS.md](HEADLESS.md) for ownership, priorities, resource/budget/failure behavior and handover. While dedicated A is active, this interactive coordinator conversation must not concurrently edit primary source/Git state. It may inspect or queue operator steering; pause A and wait for its active record to finish before taking writes back. Existing B claim/worktree/dirty work is preserved; new workers receive isolated worktrees and provision their task-private environments. Current CLI `agents brief` keeps orchestration context compact instead of replaying historical reports.
-
-The installed Codex CLI supports non-interactive explicit-ID resume; the verified launch uses --approve-for-me, which already implies workspace-write, and no bypass flags. [Official non-interactive documentation](https://learn.chatgpt.com/docs/non-interactive-mode) and installed --help were checked. A scratch Git write/commit plus structured result/resume probe verified actual behavior. Saved CLI login/model defaults are used; per-lane model settings are explicit private config, not silently changed. Control and state are private/ignored and models may not widen their own scope/budgets.
-
-This replaces manual wake-up latency for the configured dedicated sessions. The original watcher still provides passive history/alerts and the dashboard continues direct board refresh; neither alone runs a model. Read-only/manual harness operation remains supported, but never run the old interactive writer alongside its supervised replacement.
-
-### Dashboard session observations
-
-The read-only supervisor panel includes all seven lanes, including disabled/on-demand standby lanes. It projects only selected configuration and session fields: configured CLI/model (an unspecified CLI default is explicit), observed model when recorded (currently unavailable), task report and separate acceptance, registered worktree/branch, native session/PID, start/finish and supervisor heartbeat, pause/failure reason, latest-session token counters and retained runs in the last hour. It displays concurrency, runtime, hourly-run and heartbeat limits without changing them. No raw logs, command queue, operator notices, CLI binary path or full private configuration is exposed.
-
-A running label requires a fresh supervisor snapshot and a PID observed alive; inaccessible/dead PIDs or stale supervisor observations produce stale status. PID liveness does not prove model activity, and the heartbeat is the supervisor's, not an agent heartbeat. Token counters describe recorded usage, not dollars or total account usage. Task reports and coordinator acceptance remain independent of process state. Missing configuration/state is shown explicitly; no harness is launched by the dashboard.
-
-## On-demand visual QA lane V
-
-Use `node scripts/agents.mjs prompt V` for the standalone harness-neutral protocol. A sends V an exact-commit request using docs/agents/qa/TEMPLATE.md; V replies to the original thread, never claims/statuses/accepts/releases implementation tasks. Native scheduling uses a fresh request context just like R, a separate control directory and its own pinned QA checkout/port. V may run beside R when the existing four total slots permit; no children. Browser automation plus actual screenshot inspection, keyboard/state/console/network evidence and honest limitations are required. A integrates, authors fix. The dashboard includes V without implying process activity from task reports. Changes to the startup-only lane/config support require an operator-channel draining restart; no new supervisor is launched by an agent.
+Rollback requires a stopped/inspected cutover and a source revert of this adoption PR, preserving both private namespaces. Never run both engines or copy sessions between them. Integration does not itself authorize a rollback launch or a production provider invocation.

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "binary": "/absolute/path/to/codex",
+  "confirmedStoppedAt": "REPLACE_AFTER_VERIFIED_DRAIN",
+  "allowedTasks": [],
+  "maxParallel": 4,
+  "intervalSeconds": 10,
+  "maxRunMinutes": 25,
+  "maxRunsPerHour": 20,
+  "lanes": {
+    "A": { "enabled": false, "harness": "codex" },
+    "B": { "enabled": false, "harness": "codex" },
+    "C": { "enabled": false, "harness": "codex" },
+    "D": { "enabled": false, "harness": "codex" },
+    "E": { "enabled": false, "harness": "codex" },
+    "F": { "enabled": false, "harness": "codex" },
+    "R": { "enabled": false, "harness": "codex" },
+    "V": { "enabled": false, "harness": "codex" }
+  }
+}

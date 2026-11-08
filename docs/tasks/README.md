@@ -48,3 +48,7 @@ B supplies domain services/query definitions, C intake, D extraction and F deliv
 ## Dispatch and communication
 
 See docs/agents/README.md and P0-06 for the harness-neutral operating kit. A starts with B(P1-01), D(P2-01) and E(P2-00); C/F are standby/rotation lanes. Local board assignments record exact baseline commits and task slices. Workers claim in isolated worktrees and post progress/questions/handoffs there; A alone updates tracked milestone/task status after acceptance. A task card existing is not an automatic assignment.
+
+## External coordination adoption
+
+[P0-33](P0-33.md) adopts the separately released Crewplane CLI through a pinned project adapter. It replaces duplicated tooling only; product phase gates and explicit live activation remain separate. Historical orchestration cards retain their original evidence, not current implementation ownership.
