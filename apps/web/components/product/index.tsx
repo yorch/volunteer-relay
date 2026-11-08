@@ -538,6 +538,54 @@ function Inbox({
           <p>No processing failures.</p>
         )}
       </Card>
+      <Card>
+        <h2>Reprocess an update</h2>
+        <p>
+          Run the current model and policy again. The original history stays
+          available; pending decisions based on an earlier run become stale.
+        </p>
+        {snapshot.sources.filter((source) =>
+          ["review", "accepted", "rejected"].includes(source.status),
+        ).length ? (
+          <ul className={styles.list}>
+            {snapshot.sources
+              .filter((source) =>
+                ["review", "accepted", "rejected"].includes(source.status),
+              )
+              .map((source) => (
+                <li key={source.sourceId}>
+                  Source {source.sourceId} · revision {source.revision} ·{" "}
+                  {source.status}{" "}
+                  <button
+                    type="button"
+                    disabled={retrying !== null}
+                    onClick={async () => {
+                      setRetrying(source.sourceId);
+                      try {
+                        await mutate(
+                          "/api/product/reprocess-source",
+                          {
+                            sourceId: source.sourceId,
+                            expectedRevision: source.revision,
+                          },
+                          "Reprocessing requested.",
+                        );
+                      } finally {
+                        setRetrying(null);
+                      }
+                    }}
+                  >
+                    {retrying === source.sourceId
+                      ? "Requesting…"
+                      : "Reprocess with current model and policy"}
+                  </button>
+                </li>
+              ))}
+          </ul>
+        ) : (
+          <p>No updates available to reprocess.</p>
+        )}
+      </Card>
       {snapshot.queue.length === 0 ? (
         <p>No sources awaiting review.</p>
       ) : (
@@ -1277,12 +1325,33 @@ type ImportDraft = {
   dateFormat: "ISO" | "YYYY-MM-DD" | "MM/DD/YYYY" | "DD/MM/YYYY";
   timezone: string;
   authorMapping: Record<string, string | null>;
+  photoMapping?: Record<string, string[]>;
 };
 type ImportPreview = {
   sources: SourceEnvelope[];
   errors: Array<{ row: number; code: string; message: string }>;
   ambiguousDuplicates: Array<{ sourceIds: string[]; rows: number[] }>;
 };
+async function importRequest<T>(
+  path: string,
+  data: object,
+  files: File[],
+): Promise<ResponseResult<T>> {
+  if (!files.length) return request<T>(path, data);
+  try {
+    const form = new FormData();
+    form.set("data", JSON.stringify(data));
+    for (const file of files) form.append("files", file, file.name);
+    const response = await fetch(path, {
+      method: "POST",
+      credentials: "same-origin",
+      body: form,
+    });
+    const result = (await response.json()) as ResponseResult<T>;
+    if (result && typeof result.ok === "boolean") return result;
+  } catch {}
+  return { ok: false, error: { code: "DEPENDENCY_UNAVAILABLE" } };
+}
 function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
   const [format, setFormat] = useState<ImportDraft["format"]>("csv");
   const [text, setText] = useState("");
@@ -1290,6 +1359,9 @@ function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
     useState<ImportDraft["dateFormat"]>("ISO");
   const [timezone, setTimezone] = useState("UTC");
   const [mappingText, setMappingText] = useState("{}");
+  const [photoMappingText, setPhotoMappingText] = useState("{}");
+  const [files, setFiles] = useState<File[]>([]);
+  const [reading, setReading] = useState(false);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [draft, setDraft] = useState<ImportDraft | null>(null);
   const [ack, setAck] = useState(false);
@@ -1328,12 +1400,56 @@ function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
       );
       return;
     }
-    const next = { format, text, dateFormat, timezone, authorMapping };
+    let photoMapping: Record<string, string[]>;
+    try {
+      const parsed: unknown = JSON.parse(photoMappingText);
+      if (
+        !parsed ||
+        typeof parsed !== "object" ||
+        Array.isArray(parsed) ||
+        Object.entries(parsed).some(
+          ([name, value]) =>
+            !name ||
+            !Array.isArray(value) ||
+            value.some((v) => typeof v !== "string" || !v),
+        )
+      )
+        throw new Error();
+      photoMapping = parsed as Record<string, string[]>;
+    } catch {
+      setError(
+        "Photo mapping must be a JSON object of external IDs to arrays of filenames.",
+      );
+      return;
+    }
+    if (
+      files.length > 10 ||
+      files.some(
+        (file) =>
+          file.size > 10 * 1024 * 1024 ||
+          !["image/png", "image/jpeg", "image/webp"].includes(file.type),
+      ) ||
+      new Set(files.map((file) => file.name)).size !== files.length
+    ) {
+      setError(
+        "Choose up to 10 PNG, JPEG or WebP photos, each up to 10 MB, with unique filenames.",
+      );
+      return;
+    }
+    const next: ImportDraft = {
+      format,
+      text,
+      dateFormat,
+      timezone,
+      authorMapping,
+      ...(Object.keys(photoMapping).length ? { photoMapping } : {}),
+    };
     setPending(true);
     setError("");
-    const result = await request<ImportPreview>(
+    const result = await importRequest<ImportPreview>(
       "/api/product/import-preview",
       next,
+      files,
     );
     if (result.ok) {
       setDraft(next);
@@ -1354,13 +1470,14 @@ function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
     attempt.current ??= key();
     setPending(true);
     setError("");
-    const result = await request<{ receipts: Receipt[] }>(
+    const result = await importRequest<{ receipts: Receipt[] }>(
       "/api/product/import",
       {
         ...draft,
         idempotencyKey: attempt.current,
         ...(ack ? { allowAmbiguous: true } : {}),
       },
+      files,
     );
     if (result.ok) {
       setReceipts(result.value.receipts);
@@ -1391,6 +1508,49 @@ function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
               <option value="json">JSON</option>
               <option value="whatsapp">WhatsApp</option>
             </select>
+          </label>
+          <label>
+            Text file (JSON, CSV or TXT, up to 5 MB)
+            <input
+              type="file"
+              accept=".json,.csv,.txt,application/json,text/csv,text/plain"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                if (
+                  file.size > 5 * 1024 * 1024 ||
+                  !/\.(json|csv|txt)$/i.test(file.name)
+                ) {
+                  setError("Choose a JSON, CSV or TXT file up to 5 MB.");
+                  return;
+                }
+                setReading(true);
+                try {
+                  setText(await file.text());
+                  setError("");
+                } catch {
+                  setError("Could not read the selected file.");
+                } finally {
+                  setReading(false);
+                }
+              }}
+            />
+          </label>
+          <label>
+            Photos (up to 10 PNG, JPEG or WebP files, each up to 10 MB)
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              multiple
+              onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+            />
+          </label>
+          <label>
+            Photo mapping (JSON: external ID to filename array; optional)
+            <textarea
+              value={photoMappingText}
+              onChange={(e) => setPhotoMappingText(e.target.value)}
+            />
           </label>
           <label>
             Import text
@@ -1437,7 +1597,7 @@ function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
               : "None"}
           </p>
           <p>Default fields: id, author, text, timestamp.</p>
-          <button type="submit" disabled={pending}>
+          <button type="submit" disabled={pending || reading}>
             Preview import
           </button>
         </form>
@@ -1450,7 +1610,8 @@ function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
           <ul>
             {preview.sources.map((source) => (
               <li key={`${source.sourceId}-${source.revision}`}>
-                {source.author.externalIdentity}: {source.text}
+                {source.author.externalIdentity}: {source.text} ·{" "}
+                {source.attachments.length} attachments
               </li>
             ))}
           </ul>
