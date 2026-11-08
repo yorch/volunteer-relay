@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import {
   ensureDir,
@@ -17,6 +17,7 @@ import {
   requestNarration,
 } from "../src/lib/elevenlabs.ts";
 import { paths } from "../src/lib/env.ts";
+import { scenesToGenerate } from "../src/lib/narration-plan.ts";
 import { probeMedia } from "../src/lib/probe.ts";
 import { type Scene, sceneById } from "../src/lib/schema.ts";
 import {
@@ -143,6 +144,18 @@ async function generateWithElevenLabs(
           `  ${scene.id}: ${probe.durationSeconds.toFixed(2)}s of audio (${text.length} characters)`,
         );
         lastError = null;
+        // Persist the completed scene immediately: a later failure must not
+        // throw away an already billed result.
+        writeNarrationManifest({
+          schemaVersion: 1,
+          provider: "elevenlabs",
+          voiceId,
+          modelId,
+          generatedAt: new Date().toISOString(),
+          scenes: [...assets.values()].sort((a, b) =>
+            a.sceneId < b.sceneId ? -1 : 1,
+          ),
+        });
         break;
       } catch (error) {
         lastError = error as Error;
@@ -178,6 +191,8 @@ function importSuppliedAudio(
       throw new Error(
         `Supplied audio is missing ${scene.id}.mp3 in ${directory}; every scene needs a file`,
       );
+    // Alignment from a previous provider run describes different audio.
+    rmSync(alignmentFile(scene.id), { force: true });
     copyFileSync(source, narrationFile(scene.id));
     const probe = probeMedia(narrationFile(scene.id));
     assets.push({
@@ -231,6 +246,7 @@ function generateScratch(scenes: readonly Scene[]): void {
       throw new Error(
         `Scratch audio conversion failed: ${convert.stderr.trim()}`,
       );
+    rmSync(alignmentFile(scene.id), { force: true });
     const probe = probeMedia(narrationFile(scene.id));
     assets.push({
       sceneId: scene.id,
@@ -326,8 +342,22 @@ async function main(): Promise<void> {
     throw new Error(
       `Paid generation is opt-in: this would request ${cache.missing.length} scene(s), ${cache.missing.reduce((sum, scene) => sum + scene.narration.length, 0)} characters. Re-run with --yes to confirm.`,
     );
-  await generateWithElevenLabs(selected, env, overrides, "elevenlabs");
-  log("Narration generated with ElevenLabs and alignment saved.");
+  const force = Boolean(args.flags.force);
+  const toGenerate = scenesToGenerate({
+    selected,
+    cacheHits: cache.hits,
+    force,
+  });
+  if (toGenerate.length === 0) {
+    log("Every selected scene is cached; nothing was requested or billed.");
+    return;
+  }
+  await generateWithElevenLabs(toGenerate, env, overrides, "elevenlabs");
+  log(
+    force
+      ? "Narration regenerated with ElevenLabs (forced) and alignment saved."
+      : `Narration generated for ${toGenerate.length} scene(s); cached scenes were left untouched.`,
+  );
 }
 
 function requireNarrationEnvSafe(env: Record<string, string | undefined>): {

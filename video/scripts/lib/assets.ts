@@ -43,6 +43,8 @@ export const captureAssetSchema = z
     height: z.number().int().positive(),
     fps: z.number().positive().nullable(),
     origin: z.enum(["hosted", "local"]),
+    /** Exact origin the take came from; a delivery never mixes them. */
+    baseUrl: z.string(),
     appCommit: z.string().nullable(),
     scenarioId: z.string(),
     checkpointId: z.string(),

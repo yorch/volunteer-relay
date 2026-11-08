@@ -1,4 +1,5 @@
-import { existsSync, renameSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, renameSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { chromium } from "@playwright/test";
 import {
   ensureDir,
@@ -82,6 +83,13 @@ async function captureScene(
     );
 
   const browser = await chromium.launch();
+  ensureDir(paths.captures);
+  const before = new Set(readdirSync(paths.captures));
+  const cleanupLeftovers = () => {
+    for (const entry of readdirSync(paths.captures))
+      if (!before.has(entry))
+        rmSync(join(paths.captures, entry), { force: true });
+  };
   const recordedAt = new Date().toISOString();
   const markers: Array<{ label: string; atSeconds: number }> = [];
   const started = performance.now();
@@ -129,6 +137,9 @@ async function captureScene(
     produced = video ? await video.path() : null;
     if (!produced || !existsSync(produced))
       throw new Error(`Playwright produced no video for ${scene.id}`);
+  } catch (error) {
+    cleanupLeftovers();
+    throw error;
   } finally {
     await browser.close();
   }
@@ -151,6 +162,7 @@ async function captureScene(
     height: probe.height,
     fps: probe.fps,
     origin: target.originLabel,
+    baseUrl: target.baseUrl,
     appCommit: gitCommit(repoRoot),
     scenarioId: scenario.scenarioId,
     checkpointId: action.startsFrom,
@@ -177,27 +189,56 @@ async function main(): Promise<void> {
   log(
     `Capturing ${scenes.length} scene(s) at 1920x1080 from ${target.baseUrl} (${target.originLabel})`,
   );
-  const existing = readCaptureManifest();
+  let existing = null;
+  try {
+    existing = readCaptureManifest();
+  } catch (error) {
+    if (!args.flags.fresh)
+      throw new Error(
+        `${(error as Error).message}\nPass --fresh to discard generated captures and start a clean capture set, or restore a compatible manifest.`,
+      );
+    log("Discarding an incompatible capture manifest and its media (--fresh).");
+  }
+  if (args.flags.fresh) {
+    rmSync(paths.captureManifest, { force: true });
+    const media = join(paths.captures);
+    if (existsSync(media))
+      for (const entry of readdirSync(media))
+        rmSync(join(media, entry), { force: true });
+    existing = null;
+  }
+  if (
+    existing &&
+    (existing.targetMode !== target.mode || existing.baseUrl !== target.baseUrl)
+  )
+    throw new Error(
+      `Existing captures came from ${existing.baseUrl} (${existing.targetMode}). Remove generated/captures and generated/capture-manifest.json before capturing from ${target.baseUrl}; one delivery never mixes origins.`,
+    );
   const byId = new Map(
     (existing?.scenes ?? []).map((asset) => [asset.sceneId, asset]),
   );
+  const publish = (asset: CaptureAsset) => {
+    byId.set(asset.sceneId, asset);
+    writeCaptureManifest({
+      schemaVersion: 1,
+      scenarioId: loadScenario(paths.scenario).scenarioId,
+      targetMode: target.mode,
+      baseUrl: target.baseUrl,
+      appCommit: gitCommit(repoRoot),
+      capturedAt: new Date().toISOString(),
+      scenes: [...byId.values()].sort((a, b) =>
+        a.sceneId < b.sceneId ? -1 : 1,
+      ),
+    });
+  };
   for (const scene of scenes) {
     log(`  ${scene.id} ${scene.title}`);
     const asset = await captureScene(scene, env);
-    byId.set(scene.id, asset);
+    publish(asset);
     log(
       `  ${scene.id}: ${asset.durationSeconds.toFixed(2)}s, ${asset.width}x${asset.height}, ${asset.markers.length} markers`,
     );
   }
-  writeCaptureManifest({
-    schemaVersion: 1,
-    scenarioId: loadScenario(paths.scenario).scenarioId,
-    targetMode: target.mode,
-    baseUrl: target.baseUrl,
-    appCommit: gitCommit(repoRoot),
-    capturedAt: new Date().toISOString(),
-    scenes: [...byId.values()].sort((a, b) => (a.sceneId < b.sceneId ? -1 : 1)),
-  });
   log(
     "Capture manifest written. A subset capture only matches a database still at that scene's start checkpoint.",
   );

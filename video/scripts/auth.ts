@@ -8,7 +8,12 @@ import {
   requireNode26,
 } from "../src/lib/cli.ts";
 import { loadEnv, paths, repoRoot } from "../src/lib/env.ts";
-import { identityForRole, loadScenario } from "../src/lib/scenario.ts";
+import {
+  identityForRole,
+  loadScenario,
+  organizationIdFor,
+  resolveOrganizations,
+} from "../src/lib/scenario.ts";
 import { resolveTarget } from "../src/lib/target.ts";
 import { authenticate, storageStatePath, withBrowser } from "./lib/session.ts";
 
@@ -35,10 +40,10 @@ function credentialsFor(
 ): { email: string; password: string; organizationId: string } {
   const scenario = loadScenario(paths.scenario);
   const identity = identityForRole(scenario, role);
-  const organizationId =
-    identity.organization === "primary"
-      ? scenario.primaryOrganization.id
-      : scenario.secondaryOrganization.id;
+  const organizationId = organizationIdFor(
+    identity,
+    resolveOrganizations(env, scenario),
+  );
   const email = env[identity.envEmail] ?? identity.email;
   const password = env[identity.envPassword];
   if (!password && mode === "hosted")

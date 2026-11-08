@@ -11,6 +11,7 @@ import {
 } from "../src/lib/cli.ts";
 import { paths, videoRoot } from "../src/lib/env.ts";
 import { measureLoudness, probeMedia } from "../src/lib/probe.ts";
+import { finalRenderProblems } from "../src/lib/readiness.ts";
 import { parseSceneManifest } from "../src/lib/schema.ts";
 import {
   parseTimeline,
@@ -19,7 +20,11 @@ import {
 } from "../src/lib/timeline.ts";
 import { readCaptureManifest, readNarrationManifest } from "./lib/assets.ts";
 import { resolveBrowserExecutable } from "./lib/browser.ts";
-import { buildRenderProps } from "./lib/props-build.ts";
+import {
+  buildRenderProps,
+  cuesForTimeline,
+  readCueSets,
+} from "./lib/props-build.ts";
 import { loadEverything } from "./lib/script.ts";
 
 /**
@@ -104,6 +109,22 @@ async function main(): Promise<void> {
 
   const captures = readCaptureManifest();
   const narration = readNarrationManifest();
+  if (mode === "full" && !draft && !proof) {
+    const problems = finalRenderProblems({
+      timeline,
+      productScenes: parsedManifest.scenes
+        .filter((scene) => scene.kind === "product")
+        .map((scene) => scene.id),
+      capturedSceneIds: (captures?.scenes ?? []).map((asset) => asset.sceneId),
+      captureOrigins: (captures?.scenes ?? []).map((asset) => asset.baseUrl),
+      cueCount: cuesForTimeline(timeline, readCueSets()).length,
+      hasMusic: Boolean(process.env.VIDEO_MUSIC_FILE),
+    });
+    if (problems.length)
+      throw new Error(
+        `Refusing a final render:\n  - ${problems.join("\n  - ")}\nRenders are not published; fix the above or render --draft/--proof for iteration.`,
+      );
+  }
   const props = buildRenderProps({
     manifest: parsedManifest,
     timeline,

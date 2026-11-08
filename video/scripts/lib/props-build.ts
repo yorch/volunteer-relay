@@ -80,12 +80,14 @@ export function buildRenderProps(input: {
   mode: "full" | "proof";
 }): HackathonVideoProps {
   const captureFiles: Record<string, string> = {};
+  const captureOrigins: Record<string, "hosted" | "local"> = {};
   for (const scene of productScenes(input.manifest)) {
     const asset = input.captures?.scenes.find(
       (entry) => entry.sceneId === scene.id,
     );
     if (!asset) continue;
     captureFiles[scene.id] = capturePublicPath(scene.id);
+    captureOrigins[scene.id] = asset.origin;
   }
   const narrationFiles: Record<string, string> = {};
   if (input.narration)
@@ -105,6 +107,6 @@ export function buildRenderProps(input: {
     narrationFiles,
     cues,
     musicFile: null,
-    captureOrigin: input.captures?.targetMode ?? "none",
+    captureOrigins,
   };
 }

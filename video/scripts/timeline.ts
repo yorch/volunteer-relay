@@ -47,7 +47,9 @@ function captionsFor(
   asset: NarrationAsset,
   offsetSeconds: number,
 ): { cues: Cue[]; derived: "alignment" | "proportional-phrase" } {
-  if (existsSync(alignmentFile(scene.id))) {
+  // Provider alignment describes one specific audio file. Supplied or scratch
+  // audio carries no alignment, so stale provider timings are never reused.
+  if (asset.source === "elevenlabs" && existsSync(alignmentFile(scene.id))) {
     const alignment = parseAlignment(
       JSON.parse(readFileSync(alignmentFile(scene.id), "utf8")),
     );

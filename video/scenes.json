@@ -60,7 +60,7 @@
       "title": "One everyday update",
       "kind": "product",
       "narration": "Volunteers report in their own words. This update describes one shared garden visit, two volunteers, and the time each of them gave. Relay proposes an activity and two contributions, and keeps every proposed field tied to the original message. Nothing is approved until staff decide.",
-      "onScreenDisclosure": "Synthetic demo data",
+      "onScreenDisclosure": "Authored demo proposal · no live model call",
       "capture": {
         "checkpointId": "baseline",
         "role": "coordinator",

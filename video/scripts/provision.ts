@@ -10,8 +10,14 @@ import {
   run,
   writePrivate,
 } from "../src/lib/cli.ts";
+import { assertRecordingDatabase } from "../src/lib/db-guard.ts";
 import { loadEnv, parseEnvFile, paths, repoRoot } from "../src/lib/env.ts";
-import { identityForRole, loadScenario } from "../src/lib/scenario.ts";
+import {
+  identityForRole,
+  loadScenario,
+  organizationIdFor,
+  resolveOrganizations,
+} from "../src/lib/scenario.ts";
 import { resolveTarget } from "../src/lib/target.ts";
 import { authenticate, withBrowser } from "./lib/session.ts";
 
@@ -37,10 +43,12 @@ function localDemoSeed(): void {
     DEMO_MODE: "true",
     NODE_ENV: "development",
   };
-  if (!env.DATABASE_URL)
-    throw new Error(
-      "DATABASE_URL must point at the dedicated local recording database before provisioning",
-    );
+  // Same guard as preparation: no public-password demo identities in an
+  // ordinary, shared or remote database.
+  assertRecordingDatabase({
+    databaseUrl: env.DATABASE_URL,
+    marker: env.VIDEO_LOCAL_DATABASE_MARKER,
+  });
   if (!env.ATTACHMENT_ROOT)
     throw new Error(
       "ATTACHMENT_ROOT must point at a private writable directory for demo photo bytes",
@@ -71,9 +79,15 @@ function storeMissingPasswords(
   const current = existsSync(paths.envLocal)
     ? readFileSync(paths.envLocal, "utf8")
     : "";
+  const lines = current.split(/\r?\n/);
   const values = parseEnvFile(current);
-  const appended: string[] = [];
-  const variables: string[] = [];
+  const written: string[] = [];
+  const setValue = (key: string, value: string) => {
+    const index = lines.findIndex((line) => line.trim().startsWith(`${key}=`));
+    if (index === -1) lines.push(`${key}=${value}`);
+    else lines[index] = `${key}=${value}`;
+    written.push(key);
+  };
   for (const role of roles) {
     if (role === "multi-organization") continue;
     const scenario = loadScenario(paths.scenario);
@@ -81,21 +95,16 @@ function storeMissingPasswords(
       scenario,
       role as "coordinator" | "owner" | "volunteer" | "report-reader",
     );
+    // Fill a missing *or blank* placeholder (the shipped .env.example has empty
+    // values) and never overwrite an existing non-empty value or email.
     if (values[identity.envPassword]) continue;
-    if (current.includes(`${identity.envPassword}=`)) continue;
-    appended.push(
-      `${identity.envPassword}=${password}`,
-      `${identity.envEmail}=${identity.email}`,
-    );
-    variables.push(identity.envPassword);
+    setValue(identity.envPassword, password);
+    if (!values[identity.envEmail]) setValue(identity.envEmail, identity.email);
   }
-  if (appended.length === 0) return [];
+  if (written.length === 0) return [];
   ensureDir(paths.videoRoot);
-  writePrivate(
-    paths.envLocal,
-    `${current.trimEnd()}\n\n# Synthetic demo recording identities (public demo-only password)\n${appended.join("\n")}\n`,
-  );
-  return variables;
+  writePrivate(paths.envLocal, `${lines.join("\n").replace(/\n+$/, "")}\n`);
+  return written.filter((key) => key.endsWith("_PASSWORD"));
 }
 
 async function main(): Promise<void> {
@@ -128,6 +137,7 @@ async function main(): Promise<void> {
   }
 
   const refreshed = loadEnv();
+  const unverified: string[] = [];
   await withBrowser(async (browser) => {
     for (const role of RECORDING_ROLES) {
       if (role === "multi-organization") continue;
@@ -139,12 +149,13 @@ async function main(): Promise<void> {
       const password = refreshed[identity.envPassword];
       if (!password) {
         log(`  ${role}: MISSING ${identity.envPassword}; not verified`);
+        unverified.push(role);
         continue;
       }
-      const organizationId =
-        identity.organization === "primary"
-          ? scenario.primaryOrganization.id
-          : scenario.secondaryOrganization.id;
+      const organizationId = organizationIdFor(
+        identity,
+        resolveOrganizations(refreshed, scenario),
+      );
       try {
         await authenticate(browser, target, {
           role,
@@ -155,7 +166,7 @@ async function main(): Promise<void> {
         log(`  ${role}: verified in ${organizationId}`);
       } catch (error) {
         log(`  ${role}: FAILED (${(error as Error).message})`);
-        process.exitCode = 1;
+        unverified.push(role);
       }
     }
   });
@@ -170,10 +181,14 @@ async function main(): Promise<void> {
       log(
         `  isolation check: MISSING ${isolation.envPassword}; organization-boundary check not run`,
       );
+      unverified.push("multi-organization");
     } else {
       const browser = await chromium.launch();
       try {
-        const organizationId = scenario.secondaryOrganization.id;
+        const organizationId = resolveOrganizations(
+          refreshed,
+          scenario,
+        ).secondaryId;
         await authenticate(browser, target, {
           role: "multi-organization",
           email,
@@ -183,10 +198,19 @@ async function main(): Promise<void> {
         log(
           `  isolation check: verified second-tenant session in ${organizationId}`,
         );
+      } catch (error) {
+        log(`  isolation check: FAILED (${(error as Error).message})`);
+        unverified.push("multi-organization");
       } finally {
         await browser.close();
       }
     }
+  }
+  if (unverified.length) {
+    log(
+      `Unverified roles: ${unverified.join(", ")}. Supply their passwords in video/.env.local; nothing was changed for them.`,
+    );
+    process.exitCode = 1;
   }
 }
 

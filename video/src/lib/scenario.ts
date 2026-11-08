@@ -145,6 +145,38 @@ export function compareTotals(
   return { ok: mismatches.length === 0, mismatches };
 }
 
+export interface EffectiveOrganizations {
+  primaryId: string;
+  secondaryId: string;
+}
+
+/**
+ * Configuration wins over the committed scenario: a dedicated recording tenant
+ * supplied through VIDEO_ORGANIZATION_ID is what authentication and assertions
+ * must use. The scenario remains the documented default.
+ */
+export function resolveOrganizations(
+  env: Record<string, string | undefined>,
+  scenario: RecordingScenario,
+): EffectiveOrganizations {
+  return {
+    primaryId:
+      env.VIDEO_ORGANIZATION_ID?.trim() || scenario.primaryOrganization.id,
+    secondaryId:
+      env.VIDEO_SECONDARY_ORGANIZATION_ID?.trim() ||
+      scenario.secondaryOrganization.id,
+  };
+}
+
+export function organizationIdFor(
+  identity: Identity,
+  organizations: EffectiveOrganizations,
+): string {
+  return identity.organization === "primary"
+    ? organizations.primaryId
+    : organizations.secondaryId;
+}
+
 /** Only the recording identities that a capture role maps onto. */
 export function identityForRole(
   scenario: RecordingScenario,

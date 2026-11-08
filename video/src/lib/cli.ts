@@ -12,7 +12,11 @@ export interface ParsedArgs {
 export function parseArgs(argv: readonly string[]): ParsedArgs {
   const positional: string[] = [];
   const flags: Record<string, string | true> = {};
-  for (const [index, argument] of argv.entries()) {
+  let index = 0;
+  while (index < argv.length) {
+    const argument = argv[index];
+    index += 1;
+    if (argument === undefined) break;
     if (!argument.startsWith("--")) {
       positional.push(argument);
       continue;
@@ -23,10 +27,13 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       flags[body.slice(0, equals)] = body.slice(equals + 1);
       continue;
     }
-    const next = argv[index + 1];
+    const next = argv[index];
     if (next !== undefined && !next.startsWith("--")) {
       flags[body] = next;
-    } else flags[body] = true;
+      index += 1; // a flag value is never also a positional
+      continue;
+    }
+    flags[body] = true;
   }
   return { positional, flags };
 }
@@ -62,6 +69,17 @@ export function ensureDir(path: string): void {
 export function writeJson(path: string, value: unknown): void {
   ensureDir(dirname(path));
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+/** Binary artifact (providers return audio bytes; never pass them as text). */
+export function writePrivateBytes(path: string, bytes: Uint8Array): void {
+  ensureDir(dirname(path));
+  writeFileSync(path, bytes, { mode: 0o600 });
+  try {
+    chmodSync(path, 0o600);
+  } catch {
+    // Filesystems without POSIX modes still get the explicit 0600 request.
+  }
 }
 
 /** Auth state, alignment and env writes stay owner-only where supported. */

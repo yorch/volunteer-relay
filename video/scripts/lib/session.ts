@@ -1,4 +1,12 @@
-import { chmodSync } from "node:fs";
+import {
+  chmodSync,
+  closeSync,
+  mkdirSync,
+  openSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import {
   type Browser,
@@ -6,7 +14,6 @@ import {
   chromium,
   type Page,
 } from "@playwright/test";
-import { ensureDir } from "../../src/lib/cli.ts";
 import { paths } from "../../src/lib/env.ts";
 import {
   assertOriginAllowed,
@@ -30,6 +37,38 @@ export function storageStatePath(role: string): string {
   return join(paths.authDir, `${role}.json`);
 }
 
+/** Auth state is a credential: private directory, private files, no window. */
+function ensurePrivateDir(path: string): void {
+  mkdirSync(path, { recursive: true, mode: 0o700 });
+  chmodSync(path, 0o700);
+}
+
+function writeStorageState(
+  state: Awaited<ReturnType<BrowserContext["storageState"]>>,
+  role: string,
+): string {
+  ensurePrivateDir(paths.authDir);
+  const destination = storageStatePath(role);
+  const temporary = `${destination}.tmp`;
+  rmSync(temporary, { force: true });
+  // Create the file private *before* any secret bytes exist in it.
+  writeFilePrivate(temporary);
+  writeFilePrivate(temporary, JSON.stringify(state, null, 2));
+  chmodSync(temporary, 0o600);
+  renameSync(temporary, destination);
+  chmodSync(destination, 0o600);
+  return destination;
+}
+
+function writeFilePrivate(path: string, contents = ""): void {
+  const file = openSync(path, "w", 0o600);
+  try {
+    writeFileSync(file, contents, "utf8");
+  } finally {
+    closeSync(file);
+  }
+}
+
 export async function withBrowser<T>(
   fn: (browser: Browser) => Promise<T>,
 ): Promise<T> {
@@ -45,18 +84,44 @@ export async function authenticate(
   browser: Browser,
   target: CaptureTarget,
   credentials: RoleCredentials,
-): Promise<{ organizationId: string; url: string }> {
+): Promise<{ organizationId: string; url: string; statePath: string }> {
   const context = await browser.newContext({
     viewport: { width: 1280, height: 900 },
     // Recording surfaces stay off: a failed login must not leave artifacts.
     ignoreHTTPSErrors: false,
   });
   try {
+    // Lock the context to the allowed origin before any credential is typed:
+    // a cross-origin form action, submit or redirect is aborted, not followed.
+    await context.route("**/*", async (route) => {
+      const requestUrl = new URL(route.request().url());
+      if (
+        requestUrl.protocol.startsWith("http") &&
+        requestUrl.origin !== target.allowedOrigin
+      ) {
+        await route.abort();
+        return;
+      }
+      await route.continue();
+    });
+
     const page = await context.newPage();
     await page.goto(`${target.baseUrl}/sign-in`, {
       waitUntil: "domcontentloaded",
     });
     assertOriginAllowed(page.url(), target.allowedOrigin);
+    const formAction = await page
+      .locator("form")
+      .first()
+      .getAttribute("action", { timeout: 5_000 })
+      .catch(() => null);
+    if (formAction) {
+      const resolved = new URL(formAction, page.url()).origin;
+      if (resolved !== target.allowedOrigin)
+        throw new Error(
+          `Refusing to submit credentials: the sign-in form posts to ${resolved}`,
+        );
+    }
     await page.locator('input[name="email"]').fill(credentials.email);
     await page.locator('input[name="password"]').fill(credentials.password);
     await Promise.all([
@@ -122,16 +187,12 @@ export async function authenticate(
         );
     }
 
-    ensureDir(paths.authDir);
     const organizationId = credentials.organizationId;
-    const statePath = storageStatePath(credentials.role);
-    await context.storageState({ path: statePath });
-    try {
-      chmodSync(statePath, 0o600);
-    } catch {
-      // Best effort; the directory is ignored either way.
-    }
-    return { organizationId, url: page.url() };
+    const statePath = writeStorageState(
+      await context.storageState(),
+      credentials.role,
+    );
+    return { organizationId, url: page.url(), statePath };
   } finally {
     await context.close();
   }

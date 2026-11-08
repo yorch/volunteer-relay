@@ -23,8 +23,8 @@ export interface HackathonVideoProps extends Record<string, unknown> {
   /** Absolute programme-time captions derived from alignment. */
   cues: Cue[];
   musicFile: string | null;
-  /** Shown on product scenes so footage origin is never ambiguous. */
-  captureOrigin: "hosted" | "local" | "none";
+  /** Shown per product scene so footage origin is never ambiguous. */
+  captureOrigins: Record<string, "hosted" | "local">;
 }
 
 export function nominalProps(): HackathonVideoProps {
@@ -54,7 +54,7 @@ export function nominalProps(): HackathonVideoProps {
     narrationFiles: {},
     cues: [],
     musicFile: null,
-    captureOrigin: "none",
+    captureOrigins: {},
   };
 }
 

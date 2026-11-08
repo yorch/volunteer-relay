@@ -62,7 +62,8 @@ export type VideoEnv = Record<string, string | undefined>;
 
 export function parseEnvFile(contents: string): Record<string, string> {
   const values: Record<string, string> = {};
-  for (const rawLine of contents.split(/\r?\n/)) {
+  const lines = contents.split(/\r?\n/);
+  for (const [index, rawLine] of lines.entries()) {
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) continue;
     const separator = line.indexOf("=");
@@ -70,11 +71,23 @@ export function parseEnvFile(contents: string): Record<string, string> {
     const key = line.slice(0, separator).trim();
     if (!/^[A-Z][A-Z0-9_]*$/.test(key)) continue;
     let value = line.slice(separator + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    )
-      value = value.slice(1, -1);
+    if (value.startsWith('"') || value.startsWith("'")) {
+      const quote = value.charAt(0);
+      const closing = value.indexOf(quote, 1);
+      if (closing === -1)
+        throw new Error(
+          `${key} on line ${index + 1} has an unterminated quoted value`,
+        );
+      const rest = value.slice(closing + 1).trim();
+      if (rest && !rest.startsWith("#"))
+        throw new Error(
+          `${key} on line ${index + 1} has unexpected text after the quoted value`,
+        );
+      value = value.slice(1, closing);
+    } else {
+      const comment = value.indexOf(" #");
+      if (comment !== -1) value = value.slice(0, comment).trim();
+    }
     values[key] = value;
   }
   return values;

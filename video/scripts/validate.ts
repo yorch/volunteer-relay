@@ -12,6 +12,7 @@ import {
 } from "../src/lib/cli.ts";
 import { assertNoSecrets, paths, repoRoot, videoRoot } from "../src/lib/env.ts";
 import { measureLoudness, probeMedia } from "../src/lib/probe.ts";
+import { finalRenderProblems } from "../src/lib/readiness.ts";
 import { loadExpectedResults, loadScenario } from "../src/lib/scenario.ts";
 import { parseSceneManifest, productScenes } from "../src/lib/schema.ts";
 import { parseTimeline } from "../src/lib/timeline.ts";
@@ -135,7 +136,9 @@ function main(): void {
         ? `${needed.length} product scenes from ${captures.targetMode} (${captures.baseUrl})`
         : `missing ${missing.map((scene) => scene.id).join(", ")}`,
     );
-    const origins = new Set(captures.scenes.map((asset) => asset.origin));
+    const origins = new Set(
+      captures.scenes.map((asset) => `${asset.origin} ${asset.baseUrl}`),
+    );
     step(
       "capture origin consistency",
       origins.size <= 1 ? "ok" : "blocked",
@@ -247,6 +250,33 @@ function main(): void {
         "warn",
         "some cues use proportional phrase timing, not provider alignment",
       );
+  }
+
+  // A final render must also satisfy the readiness gate the renderer enforces.
+  if (
+    existsSync(join(paths.output, "final.mp4")) &&
+    existsSync(paths.timeline)
+  ) {
+    const timeline = parseTimeline(
+      JSON.parse(readFileSync(paths.timeline, "utf8")),
+    );
+    const problems = finalRenderProblems({
+      timeline,
+      productScenes: productScenes(manifest).map((scene) => scene.id),
+      capturedSceneIds: (captures?.scenes ?? []).map((asset) => asset.sceneId),
+      captureOrigins: (captures?.scenes ?? []).map((asset) => asset.baseUrl),
+      cueCount: existsSync(captionsPath())
+        ? cuesForTimeline(timeline, readCueSets()).length
+        : 0,
+      hasMusic: Boolean(process.env.VIDEO_MUSIC_FILE),
+    });
+    step(
+      "final readiness",
+      problems.length === 0 ? "ok" : "blocked",
+      problems.length === 0
+        ? "narration, captures, captions and origin all ready"
+        : problems.join("; "),
+    );
   }
 
   const output = join(paths.output, "proof.mp4");

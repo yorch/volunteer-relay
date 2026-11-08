@@ -7,12 +7,15 @@ import {
   requireNode26,
   run,
 } from "../src/lib/cli.ts";
+import { assertRecordingDatabase } from "../src/lib/db-guard.ts";
 import { loadEnv, paths, repoRoot } from "../src/lib/env.ts";
 import {
   compareTotals,
   identityForRole,
   loadExpectedResults,
   loadScenario,
+  organizationIdFor,
+  resolveOrganizations,
 } from "../src/lib/scenario.ts";
 import { resolveTarget } from "../src/lib/target.ts";
 import { authenticate } from "./lib/session.ts";
@@ -29,30 +32,11 @@ import { readTotals } from "./lib/totals.ts";
  * resets stay manual and are never triggered by routine preparation.
  */
 
-const LOCAL_MARKER = "relay-video-recording";
-
 function assertLocalDatabase(): string {
-  const url = process.env.DATABASE_URL;
-  if (!url)
-    throw new Error(
-      "DATABASE_URL must be set to the dedicated recording database in local mode",
-    );
-  const parsed = new URL(url);
-  const database = parsed.pathname.replace(/^\//, "");
-  if (!database.endsWith("_video_recording"))
-    throw new Error(
-      `Refusing local preparation: database "${database}" does not end with _video_recording`,
-    );
-  if (process.env.VIDEO_LOCAL_DATABASE_MARKER !== LOCAL_MARKER)
-    throw new Error(
-      `Refusing local preparation: VIDEO_LOCAL_DATABASE_MARKER must be ${LOCAL_MARKER}`,
-    );
-  const host = parsed.hostname;
-  if (!["127.0.0.1", "localhost", "postgres", "::1"].includes(host))
-    throw new Error(
-      `Refusing local preparation: host ${host} is not a local database`,
-    );
-  return database;
+  return assertRecordingDatabase({
+    databaseUrl: process.env.DATABASE_URL,
+    marker: process.env.VIDEO_LOCAL_DATABASE_MARKER,
+  });
 }
 
 async function verifyBaseline(): Promise<void> {
@@ -72,7 +56,10 @@ async function verifyBaseline(): Promise<void> {
       role: "coordinator",
       email: env[identity.envEmail] ?? identity.email,
       password,
-      organizationId: scenario.primaryOrganization.id,
+      organizationId: organizationIdFor(
+        identity,
+        resolveOrganizations(env, scenario),
+      ),
     });
     const context = await browser.newContext({
       storageState: `${paths.authDir}/coordinator.json`,

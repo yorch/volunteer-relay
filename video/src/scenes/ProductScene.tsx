@@ -21,7 +21,7 @@ export function ProductScene({
         captureFile={available ? captureFile : null}
         focus={scene.focus}
         disclosure={scene.onScreenDisclosure}
-        origin={props.captureOrigin}
+        origin={props.captureOrigins[scene.id] ?? "none"}
         missing={!available}
       />
       <Callout overlays={scene.overlays} />
