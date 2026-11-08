@@ -65,6 +65,47 @@ export type AuthInvitationAcceptance = z.infer<
   typeof authInvitationAcceptanceSchema
 >;
 
+// M1 onboarding transport shapes; identity and membership remain server decisions.
+export const authSignUpCommandSchema = z
+  .object({
+    name: z.string().min(1).max(200),
+    email: z.email(),
+    password: z.string().min(1),
+  })
+  .strict();
+export type AuthSignUpCommand = z.infer<typeof authSignUpCommandSchema>;
+export const authVerificationRequestSchema = z
+  .object({ email: z.email() })
+  .strict();
+export type AuthVerificationRequest = z.infer<
+  typeof authVerificationRequestSchema
+>;
+export const authVerificationConfirmSchema = z.object({ token: id }).strict();
+export type AuthVerificationConfirm = z.infer<
+  typeof authVerificationConfirmSchema
+>;
+export const authOrganizationChoicesSchema = z
+  .object({
+    currentOrganizationId: id.nullable(),
+    options: z.array(authOrganizationOptionSchema),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const ids = value.options.map((option) => option.organizationId);
+    if (
+      new Set(ids).size !== ids.length ||
+      (value.currentOrganizationId !== null &&
+        !ids.includes(value.currentOrganizationId))
+    )
+      ctx.addIssue({
+        code: "custom",
+        message: "Organization selection must match unique current choices",
+      });
+  });
+export type AuthOrganizationChoices = z.infer<
+  typeof authOrganizationChoicesSchema
+>;
+
 export const tenantContextSchema = z
   .object({
     organizationId: id,

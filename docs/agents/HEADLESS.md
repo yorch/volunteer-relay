@@ -1,6 +1,6 @@
 # Dedicated headless operation
 
-This overrides first-wave launch defaults. One Node supervisor runs approved Codex CLI sessions with explicit native thread IDs; no --last, bypass flags or parallel writer for a lane. The operator confirmed previous B/E/D/R harnesses stopped before replacement. Preserve all existing worktrees, dirty work and private services. Do not launch another supervisor/harness or change its config, task allowlist or budgets from an agent.
+This overrides first-wave launch defaults. One Node supervisor runs approved Codex CLI sessions with explicit native thread IDs; no --last, bypass flags or parallel writer for a lane. The operator confirmed previous B/E/D/R harnesses stopped before replacement. Preserve all existing worktrees, dirty work and private services. Do not launch another supervisor/harness or change its config, task allowlist or budgets from an agent unless an explicit operator continuation narrowly authorizes an allowlist extension; runtime budgets remain unchanged.
 
 ## Ownership and scope
 
@@ -40,3 +40,7 @@ Read `docs/agents/prompts/R.md` and the exact incoming A request. Parent owns an
 Default limits: four concurrent lanes, 10-second event checks, 25-minute native runs, 20 runs per lane/hour, and pause after two turns without recorded progress. Timeouts/nonzero exits/invalid final output/operator-needed state pause the lane. One lease per supervisor/store prevents duplicate controllers; restart refuses a still-live recorded child PID. Inspect orphaned processes instead of silently stealing ownership. A task's state is never auto-changed just because a process exits.
 
 Use saved CLI authentication and configured model defaults; optional per-lane model overrides are operator configuration, not chosen secretly by agents. Processes run workspace-write with automatic approval review, not sandbox bypass. Approval rejection, login/rate-limit/config failures are operational blocks to report, not reasons to disable safeguards. Private run logs/results/state are ignored and 0600; never print tokens, mail bodies, reset URLs or raw driver details into them. Per-run logs are capped at 20 MiB and retained to 20 runs per lane. Token counts are raw usage, not dollar pricing.
+
+## Authorized M1 continuation after P1-06/P1-07
+
+The operator explicitly authorized P1-08 (A HTTP adapters), P1-09 (B verified-email lifecycle) and P1-10 (E production page composition) under ADR 0007. A may append only these IDs to private allowedTasks, preserving all other configuration and runtime budgets. The current supervisor reads configuration at startup: queued assignments require an operator-channel draining restart, not an agent-launched second supervisor. Existing accepted claims/checkouts and resources remain frozen. R reviews new exact tips; no new child delegation. No later phase or full M1 completion is implied. Current task cards override initial P1-06/P1-07 resource defaults for these new assignments.

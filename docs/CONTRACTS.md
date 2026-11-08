@@ -33,3 +33,7 @@ The accepted human-only SourceRepository implementation is `createSourceReposito
 ## Authentication composition boundaries
 
 Canonical ContractRole and AuthOrganizationOption (organizationId/name/slug/role/membershipId) are exported for B's live organization listing and E's switcher. AuthSignInCommand, AuthResetRequest, AuthResetConfirm, AuthOrganizationSelection and AuthInvitationAcceptance are strict input shapes; they grant no authority, membership or token validity. Password policy remains with Better Auth/server logic; no SDK session/user model is duplicated. E's callbacks use Result<void>; server/SDK/header mapping is A/B integration. P1-06 server logic and P1-07 reusable UI components may proceed independently, with real production routing still gated. ADR 0006 records approved lifecycle/mail/default policies.
+
+## M1 HTTP/onboarding continuation
+
+ADR 0007 freezes the explicit endpoint table and no-store/origin/header/Result semantics for P1-08/P1-09/P1-10. Additive AuthSignUpCommand, AuthVerificationRequest, AuthVerificationConfirm and AuthOrganizationChoices schemas validate inputs/projections only; no new user/session/membership authority entity or version change. Sign-up creates no membership; email verification sets verified email only. SMTP, demo provisioning and full M1 remain separate gates. B's server-only verification callbacks and per-call header collectors do not modify canonical Result. E may implement controlled fetch/page integration independently; A alone registers HTTP handlers after server gates.
