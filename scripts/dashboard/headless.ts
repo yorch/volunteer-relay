@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Config, State } from "../supervisor.ts";
 
-const lanes = ["A", "B", "C", "D", "E", "F", "R"] as const;
+const lanes = ["A", "B", "C", "D", "E", "F", "R", "V"] as const;
 const count = (n: number | undefined) =>
   Number.isSafeInteger(n) && (n ?? -1) >= 0 ? n : null;
 

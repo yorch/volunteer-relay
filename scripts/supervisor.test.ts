@@ -296,3 +296,55 @@ console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:5,output_t
     await rm(root, { recursive: true, force: true });
   }
 }, 12000);
+
+it("schedules V only for pinned A requests, separately from R within existing limits", () => {
+  const cfg: Config = {
+    ...config,
+    lanes: { ...config.lanes, V: { enabled: true } },
+  };
+  expect(validateConfig(cfg)).toBe(cfg);
+  expect(() => validateConfig({ ...cfg, maxParallel: 5 })).toThrow();
+  const b = board();
+  const s = state();
+  expect(plan(b, s, cfg).some((w) => w.lane === "V")).toBe(false);
+  const request = {
+    id: "visual-one",
+    from: "A",
+    to: "V",
+    kind: "request",
+    task: "P1-07",
+    replyTo: null,
+    at: "2026-11-07T00:00:00Z",
+    text: "Exact synthetic commit/route brief",
+  };
+  b.messages.push(request);
+  b.unanswered.push(request);
+  expect(plan(b, s, cfg).find((w) => w.lane === "V")?.key).toBe("V:visual-one");
+  expect(plan(b, s, cfg).some((w) => w.lane === "R")).toBe(false);
+  const codeRequest = { ...request, id: "code-one", to: "R" };
+  b.messages.push(codeRequest);
+  b.unanswered.push(codeRequest);
+  const parallel = plan(b, s, cfg).map((w) => w.lane);
+  expect(parallel).toContain("R");
+  expect(parallel).toContain("V");
+  expect(parallel.indexOf("B")).toBeLessThan(parallel.indexOf("V"));
+  s.held = ["V"];
+  expect(plan(b, s, cfg).some((w) => w.lane === "V")).toBe(false);
+  s.held = [];
+  const r: RecordState = {
+    ...record("V:visual-one", "R"),
+    lane: "V",
+    status: "running",
+  };
+  s.records[r.key] = r;
+  expect(plan(b, s, cfg).some((w) => w.lane === "V")).toBe(false);
+  r.status = "idle";
+  r.runs = Array(20).fill(Date.now());
+  expect(plan(b, s, cfg).some((w) => w.lane === "V")).toBe(false);
+  r.runs = [];
+  b.unanswered = [{ ...request, id: "visual-two" }];
+  expect(plan(b, s, cfg).find((w) => w.lane === "V")?.key).toBe("V:visual-two");
+  expect(
+    plan(b, s, { ...cfg, allowedTasks: [] }).some((w) => w.lane === "V"),
+  ).toBe(false);
+});

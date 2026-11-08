@@ -52,9 +52,10 @@ const state: State = {
 };
 it("projects standby/configuration, live process observations and bounded usage without private state", () => {
   const result = projectHeadless(config, state, now, () => true);
-  expect(result.lanes).toHaveLength(7);
+  expect(result.lanes).toHaveLength(8);
   expect(result.lanes.find((r) => r.lane === "A")?.status).toBe("paused");
   expect(result.lanes.find((r) => r.lane === "C")?.status).toBe("standby");
+  expect(result.lanes.find((r) => r.lane === "V")?.status).toBe("standby");
   const b = result.lanes.find((r) => r.lane === "B");
   expect(b).toMatchObject({
     status: "running",

@@ -1,0 +1,5 @@
+# Dashboard baseline assessment and queued proposal
+
+Operator measurements: desktop 1440 task board begins y2810, questions y8114; mobile 390 total height35407 with no horizontal overflow. Seven expanded 15-field agent cards precede tasks; all task/archive and message history renders by default. This is a baseline usability assessment, not a redesign acceptance claim. Adding V minimally extends lane display; no large redesign is authorized in this change.
+
+Queued design: compact Overview default with attention queue first, compact lane rows (role/status/current task/last activity), active work and latest ten threaded events. Separate Tasks/Agents/Activity views or anchors; archives opt-in. Session/worktree/PID/model/usage/budgets live in expandable details; combine watcher/supervisor into a small health strip. Preserve process-vs-task-vs-acceptance distinctions and stable expanded/focus/scroll state during refresh. Prioritize product auth gates; scope/authorize implementation separately, then use pinned V browser QA for actual visual/interaction assessment.

@@ -507,6 +507,114 @@ it("supports a reusable reviewer inbox and threaded findings without implementat
   expect(prompt.output).not.toContain("# Worker self-service setup");
 });
 
+it("supports visual QA inbox/findings without implementation authority", async () => {
+  await fixture(({ root, b }) => {
+    const request = ok(
+      root,
+      "send",
+      "--agent",
+      "A",
+      "--to",
+      "V",
+      "--kind",
+      "request",
+      "--task",
+      "P1-01",
+      "--text",
+      "Review exact synthetic base/tip in the tracked brief",
+    );
+    const inbox = ok(root, "inbox", "--agent", "V", "--unanswered", "true");
+    expect(inbox.map((m: { id: string }) => m.id)).toEqual([request.id]);
+    ok(
+      root,
+      "send",
+      "--agent",
+      "V",
+      "--to",
+      "A",
+      "--kind",
+      "update",
+      "--task",
+      "P1-01",
+      "--text",
+      "Independent review started; no task claimed",
+    );
+    expect(
+      cli(
+        root,
+        "assign",
+        "--agent",
+        "A",
+        "--owner",
+        "V",
+        "--task",
+        "P1-01",
+        "--ref",
+        "HEAD",
+        "--text",
+        "Forbidden reviewer ownership",
+      ).code,
+    ).toBe(1);
+    assign(root);
+    expect(cli(b, "claim", "--agent", "V", "--task", "P1-01").code).toBe(1);
+    expect(
+      cli(
+        root,
+        "accept",
+        "--agent",
+        "V",
+        "--task",
+        "P1-01",
+        "--commit",
+        "HEAD",
+        "--text",
+        "Forbidden reviewer acceptance",
+      ).code,
+    ).toBe(1);
+    for (const action of ["status", "release"]) {
+      expect(
+        cli(
+          root,
+          action,
+          "--agent",
+          "V",
+          "--task",
+          "P1-01",
+          "--state",
+          "ready",
+          "--text",
+          "Forbidden visual ownership",
+        ).code,
+      ).toBe(1);
+    }
+    ok(
+      root,
+      "send",
+      "--agent",
+      "V",
+      "--to",
+      "A",
+      "--kind",
+      "answer",
+      "--reply-to",
+      request.id,
+      "--text",
+      "No actionable findings; exact SHA and limits recorded",
+    );
+    expect(ok(root, "inbox", "--agent", "V", "--unanswered", "true")).toEqual(
+      [],
+    );
+    const board = ok(root, "board");
+    expect(board.tasks[0].assignment.owner).toBe("B");
+    expect(board.tasks[0].claim).toBeNull();
+  });
+  const prompt = cli(process.cwd(), "prompt", "V");
+  expect(prompt.code).toBe(0);
+  expect(prompt.output).toContain("visual and interaction verifier");
+  expect(prompt.output).toContain("actual screenshot inspection");
+  expect(prompt.output).not.toContain("# Worker self-service setup");
+});
+
 it("offers a compact orchestration brief without replaying all historical message bodies", async () => {
   await fixture(({ root }) => {
     assign(root);

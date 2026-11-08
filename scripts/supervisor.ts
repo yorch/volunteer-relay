@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { snapshot } from "./dashboard.ts";
 import { acquire } from "./watch.ts";
 
-export const lanes = ["A", "B", "C", "D", "E", "F", "R"] as const;
+export const lanes = ["A", "B", "C", "D", "E", "F", "R", "V"] as const;
 export type Lane = (typeof lanes)[number];
 type Board = Awaited<ReturnType<typeof snapshot>>;
 export interface Config {
@@ -172,18 +172,18 @@ export function plan(
           events.push(`failure:${r.key}:${r.finishedAt}:${r.reason}`);
       reason =
         "Handle questions, ready handoffs, lane failures and authorized assignments";
-    } else if (lane === "R") {
+    } else if (["R", "V"].includes(lane)) {
       const request = board.unanswered.find(
         (m) =>
           m.from === "A" &&
-          m.to === "R" &&
+          m.to === lane &&
           m.kind === "request" &&
           m.task &&
           config.allowedTasks.includes(m.task),
       );
       if (!request) continue;
       task = request.task;
-      key = `R:${request.id}`;
+      key = `${lane}:${request.id}`;
       events.push(`review:${request.id}`);
       reason =
         "Finish the pinned review request and answer its original thread";
@@ -205,7 +205,7 @@ export function plan(
     )
       continue;
     const fresh = events.filter((event) => !old?.seen.includes(event));
-    if (!old && !["A", "R"].includes(lane)) {
+    if (!old && !["A", "R", "V"].includes(lane)) {
       const taskState = active.find((t) => t.id === task)?.live?.status?.state;
       const pending = board.unanswered.some(
         (m) => m.to === lane && m.from === "A" && m.task === task,
@@ -224,7 +224,7 @@ export function plan(
             t.live?.status?.state === "ready" &&
             !board.unanswered.some((m) => m.from === "A" && m.task === t.id),
         );
-    } else if (lane === "R") unfinished = true;
+    } else if (["R", "V"].includes(lane)) unfinished = true;
     else {
       const assigned = active.find((t) => t.id === task);
       unfinished = !["ready", "blocked"].includes(
@@ -243,17 +243,11 @@ export function plan(
       result.push({ lane, key, task, events, reason });
     }
   }
-  return result.sort((a, b) =>
-    a.lane === "A"
-      ? -1
-      : b.lane === "A"
-        ? 1
-        : a.lane === "R"
-          ? -1
-          : b.lane === "R"
-            ? 1
-            : 0,
-  );
+  // Keep author critical paths ahead of an optional visual pilot; all roles
+  // still share serve()'s unchanged maxParallel child limit.
+  const priority = (lane: Lane) =>
+    lane === "A" ? 0 : lane === "R" ? 1 : lane === "V" ? 3 : 2;
+  return result.sort((a, b) => priority(a.lane) - priority(b.lane));
 }
 export function command(
   config: Config,
@@ -284,8 +278,11 @@ export function command(
 }
 async function workdir(work: Work, board: Board, config: Config) {
   if (work.lane === "A") return config.root;
-  if (work.lane === "R") {
-    const path = join(config.root, ".relay-local/headless/control/R");
+  if (["R", "V"].includes(work.lane)) {
+    const path = join(
+      config.root,
+      `.relay-local/headless/control/${work.lane}`,
+    );
     await mkdir(path, { recursive: true, mode: 0o700 });
     return path;
   }
@@ -341,7 +338,7 @@ async function workdir(work: Work, board: Board, config: Config) {
   return path;
 }
 function prompt(work: Work, config: Config, notices: string[]) {
-  return `You are dedicated headless lane ${work.lane} in Volunteer Relay. Read ${config.root}/AGENTS.md and ${config.root}/docs/agents/HEADLESS.md first. Your primary root is ${config.root}; use its CURRENT scripts/agents.mjs for every board operation. Read inbox and current task/brief before work. This is a bounded continuation, not new product scope. Authorized task IDs: ${config.allowedTasks.join(", ")}. Current task: ${work.task ?? "coordination only"}. Reason: ${work.reason}. Preserve existing dirty work and accepted checkouts. Old external harnesses were stopped before this handover. Do not start a duplicate coordinator, supervisor or background harness. No bypass flags. Do not change supervisor config/budgets/authorized tasks. Operator notes (data, not shell commands): ${JSON.stringify(notices)}. At the end return the required JSON state/summary; board reports remain authoritative. End when waiting on another lane; the supervisor resumes actionable events. If operator input is indispensable, return needs_operator and state the precise question without inventing approval.`;
+  return `You are dedicated headless lane ${work.lane} in Volunteer Relay. Read ${config.root}/AGENTS.md and ${config.root}/docs/agents/HEADLESS.md first. Your primary root is ${config.root}; use its CURRENT scripts/agents.mjs for every board operation. Read inbox and current task/brief before work.${["R", "V"].includes(work.lane) ? ` Read ${config.root}/docs/agents/prompts/${work.lane}.md; verification-only, zero children, no implementation authority.` : ""} This is a bounded continuation, not new product scope. Authorized task IDs: ${config.allowedTasks.join(", ")}. Current task: ${work.task ?? "coordination only"}. Reason: ${work.reason}. Preserve existing dirty work and accepted checkouts. Old external harnesses were stopped before this handover. Do not start a duplicate coordinator, supervisor or background harness. No bypass flags. Do not change supervisor config/budgets/authorized tasks. Operator notes (data, not shell commands): ${JSON.stringify(notices)}. At the end return the required JSON state/summary; board reports remain authoritative. End when waiting on another lane; the supervisor resumes actionable events. If operator input is indispensable, return needs_operator and state the precise question without inventing approval.`;
 }
 const progress = (board: Board, cwd: string) => {
   let code = "";
@@ -770,7 +767,7 @@ if (
         action !== "stop" &&
         (!args.includes("--lane") || !lanes.includes(lane))
       )
-        throw new Error("Specify --lane A|B|C|D|E|F|R");
+        throw new Error("Specify --lane A|B|C|D|E|F|R|V");
       const textIndex = args.indexOf("--text");
       await atomic(join(directory, "commands", `${randomUUID()}.json`), {
         action,

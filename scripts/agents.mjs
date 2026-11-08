@@ -13,7 +13,7 @@ import {
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const lanes = ["A", "B", "C", "D", "E", "F", "R"];
+const lanes = ["A", "B", "C", "D", "E", "F", "R", "V"];
 const kinds = ["question", "answer", "update", "handoff", "request"];
 function ensure(condition, message) {
   if (!condition) throw new Error(message);
@@ -64,7 +64,7 @@ function options(args) {
   return result;
 }
 function lane(value) {
-  ensure(lanes.includes(value), "Agent/owner must be A, B, C, D, E, F or R");
+  ensure(lanes.includes(value), "Agent/owner must be A, B, C, D, E, F, R or V");
   return value;
 }
 function task(value) {
@@ -163,7 +163,7 @@ async function claimed(ctx, id, agent) {
 }
 const help = `Harness-neutral local coordination (Node 26.11.1)
   agents init
-  agents prompt A|B|C|D|E|F|R
+  agents prompt A|B|C|D|E|F|R|V
   agents assign --agent A --task P1-01 --owner B --ref HEAD --text "Approved slice"
   agents claim --agent B --task P1-01
   agents status --agent B --task P1-01 --state working|blocked|ready --text "Progress/handoff" [--commit HEAD]
@@ -183,7 +183,8 @@ export async function main(args = process.argv.slice(2)) {
   if (command === "prompt") {
     const agent = lane(rest[0]);
     const base = new URL("../docs/agents/", import.meta.url);
-    if (agent === "R") return readFile(new URL("prompts/R.md", base), "utf8");
+    if (["R", "V"].includes(agent))
+      return readFile(new URL(`prompts/${agent}.md`, base), "utf8");
     return `${await readFile(new URL("BOOTSTRAP.md", base), "utf8")}\n${await readFile(new URL("COMMON.md", base), "utf8")}\n${await readFile(new URL(`prompts/${agent}.md`, base), "utf8")}`;
   }
   const valid = [
@@ -257,8 +258,8 @@ export async function main(args = process.argv.slice(2)) {
   }
   const agent = lane(o.agent);
   ensure(
-    agent !== "R" || ["inbox", "send"].includes(command),
-    "Reviewer R only reads the board and sends review messages",
+    !["R", "V"].includes(agent) || ["inbox", "send"].includes(command),
+    "Verification roles R/V only read the board and send findings",
   );
   if (command === "inbox") {
     const all = await messages(ctx);
@@ -315,8 +316,8 @@ export async function main(args = process.argv.slice(2)) {
     ensure(agent === "A", "Only coordinator A assigns tasks");
     const owner = lane(o.owner);
     ensure(
-      owner !== "R",
-      "Send R a scoped review request; do not assign implementation ownership",
+      !["R", "V"].includes(owner),
+      "Send R/V a pinned verification request; do not assign implementation ownership",
     );
     ensure(o.ref, "Assignment requires an approved --ref commit");
     const baseCommit = git(
