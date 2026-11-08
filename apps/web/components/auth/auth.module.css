@@ -17,8 +17,8 @@
   display: none;
 }
 .feedback:focus-visible {
-  outline: 3px solid #8b4b17;
-  outline-offset: 3px;
+  outline: 3px solid var(--relay-focus, #895311);
+  outline-offset: 4px;
 }
 .preview {
   max-width: 44rem;
@@ -36,10 +36,15 @@
   color: #204b43;
   padding-block: 0.75rem;
 }
+.navigation a:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
 .authShell {
   min-height: 100dvh;
   background:
-    radial-gradient(ellipse at 15% 0%, #e6eee2, transparent 48%), #f6f5f0;
+    radial-gradient(ellipse at 15% 0%, #e6eee2, transparent 48%),
+    var(--relay-bg, #f6f5f0);
 }
 .authHeader {
   display: flex;
@@ -69,20 +74,20 @@
   margin: 8px 0 0;
 }
 .eyebrow {
-  color: #527560;
-  font-size: 0.65rem;
+  color: #4a6b58;
+  font-size: 0.6875rem;
   font-weight: 800;
   letter-spacing: 0.15em;
 }
 .authCard {
-  background: #fff;
-  border: 1px solid #e0e7df;
-  border-radius: 12px;
-  box-shadow: 0 14px 40px #304b3710;
+  background: var(--relay-paper, #fff);
+  border: 1px solid var(--relay-line, #dce5dc);
+  border-radius: var(--relay-radius-xl, 1rem);
+  box-shadow: var(--relay-shadow-lg, 0 18px 48px rgb(31 53 49 / 10%));
   padding: clamp(1.25rem, 4vw, 2rem);
 }
 .authCard > p:first-child {
-  color: #53675f;
+  color: var(--relay-muted, #53675f);
   margin-top: 0;
 }
 .authCard > form + button,
