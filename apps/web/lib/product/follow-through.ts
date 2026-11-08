@@ -21,19 +21,33 @@ export function createFollowThroughHttp(
     const fail = (code: Parameters<typeof productFailure>[0]) =>
       productFailure(code, context.correlationId);
     if (context.actor.kind !== "user") return fail("FORBIDDEN");
+    const membership = await db.execute(
+      sql`select role from member where organization_id=${context.organizationId} and id=${context.actor.membershipId} and user_id=${context.actor.userId}`,
+    );
+    const currentRole = membership.rows[0]?.role;
+    if (!currentRole) return fail("FORBIDDEN");
+    if (path === "notification-preferences" && request.method === "GET") {
+      const rows = await db.execute(
+        sql`select email,telegram from notification_preference where organization_id=${context.organizationId} and membership_id=${context.actor.membershipId}`,
+      );
+      return {
+        ok: true,
+        value: rows.rows[0] ?? { email: false, telegram: false },
+      };
+    }
     if (path === "settings" && request.method === "GET")
       return repo.getSettings(context);
     if (path === "notifications" && request.method === "GET")
       return repo.listNotifications(context);
     if (path === "members" && request.method === "GET") {
-      if (context.actor.role !== "owner") return fail("FORBIDDEN");
+      if (currentRole !== "owner") return fail("FORBIDDEN");
       const rows = await db.execute(
         sql`select m.id as "membershipId",u.name,u.email,m.role from member m join "user" u on u.id=m.user_id where m.organization_id=${context.organizationId} order by u.name,m.id`,
       );
       return { ok: true, value: rows.rows };
     }
     if (path === "candidates" && request.method === "GET") {
-      if (!["owner", "coordinator"].includes(context.actor.role))
+      if (!["owner", "coordinator"].includes(String(currentRole)))
         return fail("FORBIDDEN");
       const sourceId = new URL(request.url).searchParams.get("sourceId");
       if (!sourceId) return fail("VALIDATION");
@@ -106,7 +120,7 @@ export function createFollowThroughHttp(
       });
     }
     if (path === "telegram-unlink") return repo.unlinkTelegram(context, {});
-    if (context.actor.role !== "owner") return fail("FORBIDDEN");
+    if (currentRole !== "owner") return fail("FORBIDDEN");
     if (path === "members/invite") {
       const role = roleSchema.safeParse(input.role);
       if (typeof input.email !== "string" || !role.success)
