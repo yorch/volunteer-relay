@@ -19,6 +19,10 @@
   background: var(--relay-success-bg, #e7f2e8);
   color: var(--relay-success, #285d3e);
 }
+.standalonePage {
+  min-height: 100dvh;
+  background: var(--relay-bg, #f4f3ee);
+}
 .standalone {
   display: grid;
   align-content: start;

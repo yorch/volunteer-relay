@@ -26,7 +26,13 @@ import {
   mutateAuth,
 } from "../auth/transport";
 import { Live } from "../card";
-import { Button, Icon, type IconName, Select } from "../foundation";
+import {
+  Button,
+  FoundationRoot,
+  Icon,
+  type IconName,
+  Select,
+} from "../foundation";
 import { ShellSkeleton, StaffShell, VolunteerShell } from "../layout";
 import { splitOrganizationHint } from "../org-hint";
 import { Members, Notifications, Settings } from "./admin";
@@ -56,6 +62,17 @@ type Page =
   | "history"
   | "delivery"
   | "retention";
+// Standalone states render before any shell exists, so they bring their own
+// foundation root (tokens, fonts, control styles) and the page canvas.
+function StandalonePage({ children }: { children: ReactNode }) {
+  return (
+    <FoundationRoot>
+      <div className={styles.standalonePage}>
+        <main className={styles.standalone}>{children}</main>
+      </div>
+    </FoundationRoot>
+  );
+}
 function StatePanel({
   icon,
   tone = "neutral",
@@ -140,7 +157,7 @@ function OrganizationPicker({ options }: { options: readonly OrgOption[] }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   return (
-    <main className={styles.standalone}>
+    <StandalonePage>
       <StatePanel icon="members" tone="accent" title="Choose an organization">
         <form
           className={styles.orgForm}
@@ -184,7 +201,7 @@ function OrganizationPicker({ options }: { options: readonly OrgOption[] }) {
           </Button>
         </form>
       </StatePanel>
-    </main>
+    </StandalonePage>
   );
 }
 const invitationRole: Record<AuthPendingInvitation["role"], string> = {
@@ -227,7 +244,7 @@ function NoOrganization() {
   const unverified =
     invitations?.ok === true && !invitations.value.emailVerified;
   return (
-    <main className={styles.standalone}>
+    <StandalonePage>
       <StatePanel
         icon="members"
         tone="accent"
@@ -315,7 +332,7 @@ function NoOrganization() {
         ) : null}
         <Live kind="alert">{error}</Live>
       </StatePanel>
-    </main>
+    </StandalonePage>
   );
 }
 const pages = new Set<string>([
@@ -478,7 +495,7 @@ export function ProductWorkspace({ page: pageProp }: { page?: Page }) {
   if (!snapshot && noOrganization) return <NoOrganization />;
   if (!snapshot)
     return (
-      <main className={styles.standalone}>
+      <StandalonePage>
         <StatePanel
           icon="alert"
           tone="danger"
@@ -508,7 +525,7 @@ export function ProductWorkspace({ page: pageProp }: { page?: Page }) {
         >
           <p role="alert">{error}</p>
         </StatePanel>
-      </main>
+      </StandalonePage>
     );
   const role = snapshot.organization.role;
   const staff = role === "owner" || role === "coordinator";
