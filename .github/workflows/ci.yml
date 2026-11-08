@@ -2,13 +2,6 @@ name: baseline
 on: [push, pull_request]
 permissions:
   contents: read
-# Only the newest push for a given branch or pull request builds: a newer run
-# supersedes and cancels the in-flight one. Grouping by workflow + ref keeps
-# unrelated branches, tags and PRs (refs/pull/<n>/merge) independent, so a run
-# is never cancelled by traffic on another ref.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 jobs:
   quality:
     runs-on: ubuntu-latest
