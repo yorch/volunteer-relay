@@ -327,13 +327,15 @@ test("removing a selected source never carries its reason to another", async ({
   );
   await page.goto("/workspace/inbox");
   await page.getByRole("button", { name: "Source one · revision 1" }).click();
-  await page
-    .getByLabel("Review reason", { exact: false })
-    .fill("Reason for one");
   if (await page.getByRole("button", { name: "Back to inbox" }).isVisible()) {
     await expect(
       page.getByRole("button", { name: "Back to inbox" }),
     ).toBeFocused();
+  }
+  await page
+    .getByLabel("Review reason", { exact: false })
+    .fill("Reason for one");
+  if (await page.getByRole("button", { name: "Back to inbox" }).isVisible()) {
     await page.getByRole("button", { name: "Back to inbox" }).click();
     await expect(page.getByLabel("Search updates")).toBeFocused();
   }
@@ -644,7 +646,9 @@ test("ledger inspects the contribution source and shows access denial", async ({
   await page
     .getByRole("button", { name: "Inspect current source evidence" })
     .click();
-  await expect(page.getByRole("alert")).toContainText("permission");
+  await expect(
+    page.getByText("You do not have permission to access this workspace."),
+  ).toBeVisible();
   expect(new URL(sourceRequest).searchParams.get("sourceId")).toBe(
     "source-original",
   );

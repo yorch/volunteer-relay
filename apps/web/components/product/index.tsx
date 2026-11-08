@@ -1886,6 +1886,12 @@ function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
         setError("Enter a name for each author mapping.");
         return;
       }
+      if (Object.hasOwn(authorMapping, row.author.trim())) {
+        setError(
+          "Each author name can be matched only once. Remove the duplicate match.",
+        );
+        return;
+      }
       authorMapping[row.author.trim()] = row.member || null;
     }
     const photoMapping: Record<string, string[]> = Object.create(null);
