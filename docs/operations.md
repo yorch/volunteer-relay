@@ -6,41 +6,17 @@ This profile is a deployment starting point, not proof of production readiness. 
 
 1. Provision the host with Docker Engine and Compose v2, persistent encrypted storage, monitoring, backups and restricted administrative access. That host must already run Traefik with an external network named `traefik`, an entrypoint named `websecure` and a certificate resolver named `webcert`; this stack terminates no TLS and owns no certificate state. Set DNS for a domain you control to that host. Keep the environment file, Docker socket, volumes and backups private.
 2. Build the `web` and `worker` targets of `infra/Dockerfile` from the same reviewed commit, publish to a trusted registry, and pin the resulting image digests. The build uses Node 26.11.1 and Bun 1.4.1. On restricted networks supply the required trusted proxy CA to networked build steps without disabling TLS verification. Do not include secrets in build arguments or images.
-3. Create two host-only environment files, owned by the operator and mode `0600`: the operator file `/etc/volunteer-relay/production.env` and the runtime file `/etc/volunteer-relay/runtime.env`. Use unique high-entropy credentials; the examples below are templates, not usable credentials. Compose reads the operator file; web and worker receive only the runtime file. Keep both out of source control. This profile assumes a dedicated PostgreSQL cluster: grants revoke default PUBLIC access to every connectable database. The bootstrap user owns and runs migrations; the separate runtime user must be a new, distinct role without owned objects or role memberships. The Postgres image only applies initial user/password/database variables to a new volume; changing the file alone does not rotate existing credentials.
+3. Create the two host-only environment files, owned by the operator and mode `0600`, from the committed templates:
 
-   ```dotenv
-   POSTGRES_USER=relay
-   POSTGRES_PASSWORD=REPLACE_WITH_URL_SAFE_RANDOM_PASSWORD
-   POSTGRES_DB=relay
-   MIGRATION_DATABASE_URL=postgres://relay:REPLACE_WITH_URL_SAFE_RANDOM_PASSWORD@postgres:5432/relay
-   RELAY_RUNTIME_USER=relay_app
-   RELAY_RUNTIME_PASSWORD=REPLACE_WITH_DIFFERENT_URL_SAFE_RANDOM_PASSWORD
-   RELAY_RUNTIME_ENV_FILE=/etc/volunteer-relay/runtime.env
-   APP_URL=https://relay.example.org
-   RELAY_DOMAIN=relay.example.org
-   RELAY_WEB_IMAGE=registry.example.org/relay-web@sha256:REPLACE
-   RELAY_WORKER_IMAGE=registry.example.org/relay-worker@sha256:REPLACE
+   ```sh
+   install -d -m 0700 /etc/volunteer-relay
+   install -m 0600 infra/production/production.env.sample /etc/volunteer-relay/production.env
+   install -m 0600 infra/production/runtime.env.sample /etc/volunteer-relay/runtime.env
    ```
+
+   Replace every `REPLACE_*` placeholder with unique high-entropy credentials; the templates are not usable credentials. Compose interpolates the operator file; web and worker receive only the runtime file. Keep both out of source control — `.gitignore` and `.dockerignore` exclude `*.env`. The runtime template leaves the secrets commented out on purpose: production refuses to start without `BETTER_AUTH_SECRET`, so a blind copy fails loudly instead of booting with a placeholder secret, and ledger export and redaction stay unavailable until `RETENTION_LEDGER_KEY` is set. `scripts/production-env.test.ts` keeps both templates in step with `compose.production.yaml` and the configuration schema. This profile assumes a dedicated PostgreSQL cluster: grants revoke default PUBLIC access to every connectable database. The bootstrap user owns and runs migrations; the separate runtime user must be a new, distinct role without owned objects or role memberships. The Postgres image only applies initial user/password/database variables to a new volume; changing the file alone does not rotate existing credentials.
 
    The proxy contract is fixed by the host: external network `traefik`, entrypoint `websecure`, certificate resolver `webcert`. Create the network once on the host if it is missing (`docker network create traefik`). `TRAEFIK_NAME` defaults to `relay` and scopes the router, service and compression middleware names; set it only if another stack on the same host already claims `relay`, because two routers sharing a name make Traefik drop both. This stack publishes no ports, so the host proxy must own 80/443, the DNS record and the certificate state.
-
-   In `/etc/volunteer-relay/runtime.env`:
-
-   ```dotenv
-   DATABASE_URL=postgres://relay_app:REPLACE_WITH_DIFFERENT_URL_SAFE_RANDOM_PASSWORD@postgres:5432/relay
-   BETTER_AUTH_SECRET=REPLACE_WITH_AT_LEAST_32_RANDOM_CHARACTERS
-   RETENTION_LEDGER_KEY=REPLACE_WITH_A_DIFFERENT_32_OR_MORE_CHARACTER_SECRET
-   NODE_ENV=production
-   DEMO_MODE=false
-   APP_URL=https://relay.example.org
-   ATTACHMENT_ROOT=/data/attachments
-   SMTP_HOST=mail.example.org
-   SMTP_PORT=465
-   SMTP_TLS=true
-   SMTP_USER=REPLACE
-   SMTP_PASSWORD=REPLACE
-   SMTP_FROM=relay@example.org
-   ```
 
    Configure provider credentials and budget only when approved and tested; missing extraction provider configuration leaves extraction disabled. Telegram is replay-only by default. Never use demo mode or synthetic credentials for production. Application configuration is defined in `packages/config/src/index.ts`; configure outbound SMTP and any optional provider separately and validate their actual transport behavior before relying on delivery.
 4. From the checked-out release directory, set an explicit project name and absolute environment path:
