@@ -9,12 +9,15 @@ migration and runtime-grants gates exist so that a half-started stack is never r
 
 ## 0. Decide before you start
 
-These cannot be changed later without a rebuild or a restore.
+These are hard to change later, so decide deliberately rather than by default — though
+none of them is permanent.
 
 - [ ] **Storage backend.** `BLOB_STORE=filesystem` (default, a volume) or `BLOB_STORE=s3`
-  (object storage). There is **no migration between them** — see
-  [Private attachment storage](operations.md#private-attachment-storage). A bucket is
-  claimed exclusively by `S3_DEPLOYMENT_ID`; two deployments must never share a prefix.
+  (object storage). Switching later is supported, but it is a quiesced, verified cutover
+  with a byte-verification gate rather than a config flip — see
+  [Migrating between backends](operations.md#migrating-an-existing-deployment-between-backends).
+  A bucket is claimed exclusively by `S3_DEPLOYMENT_ID`; two deployments must never
+  share a prefix.
 - [ ] **Deployment name.** `TRAEFIK_NAME` defaults to `relay`. If anything else on that
   Traefik already uses `relay`, choose another value now — two routers sharing a name
   make Traefik drop **both**.
