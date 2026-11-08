@@ -23,5 +23,6 @@
     "vitest.config.ts",
     "scripts/**/*.ts",
     "playwright.config.ts"
-  ]
+  ],
+  "exclude": ["**/node_modules", "**/dist"]
 }
