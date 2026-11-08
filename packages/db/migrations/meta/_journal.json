@@ -15,6 +15,13 @@
       "when": 1794091161844,
       "tag": "0001_sleepy_triathlon",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794135543806,
+      "tag": "0002_wooden_blindfold",
+      "breakpoints": true
     }
   ]
 }

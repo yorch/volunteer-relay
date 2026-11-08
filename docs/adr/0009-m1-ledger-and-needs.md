@@ -10,16 +10,16 @@ Identifiers for new activities, contributions and needs are server-generated opa
 
 ## Ledger rules
 
-- One activity may have several contributions; a membership has at most one *active* (pending or approved) contribution per activity. A second one is CONFLICT; reconciliation/linking is M4. After rejection or supersession a new contribution for that membership may be added.
+- One activity may have several contributions; a membership has at most one _active_ (pending or approved) contribution per activity. A second one is CONFLICT; reconciliation/linking is M4. After rejection or supersession a new contribution for that membership may be added.
 - Duration is integer minutes 1–1440 or null (unknown). Unknown is never zero.
 - Approval requires a resolved membership and a known duration (VALIDATION otherwise). The database enforces the same invariant. Therefore approved totals are always sums of known minutes, and unknown-duration or unresolved-volunteer work stays visibly pending.
 - `correct` amends duration in place on a pending or approved contribution (same ID, next revision) with a reason; the previous values remain in the audit history. `supersede` removes a pending or approved contribution from the active ledger with a reason. `reject` applies to pending only.
 - `ledger.changed` is emitted only when the approved ledger changes: approve (`approved`), correction of an approved contribution (`corrected`), supersession of an approved contribution (`superseded`). Pending/rejected-only changes emit audit history but no ledger event.
-- Contribution memberships must be live members of the tenant when recorded. Later membership removal preserves the historical membership ID and approved minutes.
+- Contribution memberships must be live members of the tenant when recorded. Later membership removal preserves the historical membership ID and approved minutes, and does not block approving that volunteer's pending work.
 
 ## Need rules
 
-`needTransitionRules` is the full state machine: assign from new/assigned/acknowledged → assigned (clears acknowledgment; new owner must be a current owner/coordinator membership of the tenant); acknowledge from assigned → acknowledged, only by the actor whose membership is the current owner; resolve from new/assigned/acknowledged → resolved with a resolution; cancel from new/assigned/acknowledged → cancelled with a reason (also how a provisional alert is withdrawn); reopen from resolved/cancelled → new with a reason, clearing owner and acknowledgment so routing is explicit. A transition not permitted from the current status is CONFLICT. Every need mutation, including creation, emits `need.changed` with the resulting status and provisional flag. Escalation, deadlines policy and notification are M5; `dueAt`/`acknowledgeBy` are stored values only.
+`needTransitionRules` is the full state machine: assign from new/assigned/acknowledged → assigned (clears acknowledgment; new owner must be a current owner/coordinator membership of the tenant); acknowledge from assigned → acknowledged, only by the actor whose membership is the current owner; resolve from new/assigned/acknowledged → resolved with a resolution; cancel from new/assigned/acknowledged → cancelled with a reason (also how a provisional alert is withdrawn); reopen from resolved/cancelled → new with a reason, clearing owner, acknowledgment and the assignment-scoped `acknowledgeBy` so routing is explicit (`dueAt` is need-level and kept). A transition not permitted from the current status is CONFLICT. Every need mutation, including creation, emits `need.changed` with the resulting status and provisional flag. Escalation, deadlines policy and notification are M5; `dueAt`/`acknowledgeBy` are stored values only.
 
 ## Authorization
 

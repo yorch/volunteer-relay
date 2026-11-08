@@ -249,11 +249,22 @@ export const outboxEvent = pgTable(
     correlationId: text("correlation_id").notNull(),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
     dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
+    // Only source.received events carry a source-revision reference; generated
+    // columns keep the reviewed provenance FK conditional for other aggregates.
+    sourceRefId: text("source_ref_id").generatedAlwaysAs(
+      sql`case when type = 'source.received' then aggregate_id end`,
+    ),
+    sourceRefRevision: integer("source_ref_revision").generatedAlwaysAs(
+      sql`case when type = 'source.received' then aggregate_revision end`,
+    ),
     createdAt,
   },
   (table) => [
     primaryKey({ columns: [table.organizationId, table.id] }),
-    check("outbox_event_type_check", sql`${table.type} in ('source.received')`),
+    check(
+      "outbox_event_type_check",
+      sql`${table.type} in ('source.received', 'ledger.changed', 'need.changed')`,
+    ),
     uniqueIndex("outbox_event_aggregate_unique").on(
       table.organizationId,
       table.type,
@@ -264,13 +275,15 @@ export const outboxEvent = pgTable(
       table.organizationId,
       table.dispatchedAt,
     ),
-    // Tenant-scoped reference to the exact source revision, not just the tenant.
+    // Tenant-scoped reference to the exact source revision, not just the
+    // tenant. The generated columns are null for non-source events, so the FK
+    // constrains only source.received provenance.
     foreignKey({
       name: "outbox_event_source_revision_fk",
       columns: [
         table.organizationId,
-        table.aggregateId,
-        table.aggregateRevision,
+        table.sourceRefId,
+        table.sourceRefRevision,
       ],
       foreignColumns: [
         sourceRevision.organizationId,
