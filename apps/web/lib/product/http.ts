@@ -136,6 +136,13 @@ export function createProductHandler(deps: ProductHttpDependencies) {
         /^\/api\/product\//,
         "",
       );
+      if (request.method === "GET" && path === "source") {
+        const params = new URL(request.url).searchParams,
+          sourceId = params.get("sourceId");
+        if (!sourceId || [...params.keys()].some((key) => key !== "sourceId"))
+          return reply(productFailure("VALIDATION", correlationId));
+        return reply(await deps.processing.getSource(context, sourceId));
+      }
       if (request.method === "GET" && path === "workspace") {
         const role = context.actor.kind === "user" ? context.actor.role : null;
         const staff = role === "owner" || role === "coordinator";

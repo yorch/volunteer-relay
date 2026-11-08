@@ -129,3 +129,23 @@ describe("product HTTP trust boundary", () => {
     expect(deps.members).not.toHaveBeenCalled();
   });
 });
+
+it("routes source evidence through the verified context and rejects tenant injection", async () => {
+  const { deps, handler } = fixture();
+  const result = await handler(
+    new Request("http://localhost:3000/api/product/source?sourceId=source-1"),
+  );
+  expect(result.status).toBe(404);
+  expect(deps.processing.getSource).toHaveBeenCalledWith(context, "source-1");
+  deps.processing.getSource.mockClear();
+  expect(
+    (
+      await handler(
+        new Request(
+          "http://localhost:3000/api/product/source?sourceId=source-1&organizationId=foreign",
+        ),
+      )
+    ).status,
+  ).toBe(422);
+  expect(deps.processing.getSource).not.toHaveBeenCalled();
+});

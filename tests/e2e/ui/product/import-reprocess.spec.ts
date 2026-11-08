@@ -95,21 +95,17 @@ test("text and mapped photo are previewed and confirmed as multipart", async ({
     });
   });
   await page.goto("/workspace/import");
-  await page
-    .getByLabel("Text file", { exact: false })
-    .setInputFiles({
-      name: "updates.csv",
-      mimeType: "text/csv",
-      buffer: Buffer.from("id,author,text,timestamp\n1,Alex,Helped,2026-01-01"),
-    });
+  await page.getByLabel("Text file", { exact: false }).setInputFiles({
+    name: "updates.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("id,author,text,timestamp\n1,Alex,Helped,2026-01-01"),
+  });
   await expect(page.getByLabel("Import text")).toContainText("Alex");
-  await page
-    .getByLabel("Photos", { exact: false })
-    .setInputFiles({
-      name: "garden.png",
-      mimeType: "image/png",
-      buffer: Buffer.from("synthetic"),
-    });
+  await page.getByLabel("Photos", { exact: false }).setInputFiles({
+    name: "garden.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("synthetic"),
+  });
   await page
     .getByLabel("Photo mapping", { exact: false })
     .fill('{"1":["garden.png"]}');
