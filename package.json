@@ -15,6 +15,7 @@
     "agents:dashboard": "node scripts/dashboard.ts",
     "agents:supervisor": "node scripts/supervisor.ts",
     "agents:watch": "node scripts/watch.ts",
+    "blob:migrate": "node scripts/blob-migrate.ts",
     "build": "node scripts/run.mjs build",
     "check": "node node_modules/@biomejs/biome/bin/biome check .",
     "db:migrate": "node packages/db/src/migrate.ts",

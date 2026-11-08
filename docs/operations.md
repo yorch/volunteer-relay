@@ -120,6 +120,51 @@ NODE_ENV=development BLOB_STORE=s3 S3_BUCKET=relay S3_REGION=us-east-1 \
 erases synthetic bytes. Neither is part of `bun run verify`, because both need a
 live endpoint.
 
+### Migrating an existing deployment between backends
+
+Switching `BLOB_STORE` on a deployment that already holds attachments needs the
+copy tool; flipping the variable alone leaves every existing attachment
+unreadable and, worse, makes later erasures report success while the old bytes
+stay behind. The full design is `docs/design/s3-migration.md`.
+
+The work list is the database's live attachment set (identities not covered by a
+redaction), never a directory or bucket listing, so redacted bytes are never
+copied. Each key is copied under the same `blob:<key>` advisory lock that
+uploads and retention use, with a live-reference re-check inside that lock, so
+a not-fully-quiesced deployment still cannot resurrect erased content.
+
+```sh
+# 1. Quiesce writers: stop web and worker.
+# 2. Settle any stranded write intents, then confirm the spool is empty.
+node scripts/blob-migrate.ts --drain-pending --from /data/attachments
+# 3. Check the intended scope, then copy. --expect-live catches the wrong database.
+node scripts/blob-migrate.ts --from /data/attachments --to s3 --dry-run
+node scripts/blob-migrate.ts --from /data/attachments --to s3 --expect-live <n>
+# 4. The cutover gate: every live attachment must be present and byte-correct.
+node scripts/blob-migrate.ts --from /data/attachments --to s3 --verify-only
+# 5. Flip BLOB_STORE=s3 AND BLOB_FALLBACK_ROOT=/data/attachments, then start.
+# 6. Bake, re-verify, then remove BLOB_FALLBACK_ROOT and delete the volume.
+```
+
+The tool probes both stores before touching anything, refuses overlapping source
+and target, exits non-zero if any live key is missing, corrupt or failed, and
+prints counts only — never keys or digests. It also refuses to run while the
+source has unsettled write intents, because an unreadable intent means the live
+set may not describe what is actually on disk.
+
+While `BLOB_FALLBACK_ROOT` is set, reads fall back to the old volume, writes go
+only to the bucket, and **erasure covers both stores**: if either store fails,
+the retention job stays open instead of recording a completed erasure. Readiness
+also fails if the fallback volume disappears, because live attachments would be
+unreachable.
+
+Retirement is mandatory, not tidy-up: once `BLOB_FALLBACK_ROOT` is removed,
+erasure is bucket-only, so the old volume must be deleted in the same change or
+every later erasure silently leaves bytes on it. Rollback is the reverse runbook
+and is only safe while the fallback is still configured; it needs a fresh live
+set and a fresh verification, because a pre-flip list misses new attachments and
+includes since-redacted ones.
+
 In production the bundled `compose.production.yaml` still mounts the
 `attachments` volume on web and worker. With `BLOB_STORE=s3` nothing reads it —
 `ATTACHMENT_ROOT` is unused — so the mount is inert, not a second source of

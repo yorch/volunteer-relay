@@ -61,3 +61,24 @@ it("only allows a plaintext S3 endpoint in development with an explicit opt-in",
     }),
   ).toThrow(/https/);
 });
+
+it("only allows a fallback root during an S3 cutover", () => {
+  expect(() =>
+    parseEnvironment({ BLOB_FALLBACK_ROOT: "/data/attachments" }),
+  ).toThrow(/cutover window/);
+  expect(() =>
+    parseEnvironment({
+      BLOB_STORE: "s3",
+      S3_BUCKET: "relay",
+      S3_DEPLOYMENT_ID: "prod",
+      BLOB_FALLBACK_ROOT: "relative/path",
+    }),
+  ).toThrow(/absolute path/);
+  const parsed = parseEnvironment({
+    BLOB_STORE: "s3",
+    S3_BUCKET: "relay",
+    S3_DEPLOYMENT_ID: "prod",
+    BLOB_FALLBACK_ROOT: "/data/attachments",
+  });
+  expect(parsed.BLOB_FALLBACK_ROOT).toBe("/data/attachments");
+});
