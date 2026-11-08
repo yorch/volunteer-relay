@@ -9,6 +9,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { errorMessage, request } from "../api-client";
 import { Card as BaseCard, Live } from "../card";
 import { Badge, EmptyState, Icon, Select } from "../foundation";
+import { ShortcutLegend, useShortcuts } from "../review";
 import { DemoReplay } from "./demo-replay";
 import styles from "./inbox.module.css";
 import {
@@ -74,6 +75,42 @@ export function Inbox({
     (source) => source.status === "failed",
   );
   const entry = snapshot.queue.find((e) => e.proposal.runId === selected);
+  const visibleQueue = snapshot.queue.filter((item) =>
+    `${item.source.sourceId} ${item.source.text ?? ""} ${authorName(item.source.author, snapshot.members)} ${item.source.channel}`
+      .toLowerCase()
+      .includes(search.toLowerCase()),
+  );
+  const [legend, setLegend] = useState(false);
+  const [lastDecision, setLastDecision] = useState("");
+  const listRef = useRef<HTMLUListElement>(null);
+  useShortcuts((event) => {
+    if (statusFilter !== "review") return;
+    if (event.key === "?") {
+      event.preventDefault();
+      setLegend((open) => !open);
+      return;
+    }
+    if (event.shiftKey || (event.key !== "j" && event.key !== "k")) return;
+    if (!visibleQueue.length) return;
+    event.preventDefault();
+    const index = visibleQueue.findIndex(
+      (item) => item.proposal.runId === selected,
+    );
+    const next =
+      event.key === "j"
+        ? visibleQueue[Math.min(visibleQueue.length - 1, index + 1)]
+        : visibleQueue[
+            index < 0 ? visibleQueue.length - 1 : Math.max(0, index - 1)
+          ];
+    if (!next) return;
+    setSelected(next.proposal.runId);
+    setLastDecision("");
+    requestAnimationFrame(() =>
+      listRef.current
+        ?.querySelector('[aria-pressed="true"]')
+        ?.scrollIntoView({ block: "nearest" }),
+    );
+  });
   return (
     <div className={styles.page}>
       <header className={styles.head}>
@@ -109,6 +146,13 @@ export function Inbox({
           </button>
         ))}
       </nav>
+      {statusFilter === "review" && snapshot.queue.length > 0 && (
+        <ShortcutLegend
+          open={legend}
+          onToggle={setLegend}
+          accept="Accept the open proposal (when enabled)"
+        />
+      )}
       <details className={styles.utilityDisclosure}>
         <summary>Processing and reprocessing</summary>
         <Card>
@@ -293,6 +337,11 @@ export function Inbox({
             <EmptyState title="Inbox is clear" icon="check">
               No sources awaiting review.
             </EmptyState>
+            {lastDecision && (
+              <p className={styles.decisionNote} aria-hidden="true">
+                {lastDecision}
+              </p>
+            )}
           </Card>
         ) : (
           <div
@@ -328,66 +377,55 @@ export function Inbox({
                   <Icon name="refresh" size={16} />
                   Refresh inbox
                 </button>
-                <ul className={`${styles.list}`}>
-                  {snapshot.queue
-                    .filter((item) =>
-                      `${item.source.sourceId} ${item.source.text ?? ""} ${authorName(item.source.author, snapshot.members)} ${item.source.channel}`
-                        .toLowerCase()
-                        .includes(search.toLowerCase()),
-                    )
-                    .map((item) => {
-                      const flags = deriveFlags(
-                        item.source,
-                        item.proposal.items,
-                      );
-                      return (
-                        <li key={item.proposal.runId}>
-                          <button
-                            type="button"
-                            className={styles.row}
-                            data-tone="review"
-                            aria-pressed={
-                              entry?.proposal.runId === item.proposal.runId
-                            }
-                            onClick={() => setSelected(item.proposal.runId)}
-                          >
-                            <strong className={styles.rowTitle}>
-                              {item.source.text?.slice(0, 90) ||
-                                "Update without text"}
-                            </strong>
-                            <span className={styles.rowMeta}>
-                              <span className={styles.rowAuthor}>
-                                {authorName(
-                                  item.source.author,
-                                  snapshot.members,
-                                )}
-                              </span>
-                              <span>
-                                {relativeTime(item.source.receivedAt)}
-                              </span>
-                              <span>{item.source.channel}</span>
+                <ul className={`${styles.list}`} ref={listRef}>
+                  {visibleQueue.map((item) => {
+                    const flags = deriveFlags(item.source, item.proposal.items);
+                    return (
+                      <li key={item.proposal.runId}>
+                        <button
+                          type="button"
+                          className={styles.row}
+                          data-tone="review"
+                          aria-pressed={
+                            entry?.proposal.runId === item.proposal.runId
+                          }
+                          onClick={() => {
+                            setSelected(item.proposal.runId);
+                            setLastDecision("");
+                          }}
+                        >
+                          <strong className={styles.rowTitle}>
+                            {item.source.text?.slice(0, 90) ||
+                              "Update without text"}
+                          </strong>
+                          <span className={styles.rowMeta}>
+                            <span className={styles.rowAuthor}>
+                              {authorName(item.source.author, snapshot.members)}
                             </span>
-                            <small>
-                              Source {item.source.sourceId} · revision{" "}
-                              {item.source.revision}
-                            </small>
-                            {flags.length > 0 && (
-                              <span className={styles.flags}>
-                                {flags.map((flag) => (
-                                  <span
-                                    key={flag}
-                                    className={styles.flag}
-                                    data-tone={flagTone(flag)}
-                                  >
-                                    {flagLabels[flag]}
-                                  </span>
-                                ))}
-                              </span>
-                            )}
-                          </button>
-                        </li>
-                      );
-                    })}
+                            <span>{relativeTime(item.source.receivedAt)}</span>
+                            <span>{item.source.channel}</span>
+                          </span>
+                          <small>
+                            Source {item.source.sourceId} · revision{" "}
+                            {item.source.revision}
+                          </small>
+                          {flags.length > 0 && (
+                            <span className={styles.flags}>
+                              {flags.map((flag) => (
+                                <span
+                                  key={flag}
+                                  className={styles.flag}
+                                  data-tone={flagTone(flag)}
+                                >
+                                  {flagLabels[flag]}
+                                </span>
+                              ))}
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               </Card>
             </div>
@@ -410,13 +448,21 @@ export function Inbox({
                   entry={entry}
                   members={snapshot.members}
                   mutate={mutate}
-                  clear={() => setSelected(null)}
+                  clear={(message) => {
+                    setSelected(null);
+                    setLastDecision(message);
+                  }}
                 />
               </div>
             ) : (
               <div className={styles.placeholder}>
                 <Icon name="arrowLeft" size={20} />
                 <p>Select a source to review.</p>
+                {lastDecision && (
+                  <p className={styles.decisionNote} aria-hidden="true">
+                    {lastDecision}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -476,11 +522,13 @@ function ReviewEditor({
   entry: ReviewQueueEntry;
   members: WorkspaceSnapshot["members"];
   mutate: Mutate;
-  clear: () => void;
+  clear: (message: string) => void;
 }) {
   const [reason, setReason] = useState("");
   const [items, setItems] = useState(entry.proposal.items);
   const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const reasonField = useRef<HTMLTextAreaElement>(null);
   const [candidates, setCandidates] = useState<Array<{
     activityId: string;
     revision: number;
@@ -537,6 +585,21 @@ function ReviewEditor({
     (item) =>
       item.kind === "need" && (!item.category.trim() || !item.summary.trim()),
   );
+  const canAccept = !(
+    pending ||
+    invalid ||
+    ((changed || linked) && !reason.trim())
+  );
+  useShortcuts((event) => {
+    if (event.shiftKey) return;
+    if (event.key === "a" && canAccept) {
+      event.preventDefault();
+      void decide("accept");
+    } else if (event.key === "r") {
+      event.preventDefault();
+      reasonField.current?.focus();
+    }
+  });
   const unknownCount = countUnknown(items);
   const duplicateCount = candidates?.length ?? 0;
   const flags = deriveFlags(entry.source, items, duplicateCount);
@@ -582,6 +645,7 @@ function ReviewEditor({
   }
   async function decide(decision: "accept" | "reject") {
     setPending(true);
+    setFailed(false);
     const body = {
       runId: entry.proposal.runId,
       expectedRevision: entry.revision,
@@ -598,7 +662,10 @@ function ReviewEditor({
         `Proposal ${decision === "accept" ? "accepted" : "rejected"}.`,
       )
     )
-      clear();
+      clear(
+        `${decision === "accept" ? "Proposal accepted" : "Proposal rejected"} for source ${entry.source.sourceId}. Press j or k to open the next update.`,
+      );
+    else setFailed(true);
     setPending(false);
   }
   const kindTone = (kind: string) =>
@@ -1147,6 +1214,7 @@ function ReviewEditor({
           </label>
           <textarea
             id="review-reason"
+            ref={reasonField}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
           />
@@ -1168,9 +1236,7 @@ function ReviewEditor({
             <button
               className={styles.btn}
               aria-describedby={hintId}
-              disabled={
-                pending || invalid || ((changed || linked) && !reason.trim())
-              }
+              disabled={!canAccept}
               type="button"
               onClick={() => void decide("accept")}
             >
@@ -1188,6 +1254,13 @@ function ReviewEditor({
               Reject proposal
             </button>
           </div>
+          <p className={styles.decisionNote} aria-hidden="true">
+            {pending
+              ? "Sending your decision…"
+              : failed
+                ? "Decision not applied. Your reason is kept; check the message above and try again."
+                : "Shortcuts: a accepts, r writes the reason, ? lists all."}
+          </p>
         </section>
       </Card>
     </div>
