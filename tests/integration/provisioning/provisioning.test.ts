@@ -3,13 +3,16 @@ import { promisify } from "node:util";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createAuth } from "../../../apps/web/lib/auth/auth.ts";
 import { type Database, sql } from "../../../packages/db/src/index.ts";
-import { openTestDatabase, resetAuthTables } from "../auth/support.ts";
+import {
+  openTestDatabase,
+  resetAuthTables,
+  resolveTestDatabaseUrl,
+} from "../auth/support.ts";
 
 const execute = promisify(execFile);
 let db: Database;
 let close: () => Promise<void>;
-const testUrl =
-  "postgres://relay:relay@127.0.0.1:55482/relay_provisioning_test";
+let testUrl: string;
 const cli = async (args: string[]) => {
   try {
     const result = await execute(
@@ -39,8 +42,7 @@ const args = (email: string, slug: string, timezone = "America/New_York") => [
 ];
 
 beforeAll(async () => {
-  if (process.env.TEST_DATABASE_URL !== testUrl)
-    throw new Error("Use the dedicated relay_provisioning_test database");
+  testUrl = resolveTestDatabaseUrl();
   const opened = await openTestDatabase();
   db = opened.db;
   close = opened.close;

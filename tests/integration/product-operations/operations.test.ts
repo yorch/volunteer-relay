@@ -37,13 +37,6 @@ const call = (actor: TenantContext, path: string) =>
     new Request(`http://localhost/api/product/${path}`),
   );
 beforeAll(async () => {
-  const url = new URL(process.env.TEST_DATABASE_URL ?? "");
-  if (
-    url.hostname !== "127.0.0.1" ||
-    url.port !== "55482" ||
-    url.pathname !== "/relay_operations_test"
-  )
-    throw new Error("Use the dedicated relay_operations_test database");
   fixture = await openDomainFixture();
   owner = await context(fixture.authorization, "user-rae", "tidepath", "owner");
   coordinator = await context(
@@ -221,7 +214,7 @@ it("projects source review and retry history without exposing proposal bodies", 
   }).extract(systemContext("tidepath"), source, {
     model: "test",
     prompt: "test",
-    policy: "test",
+    policy: lease.policy.policyVersion,
   });
   if (!proposal.ok) throw new Error("Missing proposal");
   expect(
