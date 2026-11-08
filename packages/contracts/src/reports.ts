@@ -36,6 +36,35 @@ export type ReportContributor = z.infer<typeof reportContributorSchema>;
 export const REPORT_TOP_CONTRIBUTORS_LIMIT = 5;
 
 /**
+ * One row of the staff-only volunteer hours roster: every member with at
+ * least one approved or pending contribution under the report filters.
+ * Pending counts are contributions, never minutes: pending time is not
+ * approved time. `weekApprovedMinutes` uses the report's local week (it
+ * ignores from/to) and is null exactly when the report week is unknown.
+ */
+export const reportVolunteerSchema = z
+  .object({
+    membershipId: z.string().min(1),
+    approvedMinutes: z.number().int().nonnegative(),
+    weekApprovedMinutes: z.number().int().nonnegative().nullable(),
+    approvedContributions: z.number().int().nonnegative(),
+    pendingContributions: z.number().int().nonnegative(),
+    pendingUnknownDuration: z.number().int().nonnegative(),
+  })
+  .strict()
+  .refine(
+    (row) => row.approvedContributions + row.pendingContributions > 0,
+    "A roster row needs at least one contribution in scope",
+  )
+  .refine(
+    (row) => row.pendingUnknownDuration <= row.pendingContributions,
+    "Unknown-duration pending contributions are a subset of pending",
+  );
+export type ReportVolunteer = z.infer<typeof reportVolunteerSchema>;
+/** Safe upper bound on roster rows; `volunteersTruncated` flags the cut. */
+export const REPORT_VOLUNTEERS_LIMIT = 500;
+
+/**
  * Additive dashboard fields. Every field is optional on the wire so older
  * servers and aggregate-only callers stay valid; clients must treat absence
  * as "not provided", never as zero.
@@ -59,8 +88,24 @@ export const reportDashboardSchema = z
       .datetime({ offset: true })
       .nullable()
       .optional(),
+    /**
+     * Staff-only volunteer hours roster, ordered by approved minutes
+     * descending then membership id; omitted for aggregate-only readers.
+     */
+    volunteers: z
+      .array(reportVolunteerSchema)
+      .max(REPORT_VOLUNTEERS_LIMIT)
+      .optional(),
+    /** Staff-only; true when more members than the limit were in scope. */
+    volunteersTruncated: z.boolean().optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (dashboard) =>
+      (dashboard.volunteers === undefined) ===
+      (dashboard.volunteersTruncated === undefined),
+    "volunteers and volunteersTruncated are provided together",
+  );
 export type ReportDashboard = z.infer<typeof reportDashboardSchema>;
 
 export interface ProductReport {
@@ -79,6 +124,8 @@ export interface ProductReport {
   unassignedOpenNeeds?: number;
   topContributors?: ReportContributor[];
   oldestQueuedReviewAt?: string | null;
+  volunteers?: ReportVolunteer[];
+  volunteersTruncated?: boolean;
 }
 
 const dayMs = 86_400_000;

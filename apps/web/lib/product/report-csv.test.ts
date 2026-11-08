@@ -4,6 +4,7 @@ import {
   csvCell,
   reportCsv,
   topContributors,
+  volunteerRoster,
 } from "./report-csv.ts";
 
 const base = {
@@ -92,7 +93,160 @@ describe("topContributors", () => {
   });
 });
 
+describe("volunteerRoster", () => {
+  const row = (
+    membership_id: unknown,
+    minutes: number,
+    approved: number,
+    pending = 0,
+    unknown = 0,
+    week_minutes = 0,
+  ) => ({ membership_id, minutes, approved, pending, unknown, week_minutes });
+
+  it("orders by approved minutes, then membership id, keeping pending-only members at a known zero", () => {
+    expect(
+      volunteerRoster(
+        [
+          row("m-b", 60, 1),
+          row("m-pending", 0, 0, 2, 1),
+          row("m-a", 60, 3, 1, 0, 60),
+          row("m-c", 120, 1, 0, 0, 30),
+        ],
+        { weekKnown: true },
+      ),
+    ).toEqual({
+      volunteers: [
+        {
+          membershipId: "m-c",
+          approvedMinutes: 120,
+          weekApprovedMinutes: 30,
+          approvedContributions: 1,
+          pendingContributions: 0,
+          pendingUnknownDuration: 0,
+        },
+        {
+          membershipId: "m-a",
+          approvedMinutes: 60,
+          weekApprovedMinutes: 60,
+          approvedContributions: 3,
+          pendingContributions: 1,
+          pendingUnknownDuration: 0,
+        },
+        {
+          membershipId: "m-b",
+          approvedMinutes: 60,
+          weekApprovedMinutes: 0,
+          approvedContributions: 1,
+          pendingContributions: 0,
+          pendingUnknownDuration: 0,
+        },
+        {
+          membershipId: "m-pending",
+          approvedMinutes: 0,
+          weekApprovedMinutes: 0,
+          approvedContributions: 0,
+          pendingContributions: 2,
+          pendingUnknownDuration: 1,
+        },
+      ],
+      volunteersTruncated: false,
+    });
+  });
+  it("breaks ties by code unit, not locale", () => {
+    const { volunteers } = volunteerRoster(
+      [row("b", 10, 1), row("B", 10, 1), row("a", 10, 1)],
+      { weekKnown: true },
+    );
+    expect(volunteers.map((v) => v.membershipId)).toEqual(["B", "a", "b"]);
+  });
+  it("reports the week as unknown (null), not zero, when the week is unknown", () => {
+    const { volunteers } = volunteerRoster([row("m", 30, 1, 0, 0, 30)], {
+      weekKnown: false,
+    });
+    expect(volunteers[0]?.weekApprovedMinutes).toBeNull();
+  });
+  it("drops unresolved members and rows with nothing in scope, and coerces database strings", () => {
+    const { volunteers } = volunteerRoster(
+      [
+        row(null, 90, 1),
+        row("", 90, 1),
+        row("m-empty", 0, 0, 0, 0, 45),
+        {
+          membership_id: "m-str",
+          minutes: "75",
+          approved: "2",
+          pending: "3",
+          unknown: "9",
+          week_minutes: "15",
+        },
+      ],
+      { weekKnown: true },
+    );
+    expect(volunteers).toEqual([
+      {
+        membershipId: "m-str",
+        approvedMinutes: 75,
+        weekApprovedMinutes: 15,
+        approvedContributions: 2,
+        pendingContributions: 3,
+        // Unknown-duration pending is a subset of pending.
+        pendingUnknownDuration: 3,
+      },
+    ]);
+  });
+  it("flags truncation beyond the limit", () => {
+    const rows = ["a", "b", "c"].map((id, i) => row(id, 10 * (i + 1), 1));
+    expect(volunteerRoster(rows, { weekKnown: true, limit: 2 })).toMatchObject({
+      volunteers: [{ membershipId: "c" }, { membershipId: "b" }],
+      volunteersTruncated: true,
+    });
+    expect(
+      volunteerRoster(rows, { weekKnown: true, limit: 3 }).volunteersTruncated,
+    ).toBe(false);
+  });
+});
+
 describe("buildProductReport", () => {
+  it("omits the roster for aggregate-only readers and includes it for staff", () => {
+    expect(buildProductReport(base)).not.toHaveProperty("volunteers");
+    expect(buildProductReport(base)).not.toHaveProperty("volunteersTruncated");
+    const staff = buildProductReport({
+      ...base,
+      volunteers: [
+        {
+          membership_id: "m1",
+          minutes: 90,
+          approved: 2,
+          pending: 1,
+          unknown: 1,
+          week_minutes: 0,
+        },
+      ],
+    });
+    expect(staff.volunteers).toEqual([
+      {
+        membershipId: "m1",
+        approvedMinutes: 90,
+        weekApprovedMinutes: 0,
+        approvedContributions: 2,
+        pendingContributions: 1,
+        pendingUnknownDuration: 1,
+      },
+    ]);
+    expect(staff.volunteersTruncated).toBe(false);
+    const unknownWeek = buildProductReport({
+      ...base,
+      weekRange: null,
+      week: null,
+      volunteers: [{ membership_id: "m1", minutes: 90, approved: 2 }],
+    });
+    expect(unknownWeek.volunteers?.[0]?.weekApprovedMinutes).toBeNull();
+    expect(
+      reportCsv(staff).split("\r\n").filter(Boolean),
+      "the CSV stays one aggregate row",
+    ).toHaveLength(2);
+    expect(reportCsv(staff)).not.toMatch(/volunteers|m1/);
+  });
   it("builds aggregate totals with null-versus-zero kept distinct", () => {
     const report = buildProductReport(base);
     expect(report).toMatchObject({

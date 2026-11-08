@@ -7,6 +7,7 @@ import {
 import {
   type AttachmentStore,
   type AuthorizationService,
+  REPORT_VOLUNTEERS_LIMIT,
   type Receipt,
   type Result,
   reportQuerySchema,
@@ -155,6 +156,32 @@ export function createProductExtensions(options: {
             sql`select min(r.created_at) as oldest from extraction_run r where r.organization_id=${context.organizationId} and r.status='review' and r.generation=(select max(p.generation) from processing_policy_snapshot p where p.organization_id=r.organization_id and p.source_id=r.source_id and p.source_revision=r.source_revision) and not exists (select 1 from source_redaction z where z.organization_id=r.organization_id and z.source_id=r.source_id) and not exists (select 1 from source_revision newer where newer.organization_id=r.organization_id and newer.source_id=r.source_id and newer.revision>r.source_revision)`,
           )
         : null;
+      // Staff volunteer roster: the totals query's from/to/program/volunteer
+      // predicates, grouped per resolved member. Pending rows only count;
+      // their minutes are never summed. The week column uses the same local
+      // week as weekApprovedMinutes and ignores from/to. One extra row is
+      // fetched so the mapper can flag truncation.
+      const inRange = sql`(${q.from ?? null}::date is null or a.local_date >= ${q.from ?? null}::date) and (${q.to ?? null}::date is null or a.local_date <= ${q.to ?? null}::date)`;
+      const roster = staff
+        ? await options.db.execute(
+            sql`select c.membership_id,
+              coalesce(sum(c.duration_minutes) filter(where c.status='approved' and ${inRange}),0)::int as minutes,
+              count(*) filter(where c.status='approved' and ${inRange})::int as approved,
+              count(*) filter(where c.status='pending' and ${inRange})::int as pending,
+              count(*) filter(where c.status='pending' and c.duration_minutes is null and ${inRange})::int as unknown,
+              coalesce(sum(c.duration_minutes) filter(where c.status='approved' and a.local_date >= ${weekRange?.from ?? null}::date and a.local_date <= ${weekRange?.to ?? null}::date),0)::int as week_minutes
+            from contribution c join activity a on a.organization_id=c.organization_id and a.id=c.activity_id
+            where c.organization_id=${context.organizationId}
+              and c.membership_id is not null
+              and c.status in ('approved','pending')
+              and (${q.program ?? null}::text is null or a.kind=${q.program ?? null})
+              and (${q.membershipId ?? null}::text is null or c.membership_id=${q.membershipId ?? null})
+            group by c.membership_id
+            having count(*) filter(where ${inRange}) > 0
+            order by minutes desc, c.membership_id collate "C"
+            limit ${REPORT_VOLUNTEERS_LIMIT + 1}`,
+          )
+        : null;
       const value = buildProductReport({
         query: q,
         timezone,
@@ -165,6 +192,7 @@ export function createProductExtensions(options: {
         week: week ? (week.rows[0] ?? {}) : null,
         contributors: contributors ? contributors.rows : null,
         oldestQueued: oldest ? (oldest.rows[0] ?? {}) : null,
+        volunteers: roster ? roster.rows : null,
       });
       if (path === "reports.csv") {
         return new Response(reportCsv(value), {

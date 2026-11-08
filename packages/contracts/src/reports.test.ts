@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   REPORT_TOP_CONTRIBUTORS_LIMIT,
+  REPORT_VOLUNTEERS_LIMIT,
   reportContributorSchema,
   reportDashboardSchema,
   reportQuerySchema,
+  reportVolunteerSchema,
   reportWeekRange,
 } from "./reports.ts";
 
@@ -116,6 +118,97 @@ describe("report dashboard contract", () => {
         weekRange: { from: "2026-11-15", to: "2026-11-09" },
       }).success,
     ).toBe(false);
+  });
+  it("accepts the staff volunteer roster with a known zero and an unknown week", () => {
+    const parsed = reportDashboardSchema.parse({
+      volunteers: [
+        {
+          membershipId: "member-a",
+          approvedMinutes: 0,
+          weekApprovedMinutes: null,
+          approvedContributions: 0,
+          pendingContributions: 2,
+          pendingUnknownDuration: 1,
+        },
+      ],
+      volunteersTruncated: false,
+    });
+    expect(parsed.volunteers?.[0]?.approvedMinutes).toBe(0);
+    expect(parsed.volunteers?.[0]?.weekApprovedMinutes).toBeNull();
+    expect(
+      reportDashboardSchema.safeParse({
+        volunteers: [],
+        volunteersTruncated: true,
+      }).success,
+    ).toBe(true);
+  });
+  it("pairs the roster with its truncation flag and bounds its length", () => {
+    expect(reportDashboardSchema.safeParse({ volunteers: [] }).success).toBe(
+      false,
+    );
+    expect(
+      reportDashboardSchema.safeParse({ volunteersTruncated: false }).success,
+    ).toBe(false);
+    const row = {
+      membershipId: "m",
+      approvedMinutes: 30,
+      weekApprovedMinutes: 0,
+      approvedContributions: 1,
+      pendingContributions: 0,
+      pendingUnknownDuration: 0,
+    };
+    expect(
+      reportDashboardSchema.safeParse({
+        volunteers: Array.from({ length: REPORT_VOLUNTEERS_LIMIT }, () => row),
+        volunteersTruncated: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      reportDashboardSchema.safeParse({
+        volunteers: Array.from(
+          { length: REPORT_VOLUNTEERS_LIMIT + 1 },
+          () => row,
+        ),
+        volunteersTruncated: true,
+      }).success,
+    ).toBe(false);
+    expect(REPORT_VOLUNTEERS_LIMIT).toBeGreaterThan(
+      REPORT_TOP_CONTRIBUTORS_LIMIT,
+    );
+  });
+  it("rejects roster rows without contributions, evidence keys, pending minutes or impossible counts", () => {
+    const row = {
+      membershipId: "m",
+      approvedMinutes: 30,
+      weekApprovedMinutes: 30,
+      approvedContributions: 1,
+      pendingContributions: 1,
+      pendingUnknownDuration: 1,
+    };
+    expect(reportVolunteerSchema.safeParse(row).success).toBe(true);
+    expect(
+      reportVolunteerSchema.safeParse({
+        ...row,
+        approvedContributions: 0,
+        pendingContributions: 0,
+        pendingUnknownDuration: 0,
+      }).success,
+    ).toBe(false);
+    expect(
+      reportVolunteerSchema.safeParse({ ...row, pendingUnknownDuration: 2 })
+        .success,
+    ).toBe(false);
+    expect(
+      reportVolunteerSchema.safeParse({ ...row, pendingMinutes: 45 }).success,
+    ).toBe(false);
+    expect(
+      reportVolunteerSchema.safeParse({ ...row, sourceId: "s" }).success,
+    ).toBe(false);
+    expect(
+      reportVolunteerSchema.safeParse({ ...row, approvedMinutes: -1 }).success,
+    ).toBe(false);
+    const { weekApprovedMinutes: _, ...missingWeek } = row;
+    expect(reportVolunteerSchema.safeParse(missingWeek).success).toBe(false);
   });
   it("leaves the report query strict", () => {
     expect(
