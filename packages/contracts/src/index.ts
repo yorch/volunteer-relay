@@ -455,9 +455,12 @@ export interface CandidateRepository {
 export interface EventHandler {
   handle(context: TenantContext, event: DomainEvent): Promise<Result<void>>;
 }
+// Attachment identity is organization + source + attachment (ADR 0005), so a
+// read names the source; evidence access rules match SourceRepository.get.
 export interface AttachmentStore {
   read(
     context: TenantContext,
+    sourceId: string,
     attachmentId: string,
   ): Promise<Result<{ bytes: Uint8Array; mimeType: string }>>;
 }
@@ -471,4 +474,372 @@ export interface NotificationTransport {
       appPath: string;
     },
   ): Promise<Result<{ providerId: string; status: "accepted" }>>;
+}
+
+// M1 ledger and need persistence (ADR 0009). Records are authorized
+// projections; commands grant no authority and every operation re-checks live
+// membership. Approved contributions are the reporting ledger.
+const positiveInt = z.number().int().positive();
+const boundedText = (max: number) =>
+  z
+    .string()
+    .min(1)
+    .max(max)
+    .refine((value) => value.trim().length > 0, "Text is required");
+const label = boundedText(100);
+const reasonText = boundedText(2000);
+// Integer minutes for one person's contribution to one activity. Unknown is
+// null, never zero.
+export const contributionMinutesSchema = z.number().int().positive().max(1440);
+
+export const recordOriginSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("source"),
+      sourceId: id,
+      sourceRevision: positiveInt,
+    })
+    .strict(),
+  z.object({ kind: z.literal("staff"), reason: reasonText }).strict(),
+]);
+export type RecordOrigin = z.infer<typeof recordOriginSchema>;
+
+const activityFacts = {
+  kind: label,
+  localDate: z.iso.date().nullable(),
+  datePrecision: z.enum(["day", "unknown"]),
+  beneficiaryReference: boundedText(200).nullable(),
+};
+function requireMatchingPrecision(
+  value: { localDate: string | null; datePrecision: "day" | "unknown" },
+  ctx: z.RefinementCtx,
+): void {
+  if ((value.localDate === null) !== (value.datePrecision === "unknown"))
+    ctx.addIssue({
+      code: "custom",
+      message: "localDate is required exactly when datePrecision is day",
+    });
+}
+
+export const activityRecordSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    organizationId: id,
+    activityId: id,
+    revision: positiveInt,
+    ...activityFacts,
+    origin: recordOriginSchema,
+    createdAt: instant,
+    updatedAt: instant,
+  })
+  .strict()
+  .superRefine(requireMatchingPrecision);
+export type ActivityRecord = z.infer<typeof activityRecordSchema>;
+
+export const contributionRecordSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    organizationId: id,
+    contributionId: id,
+    activityId: id,
+    revision: positiveInt,
+    membershipId: id.nullable(),
+    durationMinutes: contributionMinutesSchema.nullable(),
+    status: contributionStatusSchema,
+    origin: recordOriginSchema,
+    createdAt: instant,
+    updatedAt: instant,
+  })
+  .strict()
+  .superRefine((record, ctx) => {
+    if (
+      record.status === "approved" &&
+      (record.membershipId === null || record.durationMinutes === null)
+    )
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "Approved contributions need a resolved volunteer and duration",
+      });
+  });
+export type ContributionRecord = z.infer<typeof contributionRecordSchema>;
+
+export const recordedActivitySchema = z
+  .object({
+    activity: activityRecordSchema,
+    contributions: z.array(contributionRecordSchema),
+  })
+  .strict();
+export type RecordedActivity = z.infer<typeof recordedActivitySchema>;
+
+// Aggregate-only projection for report:read; contains no evidence.
+export const ledgerSummarySchema = z
+  .object({
+    approvedMinutes: z.number().int().nonnegative(),
+    approvedContributions: z.number().int().nonnegative(),
+    activitiesWithApprovedContributions: z.number().int().nonnegative(),
+    pendingContributions: z.number().int().nonnegative(),
+    pendingUnknownDuration: z.number().int().nonnegative(),
+    pendingUnresolvedVolunteer: z.number().int().nonnegative(),
+  })
+  .strict();
+export type LedgerSummary = z.infer<typeof ledgerSummarySchema>;
+
+const commandBase = { schemaVersion: z.literal(1), idempotencyKey: id };
+const contributionDraftSchema = z
+  .object({
+    membershipId: id.nullable(),
+    durationMinutes: contributionMinutesSchema.nullable(),
+  })
+  .strict();
+
+export const recordActivityCommandSchema = z
+  .object({
+    ...commandBase,
+    ...activityFacts,
+    origin: recordOriginSchema,
+    contributions: z.array(contributionDraftSchema).max(20),
+  })
+  .strict()
+  .superRefine((command, ctx) => {
+    requireMatchingPrecision(command, ctx);
+    const members = command.contributions
+      .map((draft) => draft.membershipId)
+      .filter((value): value is string => value !== null);
+    if (new Set(members).size !== members.length)
+      ctx.addIssue({
+        code: "custom",
+        message: "A volunteer appears at most once per activity",
+      });
+  });
+export type RecordActivityCommand = z.infer<typeof recordActivityCommandSchema>;
+
+export const reviseActivityCommandSchema = z
+  .object({
+    ...commandBase,
+    activityId: id,
+    expectedRevision: positiveInt,
+    ...activityFacts,
+    reason: reasonText,
+  })
+  .strict()
+  .superRefine(requireMatchingPrecision);
+export type ReviseActivityCommand = z.infer<typeof reviseActivityCommandSchema>;
+
+export const addContributionCommandSchema = z
+  .object({
+    ...commandBase,
+    activityId: id,
+    ...contributionDraftSchema.shape,
+    origin: recordOriginSchema,
+  })
+  .strict();
+export type AddContributionCommand = z.infer<
+  typeof addContributionCommandSchema
+>;
+
+const contributionTarget = {
+  ...commandBase,
+  contributionId: id,
+  expectedRevision: positiveInt,
+};
+export const contributionTransitionSchema = z.discriminatedUnion("action", [
+  z.object({ ...contributionTarget, action: z.literal("approve") }).strict(),
+  z
+    .object({
+      ...contributionTarget,
+      action: z.literal("reject"),
+      reason: reasonText,
+    })
+    .strict(),
+  z
+    .object({
+      ...contributionTarget,
+      action: z.literal("correct"),
+      durationMinutes: contributionMinutesSchema,
+      reason: reasonText,
+    })
+    .strict(),
+  z
+    .object({
+      ...contributionTarget,
+      action: z.literal("supersede"),
+      reason: reasonText,
+    })
+    .strict(),
+]);
+export type ContributionTransition = z.infer<
+  typeof contributionTransitionSchema
+>;
+type ContributionStatus = z.infer<typeof contributionStatusSchema>;
+// to: null keeps the current status (a correction amends in place).
+export const contributionTransitionRules = {
+  approve: { from: ["pending"], to: "approved" },
+  reject: { from: ["pending"], to: "rejected" },
+  correct: { from: ["pending", "approved"], to: null },
+  supersede: { from: ["pending", "approved"], to: "superseded" },
+} as const satisfies Record<
+  ContributionTransition["action"],
+  { from: readonly ContributionStatus[]; to: ContributionStatus | null }
+>;
+
+const listLimit = z.number().int().min(1).max(100).optional();
+export const contributionListQuerySchema = z
+  .object({ status: contributionStatusSchema.optional(), limit: listLimit })
+  .strict();
+export type ContributionListQuery = z.infer<typeof contributionListQuerySchema>;
+
+type NeedStatus = z.infer<typeof needStatusSchema>;
+export const needRecordSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    organizationId: id,
+    needId: id,
+    revision: positiveInt,
+    category: label,
+    urgency: urgencySchema,
+    summary: reasonText,
+    provisional: z.boolean(),
+    status: needStatusSchema,
+    ownerMembershipId: id.nullable(),
+    dueAt: instant.nullable(),
+    acknowledgeBy: instant.nullable(),
+    acknowledgedAt: instant.nullable(),
+    acknowledgedByMembershipId: id.nullable(),
+    resolvedAt: instant.nullable(),
+    resolution: reasonText.nullable(),
+    origin: recordOriginSchema,
+    createdAt: instant,
+    updatedAt: instant,
+  })
+  .strict()
+  .superRefine((need, ctx) => {
+    const owned = need.ownerMembershipId !== null;
+    const acknowledged =
+      need.acknowledgedAt !== null && need.acknowledgedByMembershipId !== null;
+    const unacknowledged =
+      need.acknowledgedAt === null && need.acknowledgedByMembershipId === null;
+    const resolved = need.resolvedAt !== null && need.resolution !== null;
+    const unresolved = need.resolvedAt === null && need.resolution === null;
+    const consistent = {
+      new: !owned && unacknowledged && unresolved,
+      assigned: owned && unacknowledged && unresolved,
+      acknowledged: owned && acknowledged && unresolved,
+      resolved: resolved && (acknowledged || unacknowledged),
+      cancelled: unresolved && (acknowledged || unacknowledged),
+    }[need.status];
+    if (!consistent)
+      ctx.addIssue({
+        code: "custom",
+        message: "Need fields are inconsistent with its status",
+      });
+  });
+export type NeedRecord = z.infer<typeof needRecordSchema>;
+
+export const createNeedCommandSchema = z
+  .object({
+    ...commandBase,
+    category: label,
+    urgency: urgencySchema,
+    summary: reasonText,
+    provisional: z.boolean(),
+    dueAt: instant.nullable(),
+    acknowledgeBy: instant.nullable(),
+    origin: recordOriginSchema,
+  })
+  .strict();
+export type CreateNeedCommand = z.infer<typeof createNeedCommandSchema>;
+
+const needTarget = {
+  ...commandBase,
+  needId: id,
+  expectedRevision: positiveInt,
+};
+export const needTransitionSchema = z.discriminatedUnion("action", [
+  z
+    .object({
+      ...needTarget,
+      action: z.literal("assign"),
+      ownerMembershipId: id,
+      acknowledgeBy: instant.nullable(),
+    })
+    .strict(),
+  z.object({ ...needTarget, action: z.literal("acknowledge") }).strict(),
+  z
+    .object({
+      ...needTarget,
+      action: z.literal("resolve"),
+      resolution: reasonText,
+    })
+    .strict(),
+  z
+    .object({ ...needTarget, action: z.literal("cancel"), reason: reasonText })
+    .strict(),
+  z
+    .object({ ...needTarget, action: z.literal("reopen"), reason: reasonText })
+    .strict(),
+]);
+export type NeedTransition = z.infer<typeof needTransitionSchema>;
+// Reopen returns to new and clears owner/acknowledgment for explicit routing.
+export const needTransitionRules = {
+  assign: { from: ["new", "assigned", "acknowledged"], to: "assigned" },
+  acknowledge: { from: ["assigned"], to: "acknowledged" },
+  resolve: { from: ["new", "assigned", "acknowledged"], to: "resolved" },
+  cancel: { from: ["new", "assigned", "acknowledged"], to: "cancelled" },
+  reopen: { from: ["resolved", "cancelled"], to: "new" },
+} as const satisfies Record<
+  NeedTransition["action"],
+  { from: readonly NeedStatus[]; to: NeedStatus }
+>;
+
+export const needListQuerySchema = z
+  .object({ status: needStatusSchema.optional(), limit: listLimit })
+  .strict();
+export type NeedListQuery = z.infer<typeof needListQuerySchema>;
+
+// Staff (review:write) operate the ledger; volunteers list only their own
+// contributions; report:read receives aggregates only.
+export interface LedgerService {
+  recordActivity(
+    context: TenantContext,
+    command: RecordActivityCommand,
+  ): Promise<Result<RecordedActivity>>;
+  reviseActivity(
+    context: TenantContext,
+    command: ReviseActivityCommand,
+  ): Promise<Result<ActivityRecord>>;
+  addContribution(
+    context: TenantContext,
+    command: AddContributionCommand,
+  ): Promise<Result<ContributionRecord>>;
+  transitionContribution(
+    context: TenantContext,
+    command: ContributionTransition,
+  ): Promise<Result<ContributionRecord>>;
+  getActivity(
+    context: TenantContext,
+    activityId: string,
+  ): Promise<Result<RecordedActivity>>;
+  listContributions(
+    context: TenantContext,
+    query: ContributionListQuery,
+  ): Promise<Result<ContributionRecord[]>>;
+  summarize(context: TenantContext): Promise<Result<LedgerSummary>>;
+}
+
+// need:manage operates needs; only the current owner acknowledges.
+export interface NeedService {
+  create(
+    context: TenantContext,
+    command: CreateNeedCommand,
+  ): Promise<Result<NeedRecord>>;
+  transition(
+    context: TenantContext,
+    command: NeedTransition,
+  ): Promise<Result<NeedRecord>>;
+  get(context: TenantContext, needId: string): Promise<Result<NeedRecord>>;
+  list(
+    context: TenantContext,
+    query: NeedListQuery,
+  ): Promise<Result<NeedRecord[]>>;
 }
