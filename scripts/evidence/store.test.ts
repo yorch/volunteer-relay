@@ -218,3 +218,39 @@ it("ignores crash partial files and orphan bytes while rejecting oversized or ma
   writeFileSync(mp, Buffer.alloc(1024 * 1024 + 1));
   await expect(createEvidenceStore(p)).rejects.toThrow();
 });
+
+it("rejects a first recheck under global byte pressure while preserving its original video", async () => {
+  const store = await createEvidenceStore(root(), {
+    maxTotalBytes: 80,
+    maxRunBytes: 100,
+  });
+  const m = await store.createRun(run);
+  const webm = Buffer.concat([
+    Buffer.from([26, 69, 223, 163]),
+    Buffer.from("webm original"),
+  ]);
+  expect(webm.length).toBe(17);
+  expect(png.length).toBe(68);
+  const original = await store.append(
+    m.runId,
+    { ...capture, mime: "video/webm" },
+    webm,
+  );
+  await expect(
+    store.append(
+      m.runId,
+      { ...capture, outcome: "recheck", recheckOf: original.artifactId },
+      png,
+    ),
+  ).rejects.toThrow("Evidence rejected");
+  expect((await store.read(original.artifactId))?.content).toEqual(webm);
+  const manifest = await store.manifest(m.runId);
+  expect(manifest?.artifacts.map((a) => a.artifactId)).toEqual([
+    original.artifactId,
+  ]);
+  expect(manifest?.truncated).toBe(true);
+  expect(manifest?.retention).toEqual({
+    omittedArtifacts: 1,
+    reason: "global-cap",
+  });
+});

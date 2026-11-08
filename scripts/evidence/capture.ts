@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { open } from "node:fs/promises";
+import { type FileHandle, open } from "node:fs/promises";
 import type { BrowserContext, Page } from "@playwright/test";
 import {
   defaultEvidenceLimits,
@@ -46,31 +46,35 @@ export async function captureScenarioVideo(
     throw new Error("Evidence video requires explicit context recording");
   }
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let failed = false;
+  let file: FileHandle | undefined;
+  let hasPrimaryError = false;
+  let primaryError: unknown;
+  let result: Awaited<ReturnType<EvidenceStore["append"]>> | undefined;
   try {
-    await Promise.race([
-      options.scenario(page),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error("Evidence scenario deadline")),
-          options.maxDurationMs,
-        );
-      }),
-    ]);
-  } catch {
-    failed = true;
-  } finally {
-    if (timer) clearTimeout(timer);
-    await page.close();
-  }
-  const path = await video.path();
-  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-  try {
+    let failed = false;
+    try {
+      await Promise.race([
+        options.scenario(page),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error("Evidence scenario deadline")),
+            options.maxDurationMs,
+          );
+        }),
+      ]);
+    } catch {
+      failed = true;
+    } finally {
+      if (timer) clearTimeout(timer);
+      await page.close();
+    }
+    const path = await video.path();
+    file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
     const stat = await file.stat();
     if (!stat.isFile() || stat.size > defaultEvidenceLimits.maxArtifactBytes)
       throw new Error("Evidence video size rejected");
     const bytes = await file.readFile();
-    return await store.append(
+    result = await store.append(
       runId,
       {
         ...input,
@@ -79,8 +83,30 @@ export async function captureScenarioVideo(
       },
       bytes,
     );
+  } catch (error) {
+    hasPrimaryError = true;
+    primaryError = error;
   } finally {
-    await file.close();
-    await video.delete();
+    if (timer) clearTimeout(timer);
+    // A close failure must not prevent deletion; cleanup errors must not mask
+    // the original finalization/path/open/read/store failure.
+    let cleanupError: unknown;
+    try {
+      await file?.close();
+    } catch (error) {
+      cleanupError = error;
+    }
+    try {
+      await video.delete();
+    } catch (error) {
+      cleanupError ??= error;
+    }
+    if (!hasPrimaryError && cleanupError !== undefined) {
+      hasPrimaryError = true;
+      primaryError = cleanupError;
+    }
   }
+  if (hasPrimaryError) throw primaryError;
+  if (!result) throw new Error("Evidence video capture failed");
+  return result;
 }

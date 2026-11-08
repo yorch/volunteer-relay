@@ -393,6 +393,7 @@ async function openStore(
       for (const a of [...m.artifacts]) {
         if (total(runs) + extra <= limits.maxTotalBytes) break;
         if (
+          a.artifactId === protectedArtifact ||
           a.mime !== "video/webm" ||
           a.outcome !== "captured" ||
           a.findingIds.length ||

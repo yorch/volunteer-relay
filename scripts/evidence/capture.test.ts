@@ -90,3 +90,46 @@ it("closes timed-out scenario pages, retains bounded failure video and deletes t
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+it.each(["close", "path", "open"] as const)(
+  "attempts deletion after %s failure and preserves the primary error",
+  async (failure) => {
+    const { mkdtemp, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = await mkdtemp(join(tmpdir(), "capture-failure-"));
+    const primary = new Error(`controlled ${failure} failure`);
+    const remove = vi
+      .fn()
+      .mockRejectedValue(new Error("secondary deletion failure"));
+    const close = vi.fn().mockImplementation(async () => {
+      if (failure === "close") throw primary;
+    });
+    const path = vi.fn().mockImplementation(async () => {
+      if (failure === "path") throw primary;
+      return join(dir, "missing.webm");
+    });
+    const context = {
+      newPage: async () => ({ video: () => ({ path, delete: remove }), close }),
+    } as unknown as BrowserContext;
+    const append = vi.fn();
+    try {
+      const result = captureScenarioVideo(
+        context,
+        { append } as unknown as EvidenceStore,
+        "run",
+        input,
+        { enabled: true, maxDurationMs: 100, scenario: async () => {} },
+      );
+      if (failure === "open")
+        await expect(result).rejects.toMatchObject({ code: "ENOENT" });
+      else await expect(result).rejects.toBe(primary);
+      expect(close).toHaveBeenCalledOnce();
+      expect(remove).toHaveBeenCalledOnce();
+      expect(append).not.toHaveBeenCalled();
+      if (failure === "close") expect(path).not.toHaveBeenCalled();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
