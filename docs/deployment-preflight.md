@@ -101,6 +101,22 @@ still archives that (empty, inert) volume if the mount remains.
       ```
 
       Pass: no `published:` entry, one `Host(...)` with your domain, `webcert` as resolver.
+
+- [ ] **Verify outbound mail before anyone is invited.** Without a working transport nobody
+  can complete sign-up verification, and a deployment with no verified account has no
+  organization. The application images are bundled, so this runs on the host rather than
+  in a container:
+
+      ```sh
+      RELAY_RUNTIME_ENV_FILE="$RELAY_RUNTIME_ENV_FILE" infra/production/check-smtp.sh
+      RELAY_RUNTIME_ENV_FILE="$RELAY_RUNTIME_ENV_FILE" infra/production/check-smtp.sh \
+        --send-to you@example.org
+      ```
+
+      Pass: `SMTP_CHECK_OK`, and the `--send-to` message actually arrives. A connection that
+      authenticates but delivers nothing still fails the gate: `SMTP_FROM` must be on a domain
+      the provider is authorised to send for, or the message is accepted and then filtered.
+      Needs `python3` on the host; it never prints a credential.
 ## 4. First start
 
 Start in dependency order and watch each gate; `web` and `worker` are gated on the one-shot
@@ -122,19 +138,20 @@ docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RELAY_ENV_FIL
 
 Run these in order. Each is a gate: do not declare the deployment live on a partial pass.
 
-| #   | Check                 | Command                                                 | Pass criterion                                                                        |
-| --- | --------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| 1   | Router registered     | Traefik dashboard/API, or `docker logs <traefik>`       | one enabled router for your `Host()`, no provider errors, no "dropped" router warning |
-| 2   | Nothing published     | `docker compose ... ps --format '{{.Name}} {{.Ports}}'` | empty ports column for every service                                                  |
-| 3   | Database not exposed  | from another host: `nc -z <vps> 5432`                   | refused/timeout                                                                       |
-| 4   | Certificate issued    | `curl -sI https://$RELAY_DOMAIN`                        | valid chain for the domain, HTTP/2, 200 or 3xx                                        |
-| 5   | Liveness              | `curl -fsS https://$RELAY_DOMAIN/api/health`            | 200                                                                                   |
-| 6   | Readiness             | `curl -fsS https://$RELAY_DOMAIN/api/ready`             | 200 — proves DB and storage, not just a live process                                  |
-| 7   | HTTP redirect         | `curl -sI http://$RELAY_DOMAIN`                         | 301/308 to https                                                                      |
-| 8   | Sign-in               | browser, real account                                   | sign-in, organization switch, one authorized page                                     |
-| 9   | Attachment round trip | upload a synthetic source, then fetch it                | bytes match; unauthorized fetch denied                                                |
-| 10  | Worker                | `docker logs` on the worker                             | no crash loop, no repeated provider/storage errors                                    |
-| 11  | Restart durability    | `docker compose ... restart web worker`                 | `/api/ready` returns 200 again; data still present                                    |
+| #   | Check                 | Command                                                    | Pass criterion                                                                        |
+| --- | --------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| 1   | Router registered     | Traefik dashboard/API, or `docker logs <traefik>`          | one enabled router for your `Host()`, no provider errors, no "dropped" router warning |
+| 2   | Nothing published     | `docker compose ... ps --format '{{.Name}} {{.Ports}}'`    | empty ports column for every service                                                  |
+| 3   | Database not exposed  | from another host: `nc -z <vps> 5432`                      | refused/timeout                                                                       |
+| 4   | Certificate issued    | `curl -sI https://$RELAY_DOMAIN`                           | valid chain for the domain, HTTP/2, 200 or 3xx                                        |
+| 5   | Liveness              | `curl -fsS https://$RELAY_DOMAIN/api/health`               | 200                                                                                   |
+| 6   | Readiness             | `curl -fsS https://$RELAY_DOMAIN/api/ready`                | 200 — proves DB and storage, not just a live process                                  |
+| 7   | HTTP redirect         | `curl -sI http://$RELAY_DOMAIN`                            | 301/308 to https                                                                      |
+| 8   | Sign-in               | browser, real account                                      | sign-in, organization switch, one authorized page                                     |
+| 9   | Attachment round trip | upload a synthetic source, then fetch it                   | bytes match; unauthorized fetch denied                                                |
+| 10  | Worker                | `docker logs` on the worker                                | no crash loop, no repeated provider/storage errors                                    |
+| 11  | Restart durability    | `docker compose ... restart web worker`                    | `/api/ready` returns 200 again; data still present                                    |
+| 12  | Mail path             | `infra/production/check-smtp.sh --send-to you@example.org` | `SMTP_CHECK_OK` and the message arrives, so sign-up verification can complete         |
 
 If using `s3`, add: the bucket contains the `.relay-deployment` marker for this
 `S3_DEPLOYMENT_ID`, and a second deployment pointed at the same prefix is refused.
