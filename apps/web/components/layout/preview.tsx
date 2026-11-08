@@ -117,8 +117,8 @@ export function FoundationPreview({
       mainId="preview-main"
       currentPath="#preview-main"
       navigation={[
-        { href: "#preview-main", label: "Foundation" },
-        { href: "#preview-update", label: "Form patterns" },
+        { href: "#preview-main", icon: "workspace", label: "Foundation" },
+        { href: "#preview-update", icon: "workspace", label: "Form patterns" },
       ]}
       account="Staff shell specimen"
     >

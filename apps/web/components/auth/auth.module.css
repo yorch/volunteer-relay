@@ -14,7 +14,12 @@
   overflow-wrap: anywhere;
 }
 .feedback:empty {
-  display: none;
+  /* Stay mounted for assistive tech but take no space. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 .feedback:focus-visible {
   outline: 3px solid var(--relay-focus, #895311);

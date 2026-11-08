@@ -2,9 +2,11 @@ import type { ReactNode } from "react";
 import { FoundationRoot } from "../foundation";
 import styles from "./layout.module.css";
 
+export type NavigationIcon = keyof typeof icons;
 export type NavigationItem = {
   href: string;
   label: string;
+  icon: NavigationIcon;
   count?: number | string;
   group?: "workspace" | "administration";
 };
@@ -128,8 +130,6 @@ export function StaffShell({
                         </p>
                         <ul className={styles.navigation}>
                           {items.map((item) => {
-                            const key =
-                              item.href.split("/").pop() ?? "workspace";
                             return (
                               <li key={item.href}>
                                 <a
@@ -140,9 +140,7 @@ export function StaffShell({
                                       : undefined
                                   }
                                 >
-                                  <Icon
-                                    path={icons[key] ?? icons.workspace ?? ""}
-                                  />
+                                  <Icon path={icons[item.icon] ?? ""} />
                                   <span>{item.label}</span>
                                   {item.count !== undefined && (
                                     <span className={styles.count}>

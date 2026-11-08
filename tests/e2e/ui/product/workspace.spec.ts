@@ -567,8 +567,10 @@ test("photo retries reuse the submission key", async ({ page }) => {
   const keys = bodies.map(
     (body) => body.match(/name="idempotencyKey"\r\n\r\n([^\r]+)/)?.[1],
   );
-  expect(keys[0]).toBeTruthy();
-  expect(keys[0]).toBe(keys[1]);
+  expect(keys[0]).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+  );
+  expect(keys[1]).toBe(keys[0]);
 });
 
 test("staff overview uses workspace and report data", async ({ page }) => {

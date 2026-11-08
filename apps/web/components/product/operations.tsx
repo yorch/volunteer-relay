@@ -5,30 +5,12 @@ import type {
   ProductAuditEntry,
 } from "@relay/contracts";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { errorMessage, request } from "../api-client";
+import { Card as BaseCard, Live } from "../card";
 import styles from "./admin.module.css";
 
-type Result<T> =
-  | { ok: true; value: T }
-  | { ok: false; error: { code: string } };
-async function load<T>(url: string): Promise<Result<T>> {
-  try {
-    const response = await fetch(url, {
-      credentials: "same-origin",
-      cache: "no-store",
-      headers: { Accept: "application/json" },
-    });
-    const result = (await response.json()) as Result<T>;
-    if (result && typeof result.ok === "boolean") return result;
-  } catch {}
-  return { ok: false, error: { code: "DEPENDENCY_UNAVAILABLE" } };
-}
-function message(code: string) {
-  return code === "FORBIDDEN"
-    ? "You do not have permission to view this information."
-    : code === "UNAUTHENTICATED"
-      ? "Please sign in."
-      : "Unable to load this information. Please try again.";
-}
+const load = <T,>(url: string) => request<T>(url);
+const message = errorMessage;
 function Card({
   children,
   className = "",
@@ -37,7 +19,7 @@ function Card({
   className?: string | undefined;
 }) {
   return (
-    <section className={`${styles.card} ${className}`}>{children}</section>
+    <BaseCard className={`${styles.card} ${className}`}>{children}</BaseCard>
   );
 }
 function stamp(value: string | null) {
@@ -101,7 +83,14 @@ export function History() {
     if (!id) return;
     const query = new URLSearchParams({ aggregateId: id });
     const before = String(f.get("before") || "");
-    if (before) query.set("before", new Date(before).toISOString());
+    if (before) {
+      const parsed = new Date(before);
+      if (Number.isNaN(parsed.getTime())) {
+        setError("Enter a valid date and time.");
+        return;
+      }
+      query.set("before", parsed.toISOString());
+    }
     setPending(true);
     setError("");
     setEntries(null);
@@ -147,16 +136,12 @@ export function History() {
           back.
         </p>
       </Card>
-      {pending && (
-        <p aria-live="polite" className={styles.loading}>
-          Loading the record timeline…
-        </p>
-      )}
-      {error && (
-        <p role="alert" className={styles.error}>
-          {error}
-        </p>
-      )}
+      <Live kind="polite" className={styles.loading}>
+        {pending ? "Loading the record timeline…" : ""}
+      </Live>
+      <Live kind="alert" className={styles.error}>
+        {error}
+      </Live>
       {entries?.length ? (
         <section className={styles.timeline} aria-label="Record history">
           <div className={styles.timelineHeading}>
@@ -168,7 +153,7 @@ export function History() {
           {entries.map((entry) => (
             <article
               className={styles.timelineEntry}
-              key={`${entry.aggregateType}-${entry.aggregateId}-${entry.revision}-${entry.occurredAt}`}
+              key={`${entry.aggregateType}:${entry.aggregateId}:${entry.revision}:${entry.occurredAt}`}
             >
               <span className={styles.timelineDot} aria-hidden="true" />
               <Card className={styles.auditCard}>
@@ -315,15 +300,13 @@ export function Delivery({ owner }: { owner: boolean }) {
               <h2 id="ops-heading">Organization operations</h2>
             </div>
           </div>
-          {opsLoading ? (
-            <p aria-live="polite" className={styles.loading}>
-              Loading operations…
-            </p>
-          ) : opsError ? (
-            <p role="alert" className={styles.error}>
-              {opsError}
-            </p>
-          ) : operations ? (
+          <Live kind="polite" className={styles.loading}>
+            {opsLoading ? "Loading operations…" : ""}
+          </Live>
+          <Live kind="alert" className={styles.error}>
+            {opsLoading ? "" : opsError}
+          </Live>
+          {opsLoading || opsError ? null : operations ? (
             <div className={styles.opsGrid}>
               <Card className={styles.metricCard}>
                 <span className={styles.metricLabel}>Source queue</span>
@@ -407,15 +390,13 @@ export function Delivery({ owner }: { owner: boolean }) {
             </span>
           </div>
         ) : null}
-        {pending ? (
-          <p aria-live="polite" className={styles.loading}>
-            Loading deliveries…
-          </p>
-        ) : error ? (
-          <p role="alert" className={styles.error}>
-            {error}
-          </p>
-        ) : deliveries?.length ? (
+        <Live kind="polite" className={styles.loading}>
+          {pending ? "Loading deliveries…" : ""}
+        </Live>
+        <Live kind="alert" className={styles.error}>
+          {pending ? "" : error}
+        </Live>
+        {pending || error ? null : deliveries?.length ? (
           <div className={styles.tableWrap}>
             <table className={styles.deliveryTable} aria-label="Deliveries">
               <thead>

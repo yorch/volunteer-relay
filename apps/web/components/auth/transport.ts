@@ -4,6 +4,7 @@ import {
   authOrganizationChoicesSchema,
   type Result,
 } from "@relay/contracts";
+import { fetchJson } from "../api-client";
 
 const unavailable = (): Result<never> => ({
   ok: false,
@@ -35,34 +36,18 @@ type Mutation =
   | "organizations/select";
 
 // Fixed endpoint names only. Payloads are constructed by canonical form callbacks.
-async function request(
-  path: string,
-  body?: object,
-): Promise<{ response: Response; data: Record<string, unknown> } | null> {
-  try {
-    const response = await fetch(`/api/auth/${path}`, {
-      method: body === undefined ? "GET" : "POST",
-      credentials: "same-origin",
-      cache: "no-store",
-      redirect: "error",
-      headers:
-        body === undefined
-          ? { Accept: "application/json" }
-          : { Accept: "application/json", "Content-Type": "application/json" },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-    const mediaType = response.headers
-      .get("content-type")
-      ?.split(";")[0]
-      ?.trim()
-      .toLowerCase();
-    if (mediaType !== "application/json") return null;
-    const data: unknown = await response.json();
-    if (!data || typeof data !== "object" || Array.isArray(data)) return null;
-    return { response, data: data as Record<string, unknown> };
-  } catch {
-    return null;
-  }
+function request(path: string, body?: object) {
+  return fetchJson(`/api/auth/${path}`, {
+    method: body === undefined ? "GET" : "POST",
+    credentials: "same-origin",
+    cache: "no-store",
+    redirect: "error",
+    headers:
+      body === undefined
+        ? { Accept: "application/json" }
+        : { Accept: "application/json", "Content-Type": "application/json" },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
 }
 function failure(
   response: Response,

@@ -57,10 +57,11 @@ function CommandForm({
   const [message, setMessage] = useState("");
   const [failed, setFailed] = useState(false);
   const lock = useRef(false);
-  const feedback = useRef<HTMLDivElement>(null);
+  const alertRegion = useRef<HTMLDivElement>(null);
+  const statusRegion = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (message) feedback.current?.focus();
-  }, [message]);
+    if (message) (failed ? alertRegion : statusRegion).current?.focus();
+  }, [message, failed]);
   return (
     <Card title={title}>
       {!hydrated && <p>Enable JavaScript to use this form safely.</p>}
@@ -110,13 +111,26 @@ function CommandForm({
           {children}
           <Button type="submit">{pending ? "Please wait…" : action}</Button>
         </fieldset>
+        {failed && message && (
+          // An alert inserted with its text is announced reliably; it is
+          // only mounted while an error is showing.
+          <div
+            ref={alertRegion}
+            tabIndex={-1}
+            role="alert"
+            className={styles.feedback}
+          >
+            {message}
+          </div>
+        )}
+        {/* Persistent status region: only its text changes. */}
         <div
-          ref={feedback}
+          ref={statusRegion}
           tabIndex={-1}
-          role={failed ? "alert" : "status"}
+          role="status"
           className={styles.feedback}
         >
-          {message}
+          {failed ? "" : message}
         </div>
       </form>
     </Card>

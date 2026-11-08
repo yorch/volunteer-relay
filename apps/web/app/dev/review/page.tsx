@@ -14,7 +14,9 @@ export default function Page() {
       organization="Tidepath · fictional organization"
       mainId="inbox-main"
       currentPath="/workspace/inbox"
-      navigation={[{ href: "/workspace/inbox", label: "Source inbox" }]}
+      navigation={[
+        { href: "/workspace/inbox", icon: "inbox", label: "Source inbox" },
+      ]}
       account="Staff preview only"
     >
       <PageHeading

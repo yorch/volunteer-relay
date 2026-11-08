@@ -246,8 +246,12 @@ test("account loads live choices, switches with only organization ID and signs o
     },
   ];
   let current = "synthetic-a";
+  let releaseOrganizations: () => void = () => {};
+  const organizationsGate = new Promise<void>((resolve) => {
+    releaseOrganizations = resolve;
+  });
   await page.route("**/api/auth/organizations", async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await organizationsGate;
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -275,6 +279,7 @@ test("account loads live choices, switches with only organization ID and signs o
   });
   await page.goto("/account");
   await expect(page.getByText("Loading organizations…")).toBeVisible();
+  releaseOrganizations();
   await page
     .getByLabel("Organization", { exact: true })
     .selectOption("synthetic-b");
