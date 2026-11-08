@@ -2,7 +2,22 @@
 
 **Current product status:** M2–M7 implementation and evidence are summarized in [PRODUCT-IMPLEMENTATION.md](PRODUCT-IMPLEMENTATION.md) and [STATUS.md](../STATUS.md). The dispatch and phase descriptions below are historical planning context; their statements that product work is queued or fixture-only have been superseded.
 
-Phase 0 task cards P0-01–03 are complete. The current prototype review/reference commit adds planning handoffs only. Later cards remain queued; no later application implementation is included.
+## Current product task status
+
+| Product task cards                | Current implementation and verification                                                                                                                                            | Open external or acceptance work                                                                                                                                       |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P1-00–P1-13                       | Auth, tenancy, source/outbox, ledger, needs and attachments are integrated. Controlled PostgreSQL and browser tests are recorded in [product evidence](PRODUCT-IMPLEMENTATION.md). | Live SMTP delivery and deployment operation remain open.                                                                                                               |
+| P2-00, P2-01, P2-02, P2-04, P2-05 | Product intake/review UI and durable extraction/retry/reprocessing are integrated.                                                                                                 | Opt-in live model smoke and real model quality remain open; review the [prototype parity assessment](../design/product-parity.md) for visual and workflow differences. |
+| P3-01, P3-04                      | Imports, private photos and Telegram adapter paths are integrated with controlled tests.                                                                                           | Actual Telegram and photo/model provider behavior remain unverified.                                                                                                   |
+| P5-01, P5-03                      | Need lifecycle, routing, notification and delivery controls are integrated with controlled tests.                                                                                  | Real SMTP/Telegram delivery and human acknowledgment checks remain open.                                                                                               |
+| P6-01                             | Ledger, filtered aggregates and CSV are integrated and tested against the independent synthetic oracle.                                                                            | Target-deployment/live-data validation remains open.                                                                                                                   |
+| P7-03, P7-05                      | Production profile, recovery/retention and operator provisioning are integrated with isolated local rehearsals.                                                                    | Fresh-host, public TLS, provider, cutover and load gates remain open.                                                                                                  |
+
+At `dd989a1`, root verification passed 394 unit tests and the product PostgreSQL runner passed 244 integration tests; at `40742ce`, 208 browser cases passed across four viewports. These are controlled checks; see [product evidence](PRODUCT-IMPLEMENTATION.md) for exact scope and limitations. The coordinator archived the superseded local P2-05 and P3-01 entries on 2026-11-08 at 14:08 UTC; their original claim, handoff state and messages remain in archive history. The board then reported no active tasks or unanswered questions. These tracked records are the current product status, not a claim of additional board acceptance.
+
+## Historical dispatch and phase plan
+
+The following dispatch tables and phase sequencing describe the original planning state, not current task status. Product task cards now begin with their current implementation status and link to the consolidated evidence.
 
 After M0 contract review, the following can begin independently in separate worktrees:
 

@@ -14,6 +14,8 @@ Updated 2026-11-08. This summary supersedes the historical status entries below,
 
 The final browser suite passed 208/208 at `40742ce` across 12 files and four viewports, including failed-source evidence inspection. These were controlled browser tests, not live-provider acceptance. At `dd989a1`, the product PostgreSQL runner passed 244/244 tests across 27 files, and `bun run verify` passed Biome, typecheck, 394/394 unit tests across 42 files and the production Next build outside the nested sandbox with Chromium sandboxing retained. An explicitly opt-in live-provider smoke is available. Later-tip and hosted CI results must be reported from their actual runs; no live model, SMTP, Telegram or public deployment is implied by local tests.
 
+On 2026-11-08 at 14:08 UTC, the coordinator archived the superseded P2-05 and P3-01 local coordination entries using the existing release command. Their original claims, handoff state and messages remain in archive history; the board then reported no active tasks or unanswered questions. The tracked product summary and linked evidence above are the durable status for this snapshot.
+
 ## Historical checkpoints — superseded status
 
 The sections below preserve earlier project history. Statements about future scope, blockers or test counts describe their dates and do not override the summary above.
