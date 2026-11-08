@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "scenarioId": "video-hackathon-tidepath-2026-11",
+  "dataProfileMarker": "demo-product:v1:manifest",
+  "oracleFile": "fixtures/demo/expected-start.json",
+  "dateWindow": {
+    "from": "2026-11-02",
+    "to": "2026-11-08"
+  },
+  "primaryOrganization": {
+    "id": "tidepath",
+    "displayName": "Tidepath Mutual Aid",
+    "timezone": "America/New_York",
+    "purpose": "Main synthetic workflow and capture target. Renamed 'Tidepath Family Alliance — Recording' only if a dedicated recording organization is provisioned by the operator."
+  },
+  "secondaryOrganization": {
+    "id": "harbor",
+    "displayName": "Harbor Neighbour Network",
+    "timezone": "Europe/London",
+    "purpose": "Synthetic second tenant used for organization-boundary checks; no footage and no real contacts."
+  },
+  "identities": [
+    {
+      "role": "owner",
+      "displayName": "Demo Owner",
+      "email": "demo-owner@example.invalid",
+      "envEmail": "VIDEO_MARISOL_EMAIL",
+      "envPassword": "VIDEO_MARISOL_PASSWORD",
+      "organization": "primary"
+    },
+    {
+      "role": "coordinator",
+      "displayName": "Demo Coordinator",
+      "email": "demo-coordinator@example.invalid",
+      "envEmail": "VIDEO_OWEN_EMAIL",
+      "envPassword": "VIDEO_OWEN_PASSWORD",
+      "organization": "primary"
+    },
+    {
+      "role": "volunteer",
+      "displayName": "Demo Volunteer",
+      "email": "demo-volunteer@example.invalid",
+      "envEmail": "VIDEO_SOFIA_EMAIL",
+      "envPassword": "VIDEO_SOFIA_PASSWORD",
+      "organization": "primary"
+    },
+    {
+      "role": "report-reader",
+      "displayName": "Demo Reader",
+      "email": "demo-reader@example.invalid",
+      "envEmail": "VIDEO_BOARD_EMAIL",
+      "envPassword": "VIDEO_BOARD_PASSWORD",
+      "organization": "primary"
+    },
+    {
+      "role": "multi-organization",
+      "displayName": "Demo Multi",
+      "email": "demo-multi@example.invalid",
+      "envEmail": "VIDEO_CASEY_EMAIL",
+      "envPassword": "VIDEO_CASEY_PASSWORD",
+      "organization": "secondary"
+    }
+  ],
+  "checkpoints": [
+    {
+      "id": "baseline",
+      "label": "Fresh rich demo profile: 10 Tidepath sources, 7 awaiting review, 180 approved minutes across 3 contributions and 2 activities, 1 pending unknown duration, 5 needs.",
+      "establishedBy": "video:prepare (local disposable database) or operator seed on hosted"
+    },
+    {
+      "id": "after-s04",
+      "label": "S04 accepted the shared-review proposal: +1 activity, +2 contributions of 60 minutes, 300 approved minutes, 5 contributions, 3 activities, 6 awaiting review.",
+      "establishedBy": "S04 capture action"
+    },
+    {
+      "id": "after-s05",
+      "label": "S05 rejected the possible duplicate: approved totals unchanged at 300 minutes, 5 contributions, 3 activities, 5 awaiting review.",
+      "establishedBy": "S05 capture action"
+    },
+    {
+      "id": "after-s06",
+      "label": "S06 assigned then acknowledged the urgent transport need: still 4 open needs, 1 resolved, 2 acknowledged, approved totals unchanged.",
+      "establishedBy": "S06 capture action"
+    }
+  ]
+}

@@ -11,6 +11,7 @@ export default defineConfig({
       // Colocated app tests. The web handlers are pure TypeScript (no Next.js
       // imports), so they can be exercised without a browser or a database.
       "apps/web/**/*.test.ts",
+      "video/src/**/*.test.ts",
     ],
     environment: "node",
   },
