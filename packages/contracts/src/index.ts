@@ -406,6 +406,17 @@ export const reviewDecisionSchema = z
     decision: z.enum(["accept", "reject"]),
     reason: z.string(),
     replacementItems: z.array(proposalItemSchema).max(100).optional(),
+    activityLinks: z
+      .record(
+        z.string().min(1),
+        z
+          .object({
+            activityId: id,
+            expectedRevision: z.number().int().positive(),
+          })
+          .strict(),
+      )
+      .optional(),
   })
   .strict()
   .superRefine((command, ctx) => {
