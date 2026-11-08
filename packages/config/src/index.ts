@@ -70,6 +70,11 @@ export const environmentSchema = z
       .default(3600000),
     S3_ALLOW_INSECURE: z.enum(["true", "false"]).default("false"),
     BLOB_STORE: z.enum(["filesystem", "s3"]).default("filesystem"),
+    /**
+     * Frozen filesystem volume kept readable (and erasable) during a cutover to
+     * S3. Remove it, and delete the volume, once verification passes.
+     */
+    BLOB_FALLBACK_ROOT: z.string().min(1).optional(),
     ATTACHMENT_MAX_BYTES: z.coerce.number().int().positive().default(10485760),
   })
   .superRefine((env, ctx) => {
@@ -81,6 +86,19 @@ export const environmentSchema = z
         code: "custom",
         message: "Production requires an auth secret and disabled demo mode",
       });
+    if (env.BLOB_FALLBACK_ROOT !== undefined) {
+      if (env.BLOB_STORE !== "s3")
+        ctx.addIssue({
+          code: "custom",
+          message:
+            "BLOB_FALLBACK_ROOT is only valid while BLOB_STORE=s3 (a cutover window)",
+        });
+      if (!env.BLOB_FALLBACK_ROOT.startsWith("/"))
+        ctx.addIssue({
+          code: "custom",
+          message: "BLOB_FALLBACK_ROOT must be an absolute path",
+        });
+    }
     if (env.BLOB_STORE !== "s3") return;
     if (!env.S3_BUCKET)
       ctx.addIssue({

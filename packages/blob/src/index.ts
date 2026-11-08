@@ -22,7 +22,15 @@ export {
   type RecoverOptions,
   storageKeyFor,
 } from "./contracts.ts";
-export { createBlobStore } from "./factory.ts";
+export {
+  createBlobStore,
+  createFilesystemStoreFromEnvironment,
+  createS3StoreFromEnvironment,
+} from "./factory.ts";
+export {
+  createFallbackBlobStore,
+  type FallbackBlobStoreOptions,
+} from "./fallback.ts";
 export {
   createFilesystemBlobStore,
   eraseFilesystemBlob,
@@ -37,5 +45,17 @@ export {
   type S3Gateway,
 } from "./gateway.ts";
 export { detectedImageMime } from "./image.ts";
+export {
+  isMigrationComplete,
+  isValidLiveKey,
+  type KeyOutcome,
+  type LiveKey,
+  type MigrationMode,
+  type MigrationOptions,
+  type MigrationProgress,
+  type MigrationSummary,
+  migrateKey,
+  runMigration,
+} from "./migrate.ts";
 export { createS3BlobStore, type S3BlobStoreOptions } from "./s3.ts";
 export { withTrackedBlobWrites } from "./tracked.ts";

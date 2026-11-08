@@ -104,7 +104,7 @@ export interface BlobLifecycle {
 }
 
 export interface PrivateBlobStore {
-  readonly backend: "filesystem" | "s3";
+  readonly backend: "filesystem" | "s3" | "transition";
   /** Idempotent per digest; identical bytes never collide with different ones. */
   put(bytes: Uint8Array): Promise<BlobWrite>;
   /** Bounded read by validated digest key; null when absent or unreadable. */
