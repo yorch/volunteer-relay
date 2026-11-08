@@ -38,7 +38,7 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
-img { max-width: 100%; display: block; }
+img { max-width: 100%; height: auto; display: block; }
 a { color: var(--brand); }
 .wrap { width: min(1120px, 100% - 40px); margin-inline: auto; }
 h1, h2, h3 { line-height: 1.12; letter-spacing: -0.025em; margin: 0; }
@@ -115,7 +115,7 @@ section { padding: 96px 0; }
 .show .copy p { margin-top: 16px; color: var(--muted); }
 .shot { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow); background: var(--surface); }
 .shot.phone { max-width: 300px; margin-inline: auto; max-height: 560px; border-radius: 28px; border-width: 6px; border-color: var(--ink); }
-.shot.phone img { width: 100%; }
+.shot.phone img { width: 100%; height: auto; }
 @media (max-width: 860px) { .show { grid-template-columns: 1fr; gap: 28px; } .show.flip .copy { order: 0; } }
 
 /* architecture */
