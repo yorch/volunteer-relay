@@ -152,3 +152,44 @@ test("unavailable fallback requires an explicit replacement or removal", async (
     timezone: "Europe/London",
   });
 });
+
+test("valid fallback survives delayed team loading and an unrelated edit", async ({
+  page,
+}) => {
+  let release = () => {};
+  const ready = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/product/members", async (route) => {
+    await ready;
+    return route.fulfill({ json: { ok: true, value: members } });
+  });
+  let body: Record<string, unknown> | null = null;
+  await page.route("**/api/product/settings", (route) => {
+    if (route.request().method() === "GET")
+      return route.fulfill({
+        json: {
+          ok: true,
+          value: { ...settings, fallbackMembershipId: "staff" },
+        },
+      });
+    body = route.request().postDataJSON();
+    return route.fulfill({ json: { ok: true, value: settings } });
+  });
+  await page.goto("/workspace/settings");
+  const fallback = page.getByLabel("Fallback member", { exact: false });
+  await expect(fallback).toBeDisabled();
+  await expect(fallback).toHaveValue("staff");
+  release();
+  await expect(fallback).toBeEnabled();
+  await expect(fallback).toHaveValue("staff");
+  await page
+    .getByLabel("Organization timezone", { exact: false })
+    .fill("Europe/London");
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect.poll(() => body).not.toBeNull();
+  expect(body).toMatchObject({
+    fallbackMembershipId: "staff",
+    timezone: "Europe/London",
+  });
+});
