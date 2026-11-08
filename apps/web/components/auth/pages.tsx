@@ -44,6 +44,7 @@ function Shell({ title, children }: { title: string; children: ReactNode }) {
             <a href="/account">Account</a>
           </nav>
         </main>
+        <div aria-hidden="true" className={styles.brandPanel} />
       </div>
     </FoundationRoot>
   );

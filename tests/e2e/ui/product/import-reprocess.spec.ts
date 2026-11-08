@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { chooseOption } from "../helpers/controls.js";
 
 const snapshot = {
   organization: {
@@ -109,9 +110,10 @@ test("text and mapped photo are previewed and confirmed as multipart", async ({
   });
   await page.getByRole("button", { name: "Add photo link" }).click();
   await page.getByLabel("Update ID").fill("1");
-  await page
-    .getByRole("combobox", { name: "Photo", exact: true })
-    .selectOption("garden,front.png");
+  await chooseOption(
+    page.getByRole("combobox", { name: "Photo", exact: true }),
+    "garden,front.png",
+  );
   await page.getByRole("button", { name: "Preview import" }).click();
   await expect(page.getByText("1 attachments", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Confirm import" }).click();

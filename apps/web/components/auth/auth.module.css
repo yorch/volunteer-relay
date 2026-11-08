@@ -1,10 +1,11 @@
+/* Form markup classes (used by index.tsx). */
 .form {
   display: grid;
-  gap: 1rem;
+  gap: var(--relay-space-4, 1rem);
 }
 .fields {
   display: grid;
-  gap: 1rem;
+  gap: var(--relay-space-4, 1rem);
   border: 0;
   padding: 0;
   margin: 0;
@@ -25,90 +26,172 @@
   outline: 3px solid var(--relay-focus, #895311);
   outline-offset: 4px;
 }
-.preview {
-  max-width: 44rem;
-  margin: auto;
-  padding: 1rem;
-  display: grid;
-  gap: 1.5rem;
-}
-.navigation {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-.navigation a {
-  color: #204b43;
-  padding-block: 0.75rem;
-}
-.navigation a:hover {
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
-}
+
+/* Page shell: single column below 1024px, split with a decorative brand panel at 1024px+. */
 .authShell {
+  display: flex;
+  flex-direction: column;
   min-height: 100dvh;
+  min-width: 0;
   background:
-    radial-gradient(ellipse at 15% 0%, #e6eee2, transparent 48%),
+    radial-gradient(
+      ellipse at 15% 0%,
+      var(--relay-sage, #e9eee6),
+      transparent 48%
+    ),
     var(--relay-bg, #f6f5f0);
 }
 .authHeader {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: 1rem;
-  padding: 20px clamp(20px, 5vw, 64px);
+  gap: var(--relay-space-3, 0.75rem) var(--relay-space-4, 1rem);
+  padding: var(--relay-space-4, 1rem) clamp(16px, 4vw, 40px);
+}
+.authHeader > * {
+  min-width: 0;
 }
 .authHeader > a:last-child {
-  color: #245b49;
-  font-size: 0.85rem;
-  padding: 10px 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--relay-teal, #196c5b);
+  font-size: var(--relay-text-sm, 0.875rem);
 }
+.authHeader > a:last-child:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
 .preview {
+  box-sizing: border-box;
+  width: 100%;
   max-width: 32rem;
-  padding: clamp(2rem, 6vw, 4.5rem) 1rem;
-  gap: 1rem;
+  min-width: 0;
+  margin: 0 auto;
+  padding: clamp(24px, 6vw, 48px) clamp(16px, 4vw, 40px);
+  display: grid;
+  gap: var(--relay-space-5, 1.5rem);
 }
 .intro {
+  display: grid;
+  gap: var(--relay-space-2, 0.5rem);
   text-align: center;
+  min-width: 0;
 }
 .intro header {
   display: block;
-  margin-bottom: 1.5rem;
 }
-.intro header p {
-  margin: 8px 0 0;
+.intro p {
+  margin: var(--relay-space-2, 0.5rem) 0 0;
 }
 .eyebrow {
-  color: #4a6b58;
-  font-size: 0.6875rem;
-  font-weight: 800;
-  letter-spacing: 0.15em;
+  color: var(--relay-teal, #196c5b);
+  font-size: var(--relay-text-xs, 0.75rem);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
+
+/* The single form card. Inner Card sections lose their own chrome so there is never a nested card. */
 .authCard {
+  display: grid;
+  gap: var(--relay-space-4, 1rem);
+  min-width: 0;
+  overflow-wrap: anywhere;
   background: var(--relay-paper, #fff);
   border: 1px solid var(--relay-line, #dce5dc);
-  border-radius: var(--relay-radius-xl, 1rem);
+  border-radius: var(--relay-radius-xl, 20px);
   box-shadow: var(--relay-shadow-lg, 0 18px 48px rgb(31 53 49 / 10%));
-  padding: clamp(1.25rem, 4vw, 2rem);
+  padding: var(--relay-space-5, 1.5rem);
 }
-.authCard > p:first-child {
-  color: var(--relay-muted, #53675f);
-  margin-top: 0;
+.authCard > section {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  min-width: 0;
 }
-.authCard > form + button,
-.authCard > button + form {
-  margin-top: 1rem;
+.authCard > p {
+  margin: 0;
+  color: var(--relay-muted, #4d6058);
 }
+
+/* Quiet account navigation below the card. */
 .navigation {
+  display: flex;
+  flex-wrap: wrap;
   justify-content: center;
-  gap: 0 1.1rem;
-  font-size: 0.8rem;
+  column-gap: var(--relay-space-2, 0.5rem);
+  font-size: var(--relay-text-sm, 0.875rem);
+  min-width: 0;
 }
 .navigation a {
-  padding-block: 0.55rem;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding-inline: var(--relay-space-2, 0.5rem);
+  color: var(--relay-teal, #196c5b);
+  text-underline-offset: 0.2em;
 }
-.authCard:has(> section:only-child) {
-  padding: 0;
-  border: 0;
-  background: transparent;
+.navigation a:hover {
+  text-decoration: underline;
+}
+
+/* Decorative brand panel: aria-hidden, no text, no focusable content. */
+.brandPanel {
+  display: none;
+}
+
+@media (max-width: 390px) {
+  .authCard {
+    padding: var(--relay-space-4, 1rem);
+  }
+}
+
+@media (min-width: 1024px) {
+  .authShell {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 40%);
+    grid-template-rows: auto 1fr;
+  }
+  .authHeader {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .preview {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: center;
+  }
+  .brandPanel {
+    display: block;
+    position: relative;
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    overflow: hidden;
+    background: var(--relay-evergreen, #10302a);
+    color: var(--relay-on-dark, #f3f7f4);
+  }
+  .brandPanel::before,
+  .brandPanel::after {
+    content: "";
+    position: absolute;
+    border-radius: 50%;
+    aspect-ratio: 1;
+  }
+  .brandPanel::before {
+    right: -18%;
+    bottom: -14%;
+    width: 84%;
+    border: 1px solid rgb(243 247 244 / 14%);
+  }
+  .brandPanel::after {
+    top: -12%;
+    left: -10%;
+    width: 52%;
+    background: var(--relay-evergreen-2, #173d35);
+  }
 }

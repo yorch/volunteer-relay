@@ -1,0 +1,154 @@
+.select {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+.trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--relay-space-2, 8px);
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px var(--relay-space-3, 12px) 10px var(--relay-space-4, 16px);
+  border: 1px solid var(--relay-input, #6f867a);
+  border-radius: var(--relay-radius-md, 10px);
+  background: var(--relay-paper, #fff);
+  color: var(--relay-ink, #172b26);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--relay-duration, 140ms) var(--relay-ease, ease),
+    box-shadow var(--relay-duration, 140ms) var(--relay-ease, ease);
+}
+.trigger:hover:not(:disabled):not([aria-invalid="true"]) {
+  border-color: var(--relay-ink, #172b26);
+}
+.trigger:focus-visible:not([aria-invalid="true"]),
+.trigger[aria-expanded="true"]:not([aria-invalid="true"]) {
+  border-color: var(--relay-teal, #196c5b);
+  box-shadow: var(--relay-ring-select, 0 0 0 3px rgb(25 108 91 / 18%));
+}
+.trigger[aria-invalid="true"] {
+  border: 2px solid var(--relay-danger, #8b3427);
+}
+.trigger:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+.value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.placeholder .value {
+  color: var(--relay-muted, #4d6058);
+}
+.chevron {
+  display: inline-flex;
+  flex: none;
+  color: var(--relay-muted, #4d6058);
+  transition: transform var(--relay-duration, 140ms) var(--relay-ease, ease);
+}
+.select[data-open="true"] .chevron {
+  transform: rotate(180deg);
+}
+.list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: var(--relay-space-1, 4px);
+  list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--relay-line-strong, #c2cfc4);
+  border-radius: var(--relay-radius-md, 10px);
+  background: var(--relay-paper, #fff);
+  box-shadow: var(--relay-shadow-md, 0 6px 18px rgb(16 48 42 / 8%));
+  outline: 0;
+}
+.up {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+.option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--relay-space-2, 8px);
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--relay-radius-sm, 6px);
+  background: var(--relay-paper, #fff);
+  color: var(--relay-ink, #172b26);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.optionLabel {
+  min-width: 0;
+}
+.check {
+  display: inline-flex;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--relay-teal, #196c5b);
+}
+.option[data-active="true"] {
+  background: var(--relay-sage, #e9eee6);
+}
+.option[aria-selected="true"] {
+  border-color: var(--relay-teal, #196c5b);
+  background: var(--relay-teal-soft, #e0eee7);
+  font-weight: 700;
+}
+.option[aria-disabled="true"] {
+  color: var(--relay-muted, #4d6058);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+@media (prefers-reduced-motion: reduce) {
+  .trigger,
+  .chevron {
+    transition: none;
+  }
+}
+@media (forced-colors: active) {
+  .trigger,
+  .list {
+    border: 1px solid CanvasText;
+  }
+  .trigger:focus-visible,
+  .trigger[aria-expanded="true"] {
+    border-color: Highlight;
+    outline: 2px solid Highlight;
+  }
+  .option[data-active="true"] {
+    border-color: Highlight;
+    background: Canvas;
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  .option[aria-selected="true"] {
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+  }
+  .option[aria-selected="true"] .check {
+    color: HighlightText;
+  }
+  .option[aria-disabled="true"] {
+    color: GrayText;
+    opacity: 1;
+  }
+}

@@ -11,10 +11,10 @@ import { useEffect, useRef, useState } from "react";
 import {
   Badge,
   Button,
-  Card,
   EmptyState,
   Feedback,
   Field,
+  Icon,
   Select,
   TextArea,
   TextInput,
@@ -55,7 +55,7 @@ export function ReviewInbox({
   );
   const current = visible.find((entry) => entry.source.sourceId === selected);
   return (
-    <>
+    <div className={styles.review}>
       <div className={styles.filters}>
         <Field id="review-filter" label="Show updates">
           <Select
@@ -109,7 +109,7 @@ export function ReviewInbox({
             ))}
           </ul>
           {!visible.length && (
-            <EmptyState title="No matching updates">
+            <EmptyState title="No matching updates" icon="search">
               Change the filters to see other sources.
             </EmptyState>
           )}
@@ -123,13 +123,13 @@ export function ReviewInbox({
           />
         ) : (
           <div className={styles.noSelection}>
-            <EmptyState title="Select an update">
+            <EmptyState title="Select an update" icon="inbox">
               Choose a visible source to see its evidence and proposals.
             </EmptyState>
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }
 function ProposalItem({
@@ -153,21 +153,31 @@ function ProposalItem({
       {item.kind === "activity" && (
         <dl>
           <dt>Date</dt>
-          <dd>{item.localDate ?? "Unknown date"}</dd>
+          <dd className={item.localDate ? undefined : styles.unknown}>
+            {item.localDate ?? "Unknown date"}
+          </dd>
           <dt>Beneficiary reference</dt>
-          <dd>{item.beneficiaryReference ?? "Unknown reference"}</dd>
+          <dd
+            className={item.beneficiaryReference ? undefined : styles.unknown}
+          >
+            {item.beneficiaryReference ?? "Unknown reference"}
+          </dd>
         </dl>
       )}
       {item.kind === "contribution" && (
         <dl>
           <dt>Volunteer</dt>
-          <dd>
+          <dd className={item.membershipId ? undefined : styles.unknown}>
             {item.membershipId
               ? (labels[item.membershipId] ?? item.membershipId)
               : "Unresolved volunteer"}
           </dd>
           <dt>Duration</dt>
-          <dd>
+          <dd
+            className={
+              item.durationMinutes === null ? styles.unknown : undefined
+            }
+          >
             {item.durationMinutes === null
               ? "Unknown duration"
               : `${item.durationMinutes} minutes`}
@@ -193,7 +203,11 @@ function ProposalItem({
       {item.kind === "correction" && (
         <>
           <p>{item.reason}</p>
-          <p>
+          <p
+            className={
+              item.durationMinutes === null ? styles.unknown : undefined
+            }
+          >
             {item.durationMinutes === null
               ? "Unknown duration"
               : `${item.durationMinutes} minutes`}
@@ -211,7 +225,7 @@ function ProposalItem({
             <strong>{e.field}</strong>
             {e.kind === "text" ? (
               <>
-                <blockquote>{e.quote}</blockquote>
+                <blockquote className={styles.quote}>{e.quote}</blockquote>
                 <small>
                   Source {e.sourceId}, revision {e.sourceRevision} · characters{" "}
                   {e.start}–{e.end}
@@ -318,7 +332,8 @@ function ReviewDetail({
   }
   return (
     <div className={styles.detail}>
-      <Card title="Original source">
+      <section className={styles.sourcePane}>
+        <h2>Original source</h2>
         <Badge>{entry.source.author.externalIdentity}</Badge>
         <p>
           Source revision {entry.source.revision} · {entry.source.timezone}
@@ -327,7 +342,7 @@ function ReviewDetail({
           {entry.source.text}
         </blockquote>
         <p>Preserved evidence · proposals below are unverified.</p>
-      </Card>
+      </section>
       <section className={styles.proposals} aria-labelledby="proposals-heading">
         <h2 id="proposals-heading">Proposed records</h2>
         <p>Review revision {entry.revision} · independent of source revision</p>
@@ -340,10 +355,11 @@ function ReviewDetail({
           </EmptyState>
         )}
         {entry.proposal.unresolved.length > 0 && (
-          <Feedback
-            tone="warning"
-            title="Clarification or reconciliation needed"
-          >
+          <div className={styles.unresolved}>
+            <strong>
+              <Icon name="alert" size={16} />
+              Clarification or reconciliation needed
+            </strong>
             {entry.proposal.unresolved.map((issue) => (
               <span
                 className={styles.issue}
@@ -352,7 +368,7 @@ function ReviewDetail({
                 {issue.reason}
               </span>
             ))}
-          </Feedback>
+          </div>
         )}
         <div
           ref={actionRegion}
@@ -421,7 +437,8 @@ function ReviewDetail({
                   Accept preview
                 </Button>
                 <Button
-                  variant="secondary"
+                  variant="danger"
+                  className={styles.reject}
                   disabled={pending || conflict}
                   onClick={() => decideNow("reject")}
                 >

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { chooseOption } from "../helpers/controls.js";
 
 const organization = {
   organizationId: "org-1",
@@ -271,7 +272,7 @@ test("staff edits preserve evidence and retries reuse the key", async ({
   await page
     .getByRole("button", { name: "Source source-1 · revision 2" })
     .click();
-  await page.getByLabel("Volunteer for item-1").selectOption("member-1");
+  await chooseOption(page.getByLabel("Volunteer for item-1"), "member-1");
   await page.getByLabel("Duration in minutes for item-1").fill("120");
   await expect(
     page.getByRole("button", { name: "Accept proposal" }),
@@ -435,7 +436,10 @@ test("report filters and CSV use the same query", async ({ page }) => {
   await page.getByLabel("From date").fill("2026-01-01");
   await page.getByLabel("To date").fill("2026-01-31");
   await page.getByLabel("Program").fill("Garden");
-  await page.getByLabel("Volunteer", { exact: false }).selectOption("member-1");
+  await chooseOption(
+    page.getByLabel("Volunteer", { exact: false }),
+    "member-1",
+  );
   await page.getByRole("button", { name: "Apply filters" }).click();
   await expect.poll(() => urls.length).toBe(1);
   const expected = new URL(urls[0] ?? "http://invalid.test").search;

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { chooseOption } from "../helpers/controls.js";
 
 test("text preview validates, supports keyboard and presents only a simulated receipt", async ({
   page,
@@ -81,9 +82,10 @@ test("failed submission retains draft and same-key retry succeeds", async ({
   page,
 }) => {
   await page.goto("/dev/intake");
-  await page
-    .getByRole("combobox", { name: "Preview response" })
-    .selectOption("retry");
+  await chooseOption(
+    page.getByRole("combobox", { name: "Preview response" }),
+    "retry",
+  );
   const text = page.getByRole("textbox", { name: "Your update" });
   await text.fill("Synthetic draft kept for retry.");
   await page.getByRole("button", { name: "Send preview update" }).click();
@@ -96,9 +98,10 @@ test("failed submission retains draft and same-key retry succeeds", async ({
     page.getByText("Simulated receipt — no data saved", { exact: true }),
   ).toBeVisible();
   // The controlled adapter returns conflict if a retry changes its key or payload.
-  await page
-    .getByRole("combobox", { name: "Preview response" })
-    .selectOption("error");
+  await chooseOption(
+    page.getByRole("combobox", { name: "Preview response" }),
+    "error",
+  );
   await text.fill("Another unsaved draft.");
   await page.getByRole("button", { name: "Send preview update" }).click();
   await expect(

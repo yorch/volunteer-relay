@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { chooseOption, expectOption } from "../helpers/controls.js";
 
 const email = "synthetic@example.test";
 const password = "Synthetic-password-19!";
@@ -310,9 +311,10 @@ test("account loads live choices, switches with only organization ID and signs o
   await page.goto("/account");
   await expect(page.getByText("Loading organizations…")).toBeVisible();
   releaseOrganizations();
-  await page
-    .getByLabel("Organization", { exact: true })
-    .selectOption("synthetic-b");
+  await chooseOption(
+    page.getByLabel("Organization", { exact: true }),
+    "synthetic-b",
+  );
   await page
     .getByRole("button", { name: "Switch organization", exact: true })
     .click();

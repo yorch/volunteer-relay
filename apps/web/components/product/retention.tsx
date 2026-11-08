@@ -2,7 +2,8 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { request } from "../api-client";
 import { Card, Live } from "../card";
-import styles from "./admin.module.css";
+import { Button, Icon, TextArea } from "../foundation";
+import styles from "./retention.module.css";
 
 type Preview = {
   cutoff: string;
@@ -86,7 +87,9 @@ export function Retention({ mutate }: { mutate: Mutate }) {
         </div>
       </header>
       <div className={styles.retentionNotice}>
-        <span aria-hidden="true">!</span>
+        <span aria-hidden="true">
+          <Icon name="alert" size={20} />
+        </span>
         <p>
           <strong>Redaction is permanent.</strong> It removes raw source and
           derived data and queues private file erasure. Approved numeric ledger
@@ -96,7 +99,8 @@ export function Retention({ mutate }: { mutate: Mutate }) {
       </div>
       <div className={styles.retentionTools}>
         <a className={styles.ledgerLink} href="/api/product/retention-ledger">
-          Download signed retention ledger <span aria-hidden="true">↓</span>
+          Download signed retention ledger
+          <Icon name="download" size={16} />
         </a>
         <p>
           The signed ledger records completed retention actions for later
@@ -111,9 +115,9 @@ export function Retention({ mutate }: { mutate: Mutate }) {
       </Live>
       {loading ? null : error ? (
         <Card className={styles.card}>
-          <button type="button" onClick={() => void refresh()}>
+          <Button variant="secondary" onClick={() => void refresh()}>
             Try again
-          </button>
+          </Button>
         </Card>
       ) : (
         preview && (
@@ -183,7 +187,10 @@ export function Retention({ mutate }: { mutate: Mutate }) {
                           <span className={styles.reviewAction}>
                             {selected === s.sourceId
                               ? "Selected for review"
-                              : "Review redaction →"}
+                              : "Review redaction"}
+                            {selected === s.sourceId ? null : (
+                              <Icon name="arrowRight" size={16} />
+                            )}
                           </span>
                         </button>
                       </li>
@@ -191,7 +198,7 @@ export function Retention({ mutate }: { mutate: Mutate }) {
                   </ul>
                 </section>
                 <section
-                  className={styles.redactionReview}
+                  className={`${styles.redactionReview} ${source ? styles.dangerZone : ""}`}
                   aria-labelledby="redaction-heading"
                 >
                   {source ? (
@@ -230,7 +237,7 @@ export function Retention({ mutate }: { mutate: Mutate }) {
                           This reason becomes part of the retention record. Do
                           not include more personal information than needed.
                         </span>
-                        <textarea
+                        <TextArea
                           id="redaction-reason"
                           aria-describedby="redaction-reason-help"
                           required
@@ -256,17 +263,17 @@ export function Retention({ mutate }: { mutate: Mutate }) {
                           </span>
                         </label>
                         <div className={styles.confirmFooter}>
-                          <button
+                          <Button
                             type="submit"
+                            variant="danger"
                             disabled={pending || !ack || !reason.trim()}
                           >
                             {pending
                               ? "Recording redaction…"
                               : "Confirm permanent redaction"}
-                          </button>
-                          <button
-                            type="button"
-                            className={styles.secondaryButton}
+                          </Button>
+                          <Button
+                            variant="secondary"
                             disabled={pending}
                             onClick={() => {
                               setSelected(null);
@@ -275,14 +282,14 @@ export function Retention({ mutate }: { mutate: Mutate }) {
                             }}
                           >
                             Cancel review
-                          </button>
+                          </Button>
                         </div>
                       </form>
                     </>
                   ) : (
                     <div className={styles.reviewPlaceholder}>
                       <span className={styles.reviewIcon} aria-hidden="true">
-                        ↖
+                        <Icon name="arrowLeft" size={24} />
                       </span>
                       <h2 id="redaction-heading">Select a candidate</h2>
                       <p>
