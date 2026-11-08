@@ -297,3 +297,57 @@ it("enforces strict inputs and configured origin on real explicit routes", async
   expect(rows.rows[0]).toEqual({ count: 0 });
   expect((await fetch(`${origin}/api/auth/admin`)).status).toBe(404);
 });
+
+it("returns canonical no-store denial for every unsupported Next route method", async () => {
+  const routes = [
+    ["sign-in", "POST"],
+    ["sign-up", "POST"],
+    ["sign-out", "POST"],
+    ["reset/request", "POST"],
+    ["reset/confirm", "POST"],
+    ["verification/request", "POST"],
+    ["verification/confirm", "POST"],
+    ["invitations/accept", "POST"],
+    ["organizations/select", "POST"],
+    ["organizations", "GET"],
+  ] as const;
+  const methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
+  for (const [path, supported] of routes) {
+    for (const method of methods) {
+      if (method === supported) continue;
+      // No Origin: the strict method guard must run before origin/body/SDK work.
+      const response = await fetch(`${origin}/api/auth/${path}`, { method });
+      expect(response.status, `${method} ${path}`).toBe(422);
+      expect(response.headers.get("cache-control"), `${method} ${path}`).toBe(
+        "no-store",
+      );
+      expect(response.headers.get("content-type")).toContain(
+        "application/json",
+      );
+      expect(response.headers.getSetCookie()).toEqual([]);
+      if (method === "HEAD") {
+        expect(await response.text()).toBe("");
+      } else {
+        expect(await response.json()).toEqual({
+          ok: false,
+          error: {
+            code: "VALIDATION",
+            message: "Request cannot be completed",
+            correlationId: expect.any(String),
+            retryable: false,
+          },
+        });
+      }
+    }
+  }
+  // Method denials create no users, sessions, tenant membership or mail tokens.
+  const counts = await db.execute(sql`
+    select (select count(*)::int from "user") as users,
+      (select count(*)::int from "session") as sessions,
+      (select count(*)::int from member) as members,
+      (select count(*)::int from verification) as verifications
+  `);
+  expect(counts.rows).toEqual([
+    { users: 5, sessions: 0, members: 6, verifications: 0 },
+  ]);
+});
