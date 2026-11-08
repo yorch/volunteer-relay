@@ -234,14 +234,6 @@
   padding: 0;
   border: 0;
 }
-.settingsForm fieldset:disabled input,
-.settingsForm fieldset:disabled select,
-.settingsForm fieldset:disabled textarea {
-  background: var(--relay-neutral-bg, #edf0e8);
-}
-.settingsForm fieldset:disabled label {
-  color: var(--admin-muted, #53675f);
-}
 .settingsSection {
   padding: clamp(1.15rem, 3vw, 1.65rem);
   border-bottom: 1px solid var(--admin-line);
@@ -379,9 +371,9 @@
   color: var(--relay-neutral, #40564c);
 }
 .role_report_reader {
-  border-color: var(--relay-line-strong, #c5d0c6);
-  background: var(--relay-subtle, #fafaf7);
-  color: var(--relay-ink, #1f3531);
+  border-color: var(--relay-teal, #196c5b);
+  background: var(--relay-teal-soft, #e3efe8);
+  color: var(--relay-teal, #196c5b);
 }
 .role_volunteer {
   border-color: var(--relay-line-strong, #c5d0c6);
@@ -1373,4 +1365,12 @@
     display: flex;
     align-items: center;
   }
+}
+.settingsForm fieldset:disabled input,
+.settingsForm fieldset:disabled select,
+.settingsForm fieldset:disabled textarea {
+  background: var(--relay-neutral-bg, #edf0e8);
+}
+.settingsForm fieldset:disabled label {
+  color: var(--admin-muted, #53675f);
 }

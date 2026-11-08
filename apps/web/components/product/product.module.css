@@ -213,13 +213,6 @@
   margin: 0.6rem 0;
   font-variant-numeric: tabular-nums;
 }
-.metrics .card h2 {
-  color: var(--relay-muted, #53675f);
-  font-size: var(--relay-text-xs, 0.75rem);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-}
 .metrics .card p:not(.metricValue) {
   color: var(--relay-muted, #53675f);
   font-size: var(--relay-text-sm, 0.875rem);
@@ -274,6 +267,13 @@
 .boardColumn > h2 {
   font-size: 0.9rem;
   margin: 0.25rem;
+}
+.metrics .card h2 {
+  color: var(--relay-muted, #53675f);
+  font-size: var(--relay-text-xs, 0.75rem);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
 }
 .boardColumn .card {
   padding: 1rem;
