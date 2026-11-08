@@ -70,6 +70,8 @@ NODE
 
 Do not set NODE_ENV globally for all tools: Next build/dev and tests choose their proper environment. The Node scripts/worker do not themselves load this file; Bun may load dotenv files while dispatching, so do not rely on implicit behavior. For commands needing configuration, use Node's `--env-file=.env.local` explicitly, or export the specific needed variables in that command environment. Next environment loading is rooted at apps/web, not the root file created above, so use the explicit Node flag for the dev command too. Shell parameters such as RELAY_COORD_DIR must be repeated/persisted through the harness's normal environment mechanism.
 
+The optional `just` recipes documented in README.md honour the ports and `RELAY_COMPOSE_PROJECT` in `.env.local`, so `just services`, `just testdb`, `just migrate` and `just dev` work with your lane parameters once the file above exists. Keep using your own parameters: do not run `just env` or `just setup` as a worker, because they create the default local ports and Compose project intended for a single shared local stack.
+
 ## 4. Prepare only the local services your assigned slice needs
 
 **B / P1-01:** Verify Docker/Compose are available and the daemon is running. Use your own project and PostgreSQL service; never start the whole shared stack or use a default project/port. From your worktree:
