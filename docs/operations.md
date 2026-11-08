@@ -5,7 +5,22 @@ This profile is a deployment starting point, not proof of production readiness. 
 ## Provision and start
 
 1. Provision the host with Docker Engine and Compose v2, persistent encrypted storage, monitoring, backups and restricted administrative access. That host must already run Traefik with an external network named `traefik`, an entrypoint named `websecure` and a certificate resolver named `webcert`; this stack terminates no TLS and owns no certificate state. Set DNS for a domain you control to that host. Keep the environment file, Docker socket, volumes and backups private.
-2. Build the `web` and `worker` targets of `infra/Dockerfile` from the same reviewed commit, publish to a trusted registry, and pin the resulting image digests. The build uses Node 26.11.1 and Bun 1.4.1. On restricted networks supply the required trusted proxy CA to networked build steps without disabling TLS verification. Do not include secrets in build arguments or images.
+2. Deploy the images the release workflow already published to GHCR for the reviewed commit: `ghcr.io/<owner>/volunteer-relay-web` and `ghcr.io/<owner>/volunteer-relay-worker`. The `publish` job builds both targets from `infra/Dockerfile` (Node 26.11.1, Bun 1.4.1) for linux/amd64 and linux/arm64, and runs only after every gate passes on `main` or a `v*` tag. It tags `latest` and the branch name on the default branch, `sha-<commit>` for every published commit, and `X.Y.Z` / `X.Y` for release tags.
+
+   Deploy by digest, never by tag. Resolve the digest of the `sha-<commit>` tag for the commit you reviewed and pin that value in the operator environment file:
+
+   ```sh
+   docker buildx imagetools inspect \
+     "ghcr.io/<owner>/volunteer-relay-web:sha-$(git rev-parse --short=7 HEAD)"
+   ```
+
+   That digest is the multi-architecture index, so one value covers amd64 and arm64. Resolve the worker image the same way and confirm both come from the same commit. If the package is private, authenticate the host once with a token carrying `read:packages`; Compose then pulls with those credentials:
+
+   ```sh
+   printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u <user> --password-stdin
+   ```
+
+   Do not build the images on the deployment host: a locally built image has no reviewed release behind it and cannot match the published digests. On restricted networks supply the required trusted proxy CA to any networked build step without disabling TLS verification. Do not include secrets in build arguments or images.
 3. Create the two host-only environment files, owned by the operator and mode `0600`, from the committed templates:
 
    ```sh
