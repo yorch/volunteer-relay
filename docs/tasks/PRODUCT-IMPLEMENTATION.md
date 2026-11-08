@@ -13,7 +13,7 @@ This is the current product-oriented companion to the original task cards. The c
 
 ## Running checks
 
-Use Node 26.11.1 and Bun 1.4.1. `bun install --frozen-lockfile`, `bun run verify`, and `bun run test:e2e` are separate gates. The product browser suite at `818c4db` passed 204/204 across 1440, 1024, 390 and 320 pixel Chromium viewports; the subsequent source-inspection slice passed eight focused mocked cases. UI mocks and screenshots do not prove real provider or production behavior.
+Use Node 26.11.1 and Bun 1.4.1. `bun install --frozen-lockfile`, `bun run verify`, and `bun run test:e2e` are separate gates. The final product browser suite at `40742ce` passed 208/208 across 12 files and 1440, 1024, 390 and 320 pixel Chromium viewports, including failed-source evidence inspection. UI mocks and screenshots do not prove real provider or production behavior.
 
 At `dd989a1`, `bun run verify` passed formatting, typecheck, 394/394 unit tests across 42 files and the production Next build outside the nested sandbox with Chromium sandboxing retained. `bun run test:product:integration` runs the ten configured PostgreSQL suites sequentially. Set `TEST_DATABASE_URL` to a dedicated disposable database ending in `_test`; the suites modify and truncate it. Never use a shared or production database. At `dd989a1` the controlled product integration run passed 244 tests across 27 files: core 150, processing 37, follow-through 15, retention 10, product acceptance 9, operations 5, runtime privacy 2, provisioning 4, import photos 4 and product HTTP 8. The acceptance harness uses a fictional independent oracle, not a live model.
 
