@@ -895,3 +895,126 @@ it("requires reasoned staff authorization for a correction to an unrelated sourc
     proposalReason: "Model guessed",
   });
 });
+it.each([
+  "same volunteer",
+  "shared visit",
+  "different duration",
+  "stale activity",
+])("links duplicate candidates safely: %s", async (scenario) => {
+  const repo = createProcessingRepository(fixture.db);
+  const staff = await context(
+    fixture.authorization,
+    "user-kai",
+    "tidepath",
+    "review",
+  );
+  const mira = await context(
+    fixture.authorization,
+    "user-mira",
+    "tidepath",
+    "source",
+  );
+  const firstProposal = {
+    ...proposal,
+    items: proposal.items.filter((item) => item.kind !== "need"),
+  };
+  const [first] = await repo.pendingSources(1);
+  if (!first) throw new Error("missing lease");
+  expect(
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        source,
+        firstProposal,
+        first.leaseToken,
+      )
+    ).ok,
+  ).toBe(true);
+  expect(
+    (
+      await repo.decide(staff, {
+        runId: "r1",
+        expectedRevision: 1,
+        idempotencyKey: "first",
+        decision: "accept",
+        reason: "",
+      })
+    ).ok,
+  ).toBe(true);
+  const activities = await fixture.db.execute(sql`select id from activity`);
+  const activityId = activities.rows[0]?.id as string;
+  const secondSource = {
+    ...source,
+    sourceId: "second",
+    externalMessageId: "second",
+    idempotencyKey: "second",
+  };
+  const sources = createSourceRepository({
+    authorization: fixture.authorization,
+    store: createSourceStore(fixture.db),
+  });
+  expect((await sources.accept(mira, secondSource)).ok).toBe(true);
+  const second: ExtractionProposal = structuredClone({
+    ...firstProposal,
+    runId: "r2",
+    sourceId: "second",
+    unresolved: [{ field: "duplicateCandidate", reason: "possible duplicate" }],
+  });
+  for (const item of second.items)
+    for (const ev of item.evidence) ev.sourceId = "second";
+  const contribution = second.items.find(
+    (item) => item.kind === "contribution",
+  );
+  if (contribution?.kind !== "contribution")
+    throw new Error("missing contribution");
+  if (scenario === "shared visit") contribution.membershipId = "tidepath-sol";
+  if (scenario === "different duration") contribution.durationMinutes = 90;
+  const [lease] = await repo.pendingSources(1);
+  if (!lease) throw new Error("missing lease");
+  expect(
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        secondSource,
+        second,
+        lease.leaseToken,
+      )
+    ).ok,
+  ).toBe(true);
+  expect(
+    await repo.decide(staff, {
+      runId: "r2",
+      expectedRevision: 1,
+      idempotencyKey: "unlinked",
+      decision: "accept",
+      reason: "",
+    }),
+  ).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+  const result = await repo.decide(staff, {
+    runId: "r2",
+    expectedRevision: 1,
+    idempotencyKey: "linked",
+    decision: "accept",
+    reason: "Confirmed same visit",
+    activityLinks: {
+      a: {
+        activityId,
+        expectedRevision: scenario === "stale activity" ? 2 : 1,
+      },
+    },
+  });
+  if (scenario === "different duration" || scenario === "stale activity")
+    expect(result).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+  else expect(result.ok).toBe(true);
+  expect(await fixture.ledger.summarize(staff)).toMatchObject({
+    ok: true,
+    value: {
+      approvedMinutes: scenario === "shared visit" ? 120 : 60,
+      approvedContributions: scenario === "shared visit" ? 2 : 1,
+    },
+  });
+  const counts = await fixture.db.execute(
+    sql`select count(*)::int as count from activity`,
+  );
+  expect(counts.rows[0]?.count).toBe(1);
+});

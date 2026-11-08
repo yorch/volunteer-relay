@@ -346,13 +346,54 @@ export function createProcessingRepository(db: Database) {
               );
             const editReason =
               command.replacementItems === undefined ? null : command.reason;
+            if (
+              command.activityLinks !== undefined &&
+              (command.decision !== "accept" || !command.reason.trim())
+            )
+              throw new Abort(
+                "VALIDATION",
+                "Activity links require a staff reason",
+              );
             if (command.decision === "accept") {
+              const links = command.activityLinks ?? {};
+              const activityKeys = proposal.items
+                .filter((item) => item.kind === "activity")
+                .map((item) => item.key);
+              if (Object.keys(links).some((key) => !activityKeys.includes(key)))
+                throw new Abort("VALIDATION", "Activity link key is invalid");
+              if (
+                new Set(Object.values(links).map((link) => link.activityId))
+                  .size !== Object.keys(links).length
+              )
+                throw new Abort(
+                  "VALIDATION",
+                  "Activity links must be distinct",
+                );
+              if (
+                proposal.unresolved.some(
+                  (item) => item.field === "duplicateCandidate",
+                ) &&
+                (activityKeys.length === 0 ||
+                  activityKeys.some((key) => !Object.hasOwn(links, key)))
+              )
+                throw new Abort(
+                  "CONFLICT",
+                  "Duplicate candidate requires an explicit activity link",
+                );
               const corrections = proposal.items.filter(
                 (item) => item.kind === "correction",
               );
               const priorRun = await tx.execute(
                 sql`select r.run_id,r.proposal,d.command from extraction_run r join review_decision d on (d.organization_id,d.run_id)=(r.organization_id,r.run_id) where r.organization_id=${context.organizationId} and r.source_id=${sourceId} and r.source_revision<${source.revision} and r.status='accepted' order by r.source_revision desc limit 1`,
               );
+              if (
+                Object.keys(links).length > 0 &&
+                (corrections.length > 0 || priorRun.rows[0])
+              )
+                throw new Abort(
+                  "CONFLICT",
+                  "Activity links require a new source review",
+                );
               if (corrections.length > 0) {
                 if (corrections.length !== proposal.items.length)
                   throw new Abort(
@@ -428,7 +469,11 @@ export function createProcessingRepository(db: Database) {
                       (item.datePrecision === "unknown")
                     )
                       throw new Abort("VALIDATION", "Invalid activity date");
-                    activities.set(item.key, randomUUID());
+                    const link = links[item.key];
+                    activities.set(
+                      item.key,
+                      link ? link.activityId : randomUUID(),
+                    );
                   }
                 }
                 for (const item of proposal.items) {
@@ -457,6 +502,28 @@ export function createProcessingRepository(db: Database) {
                     );
                   }
                 }
+                for (const [key, link] of Object.entries(links).sort(
+                  ([a], [b]) => a.localeCompare(b),
+                )) {
+                  const rows = await tx.execute(
+                    sql`select revision from activity where organization_id=${context.organizationId} and id=${link.activityId} for update`,
+                  );
+                  if (!rows.rows.length)
+                    throw new Abort(
+                      "VALIDATION",
+                      "Linked activity unavailable",
+                    );
+                  if (rows.rows[0]?.revision !== link.expectedRevision)
+                    throw new Abort(
+                      "CONFLICT",
+                      "Linked activity revision changed",
+                    );
+                  if (!activities.has(key))
+                    throw new Abort(
+                      "VALIDATION",
+                      "Activity link key is invalid",
+                    );
+                }
                 const now = new Date();
                 const timestamp = now.toISOString();
                 const origin = {
@@ -467,6 +534,19 @@ export function createProcessingRepository(db: Database) {
                 for (const item of proposal.items) {
                   if (item.kind === "activity") {
                     const id = activities.get(item.key) as string;
+                    const link = links[item.key];
+                    if (link) {
+                      await addEffect(
+                        tx,
+                        context.organizationId,
+                        command.runId,
+                        item.key,
+                        "activity",
+                        id,
+                        link.expectedRevision,
+                      );
+                      continue;
+                    }
                     const record = {
                       schemaVersion: 1,
                       organizationId: context.organizationId,
@@ -502,10 +582,35 @@ export function createProcessingRepository(db: Database) {
                       1,
                     );
                   } else if (item.kind === "contribution") {
-                    const id = randomUUID();
                     const activityId = activities.get(
                       item.activityKey,
                     ) as string;
+                    if (links[item.activityKey] && item.membershipId !== null) {
+                      const existing = await tx.execute(
+                        sql`select id,revision,duration_minutes from contribution where organization_id=${context.organizationId} and activity_id=${activityId} and membership_id=${item.membershipId} and status in ('pending','approved') for update`,
+                      );
+                      if (existing.rows[0]) {
+                        if (
+                          existing.rows[0].duration_minutes !==
+                          item.durationMinutes
+                        )
+                          throw new Abort(
+                            "CONFLICT",
+                            "Existing contribution duration differs; use a correction",
+                          );
+                        await addEffect(
+                          tx,
+                          context.organizationId,
+                          command.runId,
+                          item.key,
+                          "contribution",
+                          existing.rows[0].id as string,
+                          existing.rows[0].revision as number,
+                        );
+                        continue;
+                      }
+                    }
+                    const id = randomUUID();
                     const status =
                       item.membershipId !== null &&
                       item.durationMinutes !== null
@@ -823,6 +928,14 @@ async function reconcile(
       prior.kind === "contribution" &&
       item.durationMinutes !== prior.durationMinutes
     ) {
+      const linkedSources = await tx.execute(
+        sql`select count(distinct r.source_id)::int as count from review_effect e join extraction_run r on (r.organization_id,r.run_id)=(e.organization_id,e.run_id) where e.organization_id=${context.organizationId} and e.kind='contribution' and e.aggregate_id=${effect.aggregate_id} and r.status='accepted'`,
+      );
+      if ((linkedSources.rows[0]?.count as number) > 1)
+        throw new Abort(
+          "CONFLICT",
+          "Shared contribution requires an explicit correction",
+        );
       revision = await correctContribution(
         tx,
         context,
