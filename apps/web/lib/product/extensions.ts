@@ -7,10 +7,10 @@ import {
 import {
   type AttachmentStore,
   type AuthorizationService,
-  type ProductReport,
   type Receipt,
   type Result,
   reportQuerySchema,
+  reportWeekRange,
   type SourceRepository,
   type TenantContext,
 } from "@relay/contracts";
@@ -29,8 +29,10 @@ import {
   parseWhatsAppTextExport,
 } from "@relay/intake";
 import sharp from "sharp";
+import { handleDemoReplay } from "./demo-replay.ts";
 import { type ProductProcessing, productFailure } from "./http.ts";
 import { prepareImportPhotos, readImportInput } from "./import-photos.ts";
+import { buildProductReport, reportCsv } from "./report-csv.ts";
 
 const photoTransform = createPhotoTransform(sharp);
 
@@ -60,11 +62,6 @@ export type TransactionalServices = {
   processing?: Pick<ProductProcessing, "getSource">;
   timezone?: (organizationId: string) => Promise<string>;
 };
-function csvCell(value: unknown) {
-  const raw = String(value ?? "");
-  const text = /^[=+@\-\t\r]/.test(raw) ? `'${raw}` : raw;
-  return `"${text.replaceAll('"', '""')}"`;
-}
 export function createProductExtensions(options: {
   db: Database;
   authorization: AuthorizationService;
@@ -129,64 +126,59 @@ export function createProductExtensions(options: {
           and (${q.membershipId ?? null}::text is null or c.membership_id=${q.membershipId ?? null})`);
       const r = result.rows[0] ?? {};
       const needs = await options.db.execute(
-        sql`select count(*) filter(where status not in ('resolved','cancelled'))::int as open, count(*) filter(where status='resolved')::int as resolved, avg(extract(epoch from (acknowledged_at-created_at))/60) filter(where acknowledged_at is not null) as ack,avg(extract(epoch from (resolved_at-created_at))/60) filter(where resolved_at is not null) as resolution from need where organization_id=${context.organizationId} and (${q.from ?? null}::date is null or (created_at AT TIME ZONE ${timezone})::date >= ${q.from ?? null}::date) and (${q.to ?? null}::date is null or (created_at AT TIME ZONE ${timezone})::date <= ${q.to ?? null}::date)`,
+        sql`select count(*) filter(where status not in ('resolved','cancelled'))::int as open, count(*) filter(where status='resolved')::int as resolved, count(*) filter(where status not in ('resolved','cancelled') and owner_membership_id is null)::int as unassigned, avg(extract(epoch from (acknowledged_at-created_at))/60) filter(where acknowledged_at is not null) as ack,avg(extract(epoch from (resolved_at-created_at))/60) filter(where resolved_at is not null) as resolution from need where organization_id=${context.organizationId} and (${q.from ?? null}::date is null or (created_at AT TIME ZONE ${timezone})::date >= ${q.from ?? null}::date) and (${q.to ?? null}::date is null or (created_at AT TIME ZONE ${timezone})::date <= ${q.to ?? null}::date)`,
       );
       const unknown = await options.db.execute(
         sql`select count(*)::int as count from contribution c join activity a on a.organization_id=c.organization_id and a.id=c.activity_id where c.organization_id=${context.organizationId} and c.status='approved' and a.local_date is null and (${q.program ?? null}::text is null or a.kind=${q.program ?? null}) and (${q.membershipId ?? null}::text is null or c.membership_id=${q.membershipId ?? null})`,
       );
-      const n = needs.rows[0] ?? {};
-      const value: ProductReport = {
+      // The current local week ignores the from/to filter but keeps the
+      // program and volunteer filters; unknown-date activities never count.
+      const weekRange = reportWeekRange(timezone, new Date());
+      const week = weekRange
+        ? await options.db.execute(
+            sql`select coalesce(sum(c.duration_minutes),0)::int as minutes from contribution c join activity a on a.organization_id=c.organization_id and a.id=c.activity_id where c.organization_id=${context.organizationId} and c.status='approved' and a.local_date >= ${weekRange.from}::date and a.local_date <= ${weekRange.to}::date and (${q.program ?? null}::text is null or a.kind=${q.program ?? null}) and (${q.membershipId ?? null}::text is null or c.membership_id=${q.membershipId ?? null})`,
+          )
+        : null;
+      // Per-member and queue facts need the staff permission that already
+      // shows contributions and sources; aggregate-only readers never get them.
+      const staff =
+        path === "reports" &&
+        (await options.authorization.require(context, "review:write")).ok;
+      const contributors = staff
+        ? await options.db.execute(
+            sql`select c.membership_id, coalesce(sum(c.duration_minutes),0)::int as minutes, count(*)::int as approved from contribution c join activity a on a.organization_id=c.organization_id and a.id=c.activity_id where c.organization_id=${context.organizationId} and c.status='approved' and c.membership_id is not null and (${q.from ?? null}::date is null or a.local_date >= ${q.from ?? null}::date) and (${q.to ?? null}::date is null or a.local_date <= ${q.to ?? null}::date) and (${q.program ?? null}::text is null or a.kind=${q.program ?? null}) and (${q.membershipId ?? null}::text is null or c.membership_id=${q.membershipId ?? null}) group by c.membership_id order by minutes desc, approved desc, c.membership_id limit 5`,
+          )
+        : null;
+      // Same current-queue predicate as ProcessingRepository.listQueue.
+      const oldest = staff
+        ? await options.db.execute(
+            sql`select min(r.created_at) as oldest from extraction_run r where r.organization_id=${context.organizationId} and r.status='review' and r.generation=(select max(p.generation) from processing_policy_snapshot p where p.organization_id=r.organization_id and p.source_id=r.source_id and p.source_revision=r.source_revision) and not exists (select 1 from source_redaction z where z.organization_id=r.organization_id and z.source_id=r.source_id) and not exists (select 1 from source_revision newer where newer.organization_id=r.organization_id and newer.source_id=r.source_id and newer.revision>r.source_revision)`,
+          )
+        : null;
+      const value = buildProductReport({
         query: q,
         timezone,
-        ledger: {
-          approvedMinutes: Number(r.minutes ?? 0),
-          approvedContributions: Number(r.approved ?? 0),
-          activitiesWithApprovedContributions: Number(r.visits ?? 0),
-          pendingContributions: Number(r.pending ?? 0),
-          pendingUnknownDuration: Number(r.unknown ?? 0),
-          pendingUnresolvedVolunteer: Number(r.unresolved ?? 0),
-        },
-        approvedHours: Number(r.minutes ?? 0) / 60,
-        openNeeds: Number(n.open ?? 0),
-        resolvedNeeds: Number(n.resolved ?? 0),
-        averageAcknowledgmentMinutes: n.ack == null ? null : Number(n.ack),
-        averageResolutionMinutes:
-          n.resolution == null ? null : Number(n.resolution),
-        excludedUnknownDate:
-          q.from || q.to ? Number(unknown.rows[0]?.count ?? 0) : 0,
-      };
+        totals: r,
+        needs: needs.rows[0] ?? {},
+        unknownDate: unknown.rows[0] ?? {},
+        weekRange,
+        week: week ? (week.rows[0] ?? {}) : null,
+        contributors: contributors ? contributors.rows : null,
+        oldestQueued: oldest ? (oldest.rows[0] ?? {}) : null,
+      });
       if (path === "reports.csv") {
-        const fields = {
-          timezone: value.timezone,
-          from: q.from ?? "",
-          to: q.to ?? "",
-          program: q.program ?? "",
-          membershipId: q.membershipId ?? "",
-          ...value.ledger,
-          approvedHours: value.approvedHours,
-          openNeeds: value.openNeeds,
-          resolvedNeeds: value.resolvedNeeds,
-          averageAcknowledgmentMinutes: value.averageAcknowledgmentMinutes,
-          averageResolutionMinutes: value.averageResolutionMinutes,
-          excludedUnknownDate: value.excludedUnknownDate,
-        };
-        return new Response(
-          Object.keys(fields).map(csvCell).join(",") +
-            "\r\n" +
-            Object.values(fields).map(csvCell).join(",") +
-            "\r\n",
-          {
-            headers: {
-              "content-type": "text/csv; charset=utf-8",
-              "content-disposition":
-                "attachment; filename=volunteer-report.csv",
-              "cache-control": "no-store",
-            },
+        return new Response(reportCsv(value), {
+          headers: {
+            "content-type": "text/csv; charset=utf-8",
+            "content-disposition": "attachment; filename=volunteer-report.csv",
+            "cache-control": "no-store",
           },
-        );
+        });
       }
       return { ok: true, value };
     }
+    if (path === "demo-replay")
+      return handleDemoReplay(context, request, options);
     if (path.startsWith("attachments/") && request.method === "GET") {
       const parts = path.split("/");
       if (parts.length !== 3) return denied("NOT_FOUND");
