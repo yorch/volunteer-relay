@@ -84,7 +84,7 @@ const proposal: ExtractionProposal = {
       kind: "need",
       key: "n",
       category: "food",
-      urgency: "urgent",
+      urgency: "routine",
       summary: "Food",
       provisional: false,
       evidence,
@@ -1309,4 +1309,183 @@ it("does not reset an active lease, but permits retry of an exhausted crashed le
       idempotencyKey: "complete",
     }),
   ).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+});
+it.each(["accept", "reject"] as const)(
+  "raises one urgent provisional need before review and %ss it",
+  async (decision) => {
+    const repo = createProcessingRepository(fixture.db);
+    const staff = await context(
+      fixture.authorization,
+      "user-kai",
+      "tidepath",
+      "review",
+    );
+    const urgent = structuredClone(proposal);
+    const item = urgent.items.find((x) => x.kind === "need");
+    if (item?.kind !== "need") throw new Error("fixture");
+    item.urgency = "urgent";
+    item.provisional = true;
+    const [lease] = await repo.pendingSources(1);
+    if (!lease) throw new Error("missing lease");
+    expect(
+      (
+        await repo.persistProposal(
+          systemContext("tidepath"),
+          source,
+          urgent,
+          lease.leaseToken,
+        )
+      ).ok,
+    ).toBe(true);
+    expect(
+      (
+        await repo.persistProposal(
+          systemContext("tidepath"),
+          source,
+          urgent,
+          lease.leaseToken,
+        )
+      ).ok,
+    ).toBe(true);
+    const before = await fixture.db.execute(
+      sql`select id,status,provisional,revision from need`,
+    );
+    expect(before.rows).toHaveLength(1);
+    expect(before.rows[0]).toMatchObject({
+      status: "new",
+      provisional: true,
+      revision: 1,
+    });
+    const changed = await fixture.db.execute(
+      sql`select count(*)::int count from outbox_event where type='need.changed'`,
+    );
+    expect(changed.rows[0]?.count).toBe(1);
+    const command = {
+      runId: "r1",
+      expectedRevision: 1,
+      idempotencyKey: "review",
+      decision,
+      reason: "Reviewed",
+    };
+    expect((await repo.decide(staff, command)).ok).toBe(true);
+    expect((await repo.decide(staff, command)).ok).toBe(true);
+    const after = await fixture.db.execute(
+      sql`select id,status,provisional,revision from need`,
+    );
+    expect(after.rows).toHaveLength(1);
+    expect(after.rows[0]).toMatchObject({
+      id: before.rows[0]?.id,
+      status: decision === "accept" ? "new" : "cancelled",
+      provisional: decision === "reject",
+      revision: 2,
+    });
+    const events = await fixture.db.execute(
+      sql`select count(*)::int count from outbox_event where type='need.changed'`,
+    );
+    expect(events.rows[0]?.count).toBe(2);
+  },
+);
+it("rolls back both provisional need and proposal if alert persistence fails", async () => {
+  const repo = createProcessingRepository(fixture.db);
+  const urgent = structuredClone(proposal);
+  const item = urgent.items.find((x) => x.kind === "need");
+  if (item?.kind !== "need") throw new Error("fixture");
+  item.urgency = "urgent";
+  const [lease] = await repo.pendingSources(1);
+  if (!lease) throw new Error("missing lease");
+  await fixture.db.execute(
+    sql`alter table outbox_event add constraint provisional_test_failure check (type<>'need.changed')`,
+  );
+  try {
+    expect(
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        source,
+        urgent,
+        lease.leaseToken,
+      ),
+    ).toMatchObject({ ok: false, error: { code: "DEPENDENCY_UNAVAILABLE" } });
+    const rows = await fixture.db.execute(
+      sql`select (select count(*)::int from need) needs,(select count(*)::int from extraction_run) runs`,
+    );
+    expect(rows.rows[0]).toEqual({ needs: 0, runs: 0 });
+  } finally {
+    await fixture.db.execute(
+      sql`alter table outbox_event drop constraint provisional_test_failure`,
+    );
+  }
+});
+it("does not duplicate a previously confirmed urgent need on a later source revision", async () => {
+  const repo = createProcessingRepository(fixture.db);
+  const staff = await context(
+    fixture.authorization,
+    "user-kai",
+    "tidepath",
+    "review",
+  );
+  const mira = await context(
+    fixture.authorization,
+    "user-mira",
+    "tidepath",
+    "source",
+  );
+  const urgent = structuredClone(proposal);
+  const need = urgent.items.find((x) => x.kind === "need");
+  if (need?.kind !== "need") throw new Error("fixture");
+  need.urgency = "urgent";
+  const [first] = await repo.pendingSources(1);
+  if (!first) throw new Error("lease");
+  expect(
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        source,
+        urgent,
+        first.leaseToken,
+      )
+    ).ok,
+  ).toBe(true);
+  expect(
+    (
+      await repo.decide(staff, {
+        runId: "r1",
+        expectedRevision: 1,
+        idempotencyKey: "first",
+        decision: "accept",
+        reason: "",
+      })
+    ).ok,
+  ).toBe(true);
+  const revised = {
+    ...source,
+    revision: 2,
+    replacesRevision: 1,
+    idempotencyKey: "revision-2",
+  };
+  const sources = createSourceRepository({
+    authorization: fixture.authorization,
+    store: createSourceStore(fixture.db),
+  });
+  expect((await sources.accept(mira, revised)).ok).toBe(true);
+  const next = structuredClone(urgent);
+  next.runId = "r2";
+  next.sourceRevision = 2;
+  for (const item of next.items)
+    for (const ev of item.evidence) ev.sourceRevision = 2;
+  const [second] = await repo.pendingSources(1);
+  if (!second) throw new Error("lease");
+  expect(
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        revised,
+        next,
+        second.leaseToken,
+      )
+    ).ok,
+  ).toBe(true);
+  const rows = await fixture.db.execute(
+    sql`select count(*)::int as count from need`,
+  );
+  expect(rows.rows[0]?.count).toBe(1);
 });

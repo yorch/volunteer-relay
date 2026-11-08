@@ -18,6 +18,7 @@ import {
   unique,
 } from "drizzle-orm/pg-core";
 import { sourceRevision } from "./core.ts";
+import { need } from "./ledger.ts";
 
 export const processingWork = pgTable(
   "processing_work",
@@ -149,6 +150,28 @@ export const processingRetry = pgTable(
         sourceRevision.sourceId,
         sourceRevision.revision,
       ],
+    }),
+  ],
+);
+// A validated urgent extraction can raise one provisional need before review.
+export const provisionalNeed = pgTable(
+  "provisional_need",
+  {
+    organizationId: text("organization_id").notNull(),
+    runId: text("run_id").notNull(),
+    itemKeyHash: text("item_key_hash").notNull(),
+    needId: text("need_id").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.organizationId, t.runId, t.itemKeyHash] }),
+    unique().on(t.organizationId, t.needId),
+    foreignKey({
+      columns: [t.organizationId, t.needId],
+      foreignColumns: [need.organizationId, need.id],
+    }),
+    foreignKey({
+      columns: [t.organizationId, t.runId],
+      foreignColumns: [extractionRun.organizationId, extractionRun.runId],
     }),
   ],
 );

@@ -476,6 +476,30 @@ export function createProcessingRepository(db: Database) {
                       now,
                     );
                 } else if (item.kind === "need") {
+                  const provisional = await tx.execute(
+                    sql`select need_id from provisional_need where organization_id=${context.organizationId} and run_id=${command.runId} and item_key_hash=${itemKeyHash(item.key)}`,
+                  );
+                  if (provisional.rows[0]) {
+                    const id = provisional.rows[0].need_id as string;
+                    const revision = await updateProvisional(
+                      tx,
+                      context,
+                      id,
+                      "confirm",
+                      item,
+                      command.reason,
+                    );
+                    await addEffect(
+                      tx,
+                      context.organizationId,
+                      command.runId,
+                      item.key,
+                      "need",
+                      id,
+                      revision,
+                    );
+                    continue;
+                  }
                   const id = randomUUID();
                   const record = {
                     schemaVersion: 1,
@@ -527,6 +551,19 @@ export function createProcessingRepository(db: Database) {
               }
             }
           }
+          const keep =
+            command.decision === "accept"
+              ? proposal.items
+                  .filter((item) => item.kind === "need")
+                  .map((item) => itemKeyHash(item.key))
+              : [];
+          await withdrawRemainingProvisional(
+            tx,
+            context,
+            command.runId,
+            keep,
+            command.reason,
+          );
           const outcome = { revision: command.expectedRevision + 1 };
           await tx.execute(
             sql`update extraction_run set status=${command.decision === "accept" ? "accepted" : "rejected"},revision=${outcome.revision} where organization_id=${context.organizationId} and run_id=${command.runId}`,
@@ -599,8 +636,15 @@ export function createProcessingRepository(db: Database) {
           );
           if (!lease.rows.length)
             throw new Abort("CONFLICT", "Source is not leased for processing");
+          await withdrawEarlierProvisional(tx, context, proposal);
           await tx.execute(
             sql`insert into extraction_run (organization_id,run_id,source_id,source_revision,proposal) values (${context.organizationId},${proposal.runId},${proposal.sourceId},${proposal.sourceRevision},${json(proposal)}::jsonb)`,
+          );
+          await createProvisionalNeeds(
+            tx,
+            context,
+            sourceEnvelopeSchema.parse(stored),
+            proposal,
           );
           await tx.execute(
             sql`delete from processing_work where organization_id = ${context.organizationId} and source_id = ${proposal.sourceId} and source_revision = ${proposal.sourceRevision}`,
@@ -1187,4 +1231,172 @@ async function requireValidatedPolicy(
         throw new Abort("CONFLICT", "Potential need match requires review");
     } else throw new Abort("CONFLICT", "Correction requires review");
   }
+}
+
+const itemKeyHash = (key: string) =>
+  createHash("sha256").update(key).digest("hex");
+type ProposedNeed = Extract<
+  ExtractionProposal["items"][number],
+  { kind: "need" }
+>;
+async function createProvisionalNeeds(
+  tx: Executor,
+  context: TenantContext,
+  source: SourceEnvelope,
+  proposal: ExtractionProposal,
+): Promise<void> {
+  for (const item of proposal.items) {
+    if (item.kind !== "need" || item.urgency !== "urgent") continue;
+    const prior = await tx.execute(
+      sql`select 1 from review_effect e join extraction_run r on (r.organization_id,r.run_id)=(e.organization_id,e.run_id) where r.organization_id=${context.organizationId} and r.source_id=${source.sourceId} and r.source_revision<${source.revision} and r.status='accepted' and e.kind='need' and e.item_key=${item.key} limit 1`,
+    );
+    if (prior.rows.length) continue;
+    const now = new Date();
+    const id = randomUUID();
+    const timestamp = now.toISOString();
+    const origin = {
+      kind: "source",
+      sourceId: source.sourceId,
+      sourceRevision: source.revision,
+    };
+    const record = {
+      schemaVersion: 1,
+      organizationId: context.organizationId,
+      needId: id,
+      revision: 1,
+      category: item.category,
+      urgency: item.urgency,
+      summary: item.summary,
+      provisional: true,
+      status: "new",
+      ownerMembershipId: null,
+      dueAt: null,
+      acknowledgeBy: null,
+      acknowledgedAt: null,
+      acknowledgedByMembershipId: null,
+      resolvedAt: null,
+      resolution: null,
+      origin,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    await tx.execute(
+      sql`insert into need (organization_id,id,revision,category,urgency,summary,provisional,status,origin_kind,origin_source_id,origin_source_revision,created_at,updated_at) values (${context.organizationId},${id},1,${item.category},${item.urgency},${item.summary},true,'new','source',${source.sourceId},${source.revision},${now},${now})`,
+    );
+    await audit(
+      tx,
+      context,
+      "need",
+      id,
+      record,
+      now,
+      "Provisional urgent extraction",
+    );
+    await event(
+      tx,
+      context,
+      "need.changed",
+      id,
+      { needId: id, status: "new", provisional: true },
+      now,
+    );
+    await tx.execute(
+      sql`insert into provisional_need(organization_id,run_id,item_key_hash,need_id) values (${context.organizationId},${proposal.runId},${itemKeyHash(item.key)},${id})`,
+    );
+  }
+}
+async function updateProvisional(
+  tx: Executor,
+  context: TenantContext,
+  id: string,
+  action: "confirm" | "withdraw",
+  item: ProposedNeed | null,
+  reason: string,
+): Promise<number> {
+  const rows = await tx.execute(
+    sql`select n.*,a.after from need n left join domain_audit_event a on a.organization_id=n.organization_id and a.aggregate_type='need' and a.aggregate_id=n.id and a.aggregate_revision=n.revision where n.organization_id=${context.organizationId} and n.id=${id} for update of n`,
+  );
+  const row = rows.rows[0];
+  if (!row) throw new Abort("CONFLICT", "Provisional need unavailable");
+  if (
+    action === "withdraw" &&
+    (row.status === "cancelled" || row.status === "resolved")
+  )
+    return row.revision as number;
+  if (action === "confirm" && row.status === "cancelled")
+    throw new Abort("CONFLICT", "Provisional need was cancelled");
+  if (!row.provisional)
+    throw new Abort("CONFLICT", "Provisional need already changed");
+  const before = row.after as Record<string, unknown> | undefined;
+  if (!before)
+    throw new Abort("CONFLICT", "Provisional need history unavailable");
+  const revision = (row.revision as number) + 1;
+  const now = new Date();
+  const status = action === "withdraw" ? "cancelled" : (row.status as string);
+  const provisional = action === "withdraw";
+  const after = {
+    ...before,
+    revision,
+    status,
+    provisional,
+    category: item?.category ?? row.category,
+    urgency: item?.urgency ?? row.urgency,
+    summary: item?.summary ?? row.summary,
+    updatedAt: now.toISOString(),
+  };
+  await tx.execute(
+    sql`update need set revision=${revision},status=${status},provisional=${provisional},category=${item?.category ?? (row.category as string)},urgency=${item?.urgency ?? (row.urgency as string)},summary=${item?.summary ?? (row.summary as string)},updated_at=${now} where organization_id=${context.organizationId} and id=${id}`,
+  );
+  await tx.execute(
+    sql`insert into domain_audit_event(organization_id,id,aggregate_type,aggregate_id,aggregate_revision,action,actor,correlation_id,reason,before,after,occurred_at) values (${context.organizationId},${`need:${id}:${revision}`},'need',${id},${revision},${action === "confirm" ? "confirmed" : "withdrawn"},${json(context.actor)}::jsonb,${context.correlationId},${reason || null},${json(before)}::jsonb,${json(after)}::jsonb,${now})`,
+  );
+  await event(
+    tx,
+    context,
+    "need.changed",
+    id,
+    { needId: id, status, provisional },
+    now,
+    revision,
+  );
+  return revision;
+}
+async function withdrawRemainingProvisional(
+  tx: Executor,
+  context: TenantContext,
+  runId: string,
+  keep: string[],
+  reason: string,
+): Promise<void> {
+  const rows = await tx.execute(
+    sql`select item_key_hash,need_id from provisional_need where organization_id=${context.organizationId} and run_id=${runId}`,
+  );
+  for (const row of rows.rows)
+    if (!keep.includes(row.item_key_hash as string))
+      await updateProvisional(
+        tx,
+        context,
+        row.need_id as string,
+        "withdraw",
+        null,
+        reason,
+      );
+}
+async function withdrawEarlierProvisional(
+  tx: Executor,
+  context: TenantContext,
+  proposal: ExtractionProposal,
+): Promise<void> {
+  const rows = await tx.execute(
+    sql`select p.need_id from provisional_need p join extraction_run r on (r.organization_id,r.run_id)=(p.organization_id,p.run_id) where r.organization_id=${context.organizationId} and r.source_id=${proposal.sourceId} and r.source_revision<${proposal.sourceRevision} and r.status='review'`,
+  );
+  for (const row of rows.rows)
+    await updateProvisional(
+      tx,
+      context,
+      row.need_id as string,
+      "withdraw",
+      null,
+      "Superseded source revision",
+    );
 }
