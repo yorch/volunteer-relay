@@ -53,8 +53,10 @@ For a first deployment onto a host that already runs Traefik, follow the [first-
 Private attachment bytes live behind `PrivateBlobStore` (`packages/blob`) and
 only ever reach a client through the authorized attachment route, which
 re-verifies the digest against the database row. Two backends are supported and
-selected by configuration; there is no migration between them, so choose one at
-install time.
+selected by configuration. Choose one at install time; switching an existing
+deployment is supported, but it is a quiesced, verified cutover rather than a
+config change — see
+[Migrating an existing deployment between backends](#migrating-an-existing-deployment-between-backends).
 
 - `BLOB_STORE=filesystem` (default): a persistent volume at `ATTACHMENT_ROOT`.
   Uploads are rejected below `2 x ATTACHMENT_MAX_BYTES` free space, and
