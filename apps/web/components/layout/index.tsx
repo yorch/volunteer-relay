@@ -81,9 +81,9 @@ export function ShellSkeleton({
           </div>
         </aside>
         <div className={styles.mainColumn}>
-          <header className={styles.topbar} aria-hidden="true">
+          <div className={styles.topbar} aria-hidden="true">
             <Skeleton width={200} height={16} />
-          </header>
+          </div>
           <main id={mainId} tabIndex={-1} className={styles.content}>
             {children}
             <div className={styles.skeletonPage} aria-hidden="true">
