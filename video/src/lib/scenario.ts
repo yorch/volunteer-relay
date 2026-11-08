@@ -180,7 +180,12 @@ export function organizationIdFor(
 /** Only the recording identities that a capture role maps onto. */
 export function identityForRole(
   scenario: RecordingScenario,
-  role: "coordinator" | "volunteer" | "owner" | "report-reader",
+  role:
+    | "coordinator"
+    | "volunteer"
+    | "owner"
+    | "report-reader"
+    | "multi-organization",
 ): Identity {
   const identity = scenario.identities.find((entry) => entry.role === role);
   if (!identity)

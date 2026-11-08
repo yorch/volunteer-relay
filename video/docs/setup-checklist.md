@@ -27,7 +27,8 @@ Ids are the application's literal ids, not UUIDs.
 | Casey Isolation Volunteer | `demo-multi@example.invalid` (`VIDEO_CASEY_*`)      | second tenant only                              | verified (local) as second-tenant report-reader; the profile has no per-tenant volunteer, so this is a different boundary shape than requested |
 
 Passwords are the synthetic profile's intentionally public demo password, written
-to `video/.env.local` (0600, ignored). They are never printed by the tooling,
+to `video/.env.local` (0600, ignored); local provisioning fills blank placeholders
+for every identity, including the second-tenant isolation identity. They are never printed by the tooling,
 never committed, and are not suitable for the hosted deployment.
 
 ## Services

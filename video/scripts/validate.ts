@@ -260,14 +260,20 @@ function main(): void {
     const timeline = parseTimeline(
       JSON.parse(readFileSync(paths.timeline, "utf8")),
     );
+    const cueSets = existsSync(captionsPath()) ? readCueSets() : [];
     const problems = finalRenderProblems({
       timeline,
       productScenes: productScenes(manifest).map((scene) => scene.id),
       capturedSceneIds: (captures?.scenes ?? []).map((asset) => asset.sceneId),
       captureOrigins: (captures?.scenes ?? []).map((asset) => asset.baseUrl),
-      cueCount: existsSync(captionsPath())
-        ? cuesForTimeline(timeline, readCueSets()).length
-        : 0,
+      currentNarration: (narration?.scenes ?? []).map((asset) => ({
+        sceneId: asset.sceneId,
+        durationSeconds: asset.durationSeconds,
+        source: asset.source,
+      })),
+      captionedSceneIds: cueSets
+        .filter((set) => set.cues.length > 0)
+        .map((set) => set.sceneId),
       hasMusic: Boolean(process.env.VIDEO_MUSIC_FILE),
     });
     step(
@@ -277,6 +283,39 @@ function main(): void {
         ? "narration, captures, captions and origin all ready"
         : problems.join("; "),
     );
+  }
+
+  const renderReportPath = `${paths.generated}/render-report.json`;
+  const renderReport = existsSync(renderReportPath)
+    ? (JSON.parse(readFileSync(renderReportPath, "utf8")) as {
+        mode?: string;
+        output?: string;
+      })
+    : null;
+  if (existsSync(join(paths.output, "final.mp4"))) {
+    step(
+      "final render identity",
+      renderReport?.mode === "full" &&
+        renderReport.output?.endsWith("final.mp4")
+        ? "ok"
+        : "blocked",
+      renderReport?.mode === "full"
+        ? "final.mp4 came from a full render"
+        : `final.mp4 is not backed by a full-render report (saw mode ${renderReport?.mode ?? "none"})`,
+    );
+    if (existsSync(paths.timeline)) {
+      const timeline = parseTimeline(
+        JSON.parse(readFileSync(paths.timeline, "utf8")),
+      );
+      const measured = probeMedia(
+        join(paths.output, "final.mp4"),
+      ).durationSeconds;
+      step(
+        "final render duration",
+        Math.abs(measured - timeline.totalSeconds) <= 0.1 ? "ok" : "blocked",
+        `${measured.toFixed(2)}s measured, ${timeline.totalSeconds.toFixed(2)}s planned full programme`,
+      );
+    }
   }
 
   const output = join(paths.output, "proof.mp4");

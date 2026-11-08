@@ -38,9 +38,11 @@ import {
 
 const HOLD_BUFFER_SECONDS = 1.5;
 
-function normalizeCapture(sceneId: string): void {
+function normalizeCapture(sceneId: string): ReturnType<typeof probeMedia> {
   const raw = captureRawPath(sceneId);
   const mezzanine = captureMezzaninePath(sceneId);
+  const staged = `${mezzanine}.staged.mp4`;
+  rmSync(staged, { force: true });
   const result = run("ffmpeg", [
     "-y",
     "-loglevel",
@@ -58,11 +60,23 @@ function normalizeCapture(sceneId: string): void {
     "-pix_fmt",
     "yuv420p",
     "-an",
-    mezzanine,
+    staged,
   ]);
-  if (result.status !== 0)
+  if (result.status !== 0) {
+    rmSync(staged, { force: true });
     throw new Error(`Normalising ${sceneId} failed: ${result.stderr.trim()}`);
+  }
+  // Prove the staged mezzanine before it replaces an accepted capture.
+  const probe = probeMedia(staged);
+  if (probe.width !== 1920 || probe.height !== 1080) {
+    rmSync(staged, { force: true });
+    throw new Error(
+      `${sceneId} normalised to ${probe.width}x${probe.height}, expected 1920x1080`,
+    );
+  }
+  renameSync(staged, mezzanine);
   rmSync(raw, { force: true });
+  return probe;
 }
 
 async function captureScene(
@@ -101,6 +115,7 @@ async function captureScene(
     log(`    · ${label}`);
   };
   let produced: string | null = null;
+  let probe: ReturnType<typeof probeMedia>;
   try {
     const context = await newRecordingContext(
       browser,
@@ -137,23 +152,25 @@ async function captureScene(
     produced = video ? await video.path() : null;
     if (!produced || !existsSync(produced))
       throw new Error(`Playwright produced no video for ${scene.id}`);
-  } catch (error) {
-    cleanupLeftovers();
-    throw error;
   } finally {
+    // Close before any cleanup: a recording still being finalised must not race
+    // the directory sweep below.
     await browser.close();
   }
 
-  ensureDir(paths.captures);
-  const raw = captureRawPath(scene.id);
-  rmSync(raw, { force: true });
-  renameSync(produced, raw);
-  normalizeCapture(scene.id);
-  const probe = probeMedia(captureMezzaninePath(scene.id));
-  if (probe.width !== 1920 || probe.height !== 1080)
-    throw new Error(
-      `${scene.id} normalised to ${probe.width}x${probe.height}, expected 1920x1080`,
-    );
+  try {
+    ensureDir(paths.captures);
+    const raw = captureRawPath(scene.id);
+    rmSync(raw, { force: true });
+    renameSync(produced, raw);
+    probe = normalizeCapture(scene.id);
+  } catch (error) {
+    cleanupLeftovers();
+    throw error;
+  }
+
+  if (probe.width === null || probe.height === null)
+    throw new Error(`${scene.id} has no video dimensions`);
   return {
     sceneId: scene.id,
     file: `captures/${scene.id}.mp4`,

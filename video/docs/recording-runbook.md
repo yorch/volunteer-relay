@@ -138,7 +138,9 @@ Scene order and checkpoints:
 | S07   | coordinator | `/workspace/reports`                      | after-s06   | —           |
 
 A single-scene capture is only valid while the database still sits at that
-scene's starting checkpoint. After S04/S05/S06 the state has moved.
+scene's starting checkpoint. After S04/S05/S06 the state has moved. `--fresh`
+discards the whole capture directory and manifest (all scenes) — it is not a
+per-scene reset.
 
 Keep the worker stopped during capture: escalation consumes an acknowledgement
 deadline and the video never simulates elapsed time.
@@ -158,10 +160,12 @@ Frame rules: 30 fps, integer boundaries, scene = `max(minSeconds, narration +
 0.6s tail)` rounded up, capped per scene; the programme is rejected above 180 s.
 Captions are stored per scene and rebased for the proof excerpt.
 
-`video:render` (full, not `--draft`/`--proof`) refuses to start unless narration
-is final (provider or supplied audio, not scratch/absent), every product scene has
-a capture, captions exist and all captures share one base URL. S03 carries an
-on-screen "Authored demo proposal · no live model call" label.
+`video:render` (full, not `--draft`/`--proof`) refuses to start unless the audio on
+disk is final (not scratch), matches the timeline's measured durations, every
+narrated scene has captions, every product scene has a capture, and all captures
+share one base URL. `final.mp4` is reserved for that validated full render;
+`--proof`, `--draft` and `--scene` cannot write it. S03 carries an on-screen
+"Authored demo proposal · no live model call" label.
 
 Remotion uses an existing Playwright Chrome Headless Shell when one is cached
 (`REMOTION_BROWSER_EXECUTABLE` overrides). Without one it downloads a browser on

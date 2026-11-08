@@ -2,7 +2,6 @@ import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
   commandExists,
-  ensureDir,
   gitCommit,
   gitIgnored,
   log,
@@ -212,7 +211,6 @@ async function main(): Promise<void> {
     "docs/asset-licenses.md records source-available licence eligibility",
   );
 
-  ensureDir(paths.output);
   log("");
   log(`commit: ${gitCommit(repoRoot) ?? "unknown"}`);
   log(`summary: ${report.summary()}`);

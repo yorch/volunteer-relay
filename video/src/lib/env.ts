@@ -100,8 +100,11 @@ export function loadEnv(
   let fromFile: Record<string, string> = {};
   try {
     fromFile = parseEnvFile(readFileSync(envFile, "utf8"));
-  } catch {
-    fromFile = {};
+  } catch (error) {
+    // A missing local file is normal. A malformed one is not: silently dropping
+    // the whole file would discard target and tenant restrictions.
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+      throw new Error(`Cannot load ${envFile}: ${(error as Error).message}`);
   }
   return { ...fromFile, ...processEnv };
 }

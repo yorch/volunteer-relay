@@ -34,7 +34,7 @@ burned-in captions).
 
 ## Verification results
 
-- `bun run video:verify` — Biome clean, project typecheck clean, **68 video unit
+- `bun run video:verify` — Biome clean, project typecheck clean, **69 video unit
   tests passing** (manifest schema, frame arithmetic, duration limits, caption
   grouping/validation/SRT, alignment parsing, cache identity and cache-miss
   planning, binary audio writes, database guard, final-render readiness,
@@ -54,8 +54,12 @@ this revision fixes them:
   demo-password identities cannot be written to an ordinary or remote database.
 - Provider audio is written as bytes (a UTF-8 text write corrupted MP3 data).
 - Paid narration requests only cache misses and persists each finished scene.
-- A full render is gated on final narration, complete captures, captions and a
-  single origin; scratch audio can no longer become `final.mp4`.
+- A full render is gated on the audio actually on disk (not only the saved
+  timeline): final narration durations must match the timeline, every narrated
+  scene needs captions, every product scene needs a capture and one origin.
+  `final.mp4` is reserved for that validated full render; proof/draft/scene
+  renders cannot write it, and `video:validate` checks the render's identity and
+  full-programme duration.
 - Each capture asset records its exact base URL and origin; a subset recapture
   from another target is refused, and the composition labels every scene from its
   own asset.
@@ -64,9 +68,14 @@ this revision fixes them:
   0700 directory.
 - Supplied or scratch audio invalidates stale provider alignment; captions fall
   back to labelled proportional phrase timing.
-- Captures publish per successful take; failed takes delete their recordings.
-- `video:provision` fills blank placeholders in place, preserves existing values
-  and fails when a required role stays unverified.
+- Captures normalise into a staged mezzanine, verify 1920×1080, then replace the
+  accepted file; each take publishes its manifest entry, and failed takes clean up
+  after the browser closes (so a finalising recording cannot race the sweep).
+- A malformed `video/.env.local` is now an error instead of silently discarding
+  target/tenant settings.
+- `video:provision` fills blank placeholders in place (including the isolation
+  identity), replaces the last duplicate assignment, preserves existing values and
+  fails when a required role stays unverified.
 - `VIDEO_ORGANIZATION_ID` / `VIDEO_SECONDARY_ORGANIZATION_ID` now override the
   committed scenario for authentication and assertions.
 - S03 displays "Authored demo proposal · no live model call".

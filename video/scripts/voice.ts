@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import {
   ensureDir,
@@ -8,7 +8,7 @@ import {
   requireNode26,
   run,
   writeJson,
-  writePrivate,
+  writePrivateBytes,
 } from "../src/lib/cli.ts";
 import {
   estimateBillableCharacters,
@@ -86,6 +86,62 @@ function inspectCache(
   return { hits, missing };
 }
 
+function publishNarrationAsset(input: {
+  sceneId: string;
+  audio: Uint8Array | null;
+  stagedFile: string | null;
+  alignment: unknown | null;
+  source: NarrationAsset["source"];
+  cacheKey: string | null;
+}): NarrationAsset {
+  const target = narrationFile(input.sceneId);
+  const temporary = `${target}.tmp`;
+  rmSync(temporary, { force: true });
+  if (input.stagedFile) renameSync(input.stagedFile, temporary);
+  else if (input.audio) writePrivateBytes(temporary, input.audio);
+  else throw new Error(`${input.sceneId}: no audio to publish`);
+
+  // Probe the staged bytes before they replace an accepted asset.
+  const probe = probeMedia(temporary);
+  if (!(probe.durationSeconds > 0)) {
+    rmSync(temporary, { force: true });
+    throw new Error(`${input.sceneId}: staged audio has no duration`);
+  }
+  renameSync(temporary, target);
+  if (input.alignment) writeJson(alignmentFile(input.sceneId), input.alignment);
+  else rmSync(alignmentFile(input.sceneId), { force: true });
+  return {
+    sceneId: input.sceneId,
+    file: `narration/${input.sceneId}.mp3`,
+    durationSeconds: probe.durationSeconds,
+    source: input.source,
+    cacheKey: input.cacheKey,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+async function requestWithRetry<T>(
+  sceneId: string,
+  make: () => Promise<T>,
+): Promise<T> {
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    try {
+      log(
+        `  ${sceneId}: requesting narration (attempt ${attempt}/${MAX_ATTEMPTS})`,
+      );
+      return await make();
+    } catch (error) {
+      lastError = error as Error;
+      log(`  ${sceneId}: attempt failed: ${lastError.message}`);
+    }
+  }
+  throw (
+    lastError ??
+    new Error(`${sceneId}: narration failed after ${MAX_ATTEMPTS} attempts`)
+  );
+}
+
 async function generateWithElevenLabs(
   scenes: readonly Scene[],
   env: Record<string, string | undefined>,
@@ -110,73 +166,46 @@ async function generateWithElevenLabs(
       pronunciations: overrides,
       outputFormat: "mp3_44100_128",
     });
-    let attempt = 0;
-    let lastError: Error | null = null;
-    while (attempt < MAX_ATTEMPTS) {
-      attempt += 1;
-      try {
-        log(
-          `  ${scene.id}: requesting narration (attempt ${attempt}/${MAX_ATTEMPTS})`,
-        );
-        const result = await requestNarration({
-          apiKey,
-          voiceId,
-          modelId,
-          text,
-          settings: narrationVoiceSettings,
-          pronunciations: overrides,
-        });
-        writePrivate(
-          narrationFile(scene.id),
-          Buffer.from(result.audio).toString("binary"),
-        );
-        writeJson(alignmentFile(scene.id), result.alignment);
-        const probe = probeMedia(narrationFile(scene.id));
-        assets.set(scene.id, {
-          sceneId: scene.id,
-          file: `narration/${scene.id}.mp3`,
-          durationSeconds: probe.durationSeconds,
-          source,
-          cacheKey: key,
-          generatedAt: new Date().toISOString(),
-        });
-        log(
-          `  ${scene.id}: ${probe.durationSeconds.toFixed(2)}s of audio (${text.length} characters)`,
-        );
-        lastError = null;
-        // Persist the completed scene immediately: a later failure must not
-        // throw away an already billed result.
-        writeNarrationManifest({
-          schemaVersion: 1,
-          provider: "elevenlabs",
-          voiceId,
-          modelId,
-          generatedAt: new Date().toISOString(),
-          scenes: [...assets.values()].sort((a, b) =>
-            a.sceneId < b.sceneId ? -1 : 1,
-          ),
-        });
-        break;
-      } catch (error) {
-        lastError = error as Error;
-        log(`  ${scene.id}: attempt failed: ${lastError.message}`);
-      }
-    }
-    if (lastError)
-      throw new Error(
-        `${scene.id}: narration failed after ${MAX_ATTEMPTS} attempts`,
-      );
+    // Paid requests are retried; local persistence failures abort immediately
+    // instead of re-billing a scene that already produced audio.
+    const result = await requestWithRetry(scene.id, () =>
+      requestNarration({
+        apiKey,
+        voiceId,
+        modelId,
+        text,
+        settings: narrationVoiceSettings,
+        pronunciations: overrides,
+      }),
+    );
+    assets.set(
+      scene.id,
+      publishNarrationAsset({
+        sceneId: scene.id,
+        audio: result.audio,
+        stagedFile: null,
+        alignment: result.alignment,
+        source,
+        cacheKey: key,
+      }),
+    );
+    // Persist the completed scene immediately: a later failure must not throw
+    // away an already billed result.
+    writeNarrationManifest({
+      schemaVersion: 1,
+      provider: "elevenlabs",
+      voiceId,
+      modelId,
+      generatedAt: new Date().toISOString(),
+      scenes: [...assets.values()].sort((a, b) =>
+        a.sceneId < b.sceneId ? -1 : 1,
+      ),
+    });
+    const duration = assets.get(scene.id)?.durationSeconds ?? 0;
+    log(
+      `  ${scene.id}: ${duration.toFixed(2)}s of audio (${text.length} characters)`,
+    );
   }
-  writeNarrationManifest({
-    schemaVersion: 1,
-    provider: "elevenlabs",
-    voiceId,
-    modelId,
-    generatedAt: new Date().toISOString(),
-    scenes: [...assets.values()].sort((a, b) =>
-      a.sceneId < b.sceneId ? -1 : 1,
-    ),
-  });
 }
 
 function importSuppliedAudio(
@@ -184,26 +213,30 @@ function importSuppliedAudio(
   directory: string,
 ): void {
   ensureDir(paths.narration);
-  const assets: NarrationAsset[] = [];
+  const existing = readNarrationManifest();
+  const assets = new Map<string, NarrationAsset>(
+    (existing?.scenes ?? []).map((asset) => [asset.sceneId, asset]),
+  );
   for (const scene of scenes) {
     const source = join(directory, `${scene.id}.mp3`);
     if (!existsSync(source))
       throw new Error(
         `Supplied audio is missing ${scene.id}.mp3 in ${directory}; every scene needs a file`,
       );
-    // Alignment from a previous provider run describes different audio.
-    rmSync(alignmentFile(scene.id), { force: true });
-    copyFileSync(source, narrationFile(scene.id));
-    const probe = probeMedia(narrationFile(scene.id));
-    assets.push({
-      sceneId: scene.id,
-      file: `narration/${scene.id}.mp3`,
-      durationSeconds: probe.durationSeconds,
-      source: "supplied-audio",
-      cacheKey: null,
-      generatedAt: new Date().toISOString(),
-    });
-    log(`  ${scene.id}: imported ${probe.durationSeconds.toFixed(2)}s`);
+    assets.set(
+      scene.id,
+      publishNarrationAsset({
+        sceneId: scene.id,
+        audio: readFileSync(source),
+        stagedFile: null,
+        alignment: null,
+        source: "supplied-audio",
+        cacheKey: null,
+      }),
+    );
+    log(
+      `  ${scene.id}: imported ${assets.get(scene.id)?.durationSeconds.toFixed(2)}s`,
+    );
   }
   writeNarrationManifest({
     schemaVersion: 1,
@@ -211,7 +244,9 @@ function importSuppliedAudio(
     voiceId: null,
     modelId: null,
     generatedAt: new Date().toISOString(),
-    scenes: assets,
+    scenes: [...assets.values()].sort((a, b) =>
+      a.sceneId < b.sceneId ? -1 : 1,
+    ),
   });
 }
 
@@ -221,15 +256,20 @@ function importSuppliedAudio(
  */
 function generateScratch(scenes: readonly Scene[]): void {
   ensureDir(paths.narration);
-  const assets: NarrationAsset[] = [];
+  const existing = readNarrationManifest();
+  const assets = new Map<string, NarrationAsset>(
+    (existing?.scenes ?? []).map((asset) => [asset.sceneId, asset]),
+  );
   for (const scene of scenes) {
     const aiff = join(paths.narration, `${scene.id}.aiff`);
+    const staged = join(paths.narration, `${scene.id}.staged.mp3`);
     log(`  ${scene.id}: generating local scratch voice (not final narration)`);
     const say = run("say", ["-o", aiff, scene.narration]);
     if (say.status !== 0)
       throw new Error(
         `Local scratch voice is unavailable: ${say.stderr.trim() || "say failed"}`,
       );
+    rmSync(staged, { force: true });
     const convert = run("ffmpeg", [
       "-y",
       "-loglevel",
@@ -240,22 +280,25 @@ function generateScratch(scenes: readonly Scene[]): void {
       "libmp3lame",
       "-b:a",
       "128k",
-      narrationFile(scene.id),
+      "-f",
+      "mp3",
+      staged,
     ]);
     if (convert.status !== 0)
       throw new Error(
         `Scratch audio conversion failed: ${convert.stderr.trim()}`,
       );
-    rmSync(alignmentFile(scene.id), { force: true });
-    const probe = probeMedia(narrationFile(scene.id));
-    assets.push({
-      sceneId: scene.id,
-      file: `narration/${scene.id}.mp3`,
-      durationSeconds: probe.durationSeconds,
-      source: "scratch-local-voice",
-      cacheKey: null,
-      generatedAt: new Date().toISOString(),
-    });
+    assets.set(
+      scene.id,
+      publishNarrationAsset({
+        sceneId: scene.id,
+        audio: null,
+        stagedFile: staged,
+        alignment: null,
+        source: "scratch-local-voice",
+        cacheKey: null,
+      }),
+    );
   }
   writeNarrationManifest({
     schemaVersion: 1,
@@ -263,7 +306,9 @@ function generateScratch(scenes: readonly Scene[]): void {
     voiceId: null,
     modelId: null,
     generatedAt: new Date().toISOString(),
-    scenes: assets,
+    scenes: [...assets.values()].sort((a, b) =>
+      a.sceneId < b.sceneId ? -1 : 1,
+    ),
   });
 }
 

@@ -20,11 +20,7 @@ import {
 } from "../src/lib/timeline.ts";
 import { readCaptureManifest, readNarrationManifest } from "./lib/assets.ts";
 import { resolveBrowserExecutable } from "./lib/browser.ts";
-import {
-  buildRenderProps,
-  cuesForTimeline,
-  readCueSets,
-} from "./lib/props-build.ts";
+import { buildRenderProps, readCueSets } from "./lib/props-build.ts";
 import { loadEverything } from "./lib/script.ts";
 
 /**
@@ -109,7 +105,17 @@ async function main(): Promise<void> {
 
   const captures = readCaptureManifest();
   const narration = readNarrationManifest();
+  const requestedOut =
+    typeof args.flags.out === "string" ? args.flags.out : null;
+  if (
+    requestedOut?.endsWith("final.mp4") &&
+    (mode !== "full" || proof || draft || sceneArg !== null)
+  )
+    throw new Error(
+      "final.mp4 is reserved for a validated full render; render --proof/--draft or choose another --out",
+    );
   if (mode === "full" && !draft && !proof) {
+    const cueSets = readCueSets();
     const problems = finalRenderProblems({
       timeline,
       productScenes: parsedManifest.scenes
@@ -117,7 +123,14 @@ async function main(): Promise<void> {
         .map((scene) => scene.id),
       capturedSceneIds: (captures?.scenes ?? []).map((asset) => asset.sceneId),
       captureOrigins: (captures?.scenes ?? []).map((asset) => asset.baseUrl),
-      cueCount: cuesForTimeline(timeline, readCueSets()).length,
+      currentNarration: (narration?.scenes ?? []).map((asset) => ({
+        sceneId: asset.sceneId,
+        durationSeconds: asset.durationSeconds,
+        source: asset.source,
+      })),
+      captionedSceneIds: cueSets
+        .filter((set) => set.cues.length > 0)
+        .map((set) => set.sceneId),
       hasMusic: Boolean(process.env.VIDEO_MUSIC_FILE),
     });
     if (problems.length)

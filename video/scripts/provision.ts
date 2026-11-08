@@ -83,17 +83,24 @@ function storeMissingPasswords(
   const values = parseEnvFile(current);
   const written: string[] = [];
   const setValue = (key: string, value: string) => {
-    const index = lines.findIndex((line) => line.trim().startsWith(`${key}=`));
+    // The parser resolves the last assignment, so replace the last one too.
+    let index = -1;
+    for (const [position, line] of lines.entries())
+      if (line.trim().startsWith(`${key}=`)) index = position;
     if (index === -1) lines.push(`${key}=${value}`);
     else lines[index] = `${key}=${value}`;
     written.push(key);
   };
+  const scenario = loadScenario(paths.scenario);
   for (const role of roles) {
-    if (role === "multi-organization") continue;
-    const scenario = loadScenario(paths.scenario);
     const identity = identityForRole(
       scenario,
-      role as "coordinator" | "owner" | "volunteer" | "report-reader",
+      role as
+        | "coordinator"
+        | "owner"
+        | "volunteer"
+        | "report-reader"
+        | "multi-organization",
     );
     // Fill a missing *or blank* placeholder (the shipped .env.example has empty
     // values) and never overwrite an existing non-empty value or email.
