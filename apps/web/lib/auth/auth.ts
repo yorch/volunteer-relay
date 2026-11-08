@@ -1,12 +1,19 @@
 import { parseEnvironment } from "@relay/config";
-import { type Database, schema, sql } from "@relay/db";
+import {
+  createLastOrganizationStore,
+  type Database,
+  schema,
+  sql,
+} from "@relay/db";
 import type { ContractRole } from "@relay/domain/auth";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { organization } from "better-auth/plugins";
 import { createAccessControl } from "better-auth/plugins/access";
+import { createTenantAuthorization } from "./authorization.ts";
 import { recordMailDeliveryFailure } from "./delivery.ts";
+import { createLastOrganizationHints } from "./last-organization.ts";
 import type { AuthMailCallbacks } from "./mail.ts";
 import {
   createEmailVerification,
@@ -150,6 +157,11 @@ export function createAuth({
       }
     : undefined;
 
+  const lastOrganization = createLastOrganizationHints({
+    store: createLastOrganizationStore(db),
+    authorization: createTenantAuthorization({ db }),
+  });
+
   const auth = betterAuth({
     disabledPaths: ["/verify-email", "/send-verification-email"],
     hooks: {
@@ -167,6 +179,23 @@ export function createAuth({
     secret,
     baseURL,
     databaseHooks: {
+      session: {
+        create: {
+          // Every new session (credential sign-in, sign-up auto sign-in, any
+          // later sign-in path) starts in the user's last-used organization
+          // when that membership still resolves live; otherwise the user picks.
+          // The selection is never authority: each request re-resolves it.
+          before: async (row: {
+            userId: string;
+            activeOrganizationId?: string | null;
+          }) => {
+            if (row.activeOrganizationId) return;
+            const organizationId = await lastOrganization.resolve(row.userId);
+            if (!organizationId) return;
+            return { data: { ...row, activeOrganizationId: organizationId } };
+          },
+        },
+      },
       verification: {
         create: {
           // Caps outstanding reset tokens per account: each request beyond the
@@ -220,6 +249,7 @@ export function createAuth({
   });
   return Object.assign(auth, {
     emailVerification: createEmailVerification(db, baseURL, mail),
+    lastOrganization,
   });
 }
 

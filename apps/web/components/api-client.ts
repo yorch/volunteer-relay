@@ -1,3 +1,8 @@
+import {
+  ORGANIZATION_ASSERTION_HEADER,
+  organizationAssertionSchema,
+} from "@relay/contracts";
+
 /** Minimal client-side envelope shared by every in-app fetch. */
 export type ApiResult<T> =
   | { ok: true; value: T }
@@ -28,6 +33,33 @@ export async function fetchJson(
   }
 }
 
+/**
+ * Organization of the workspace this tab is currently rendering. The workspace
+ * shell sets it once when a snapshot loads (and clears it otherwise); product
+ * POSTs assert it so a switch made in another tab is rejected, not applied.
+ * It is an assertion only; the server resolves the real tenant.
+ */
+let renderedOrganizationId: string | null = null;
+export function setRenderedOrganization(organizationId: string | null) {
+  renderedOrganizationId =
+    organizationId !== null &&
+    organizationAssertionSchema.safeParse(organizationId).success
+      ? organizationId
+      : null;
+}
+
+/** Code for the server's "workspace changed in another tab" CONFLICT. */
+export const WORKSPACE_CHANGED = "WORKSPACE_CHANGED";
+export const WORKSPACE_CHANGED_MESSAGE =
+  "The workspace changed in another tab. Refresh to continue.";
+const workspaceChangedListeners = new Set<() => void>();
+export function onWorkspaceChanged(listener: () => void) {
+  workspaceChangedListeners.add(listener);
+  return () => {
+    workspaceChangedListeners.delete(listener);
+  };
+}
+
 const unavailable = (): ApiResult<never> => ({
   ok: false,
   error: { code: "DEPENDENCY_UNAVAILABLE" },
@@ -50,6 +82,11 @@ export async function request<T>(
     cache: "no-store",
     headers: {
       Accept: "application/json",
+      ...(hasBody &&
+      renderedOrganizationId !== null &&
+      path.startsWith("/api/product/")
+        ? { [ORGANIZATION_ASSERTION_HEADER]: renderedOrganizationId }
+        : {}),
       ...(hasBody && !form ? { "Content-Type": "application/json" } : {}),
     },
     ...(hasBody ? { body: form ? body : JSON.stringify(body) } : {}),
@@ -61,10 +98,21 @@ export async function request<T>(
   if (data.ok === true) return { ok: true, value: undefined as T };
   if (data.ok === false) {
     const error = data.error;
-    const code =
+    let code =
       error && typeof error === "object" && "code" in error
         ? String((error as { code: unknown }).code)
         : "DEPENDENCY_UNAVAILABLE";
+    // Same CONFLICT code as a stale record; only the neutral message differs.
+    if (
+      code === "CONFLICT" &&
+      hasBody &&
+      error &&
+      typeof error === "object" &&
+      (error as { message?: unknown }).message === WORKSPACE_CHANGED_MESSAGE
+    ) {
+      code = WORKSPACE_CHANGED;
+      for (const listener of workspaceChangedListeners) listener();
+    }
     return { ok: false, error: { code } };
   }
   return unavailable();
@@ -77,6 +125,8 @@ export function errorMessage(code: string): string {
       return "Please sign in to access your workspace.";
     case "FORBIDDEN":
       return "You do not have permission to access this workspace.";
+    case WORKSPACE_CHANGED:
+      return WORKSPACE_CHANGED_MESSAGE;
     case "CONFLICT":
       return "This record changed. Refresh the workspace and try again.";
     case "VALIDATION":

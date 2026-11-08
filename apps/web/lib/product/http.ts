@@ -8,6 +8,8 @@ import {
   type LedgerService,
   type NeedService,
   needTransitionSchema,
+  ORGANIZATION_ASSERTION_HEADER,
+  organizationAssertionSchema,
   type Result,
   recordActivityCommandSchema,
   reviewDecisionSchema,
@@ -143,6 +145,30 @@ export function createProductHandler(deps: ProductHttpDependencies) {
       const resolved = await deps.resolve(request, headers);
       if (!resolved.ok) return reply(resolved);
       const { context, organization } = resolved.value;
+      // The organization assertion is checked once here, before any handler
+      // (including extensions and multipart routes) can read a body or write.
+      // It never grants authority and never reveals the resolved organization.
+      if (request.method !== "GET") {
+        const asserted = request.headers.get(ORGANIZATION_ASSERTION_HEADER);
+        if (asserted !== null) {
+          if (!organizationAssertionSchema.safeParse(asserted).success)
+            return reply(productFailure("VALIDATION", correlationId));
+          if (asserted !== context.organizationId)
+            return Response.json(
+              {
+                ok: false,
+                error: {
+                  code: "CONFLICT",
+                  correlationId,
+                  message:
+                    "The workspace changed in another tab. Refresh to continue.",
+                  retryable: false,
+                },
+              } satisfies Result<never>,
+              { status: statuses.CONFLICT, headers },
+            );
+        }
+      }
       const path = new URL(request.url).pathname.replace(
         /^\/api\/product\//,
         "",

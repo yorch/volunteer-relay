@@ -256,6 +256,12 @@ export function createSessionResolver({
           true,
         );
       }
+      // Best effort and never authority: the next new session pre-selects this
+      // organization only if live membership still resolves then.
+      await auth.lastOrganization?.remember(
+        verified.value,
+        input.organizationId,
+      );
       return { ok: true, value: { organizationId: input.organizationId } };
     },
 
@@ -372,11 +378,18 @@ export function createSessionResolver({
           returnHeaders: true,
         });
         collectHeaders(response.headers, input.responseHeaders);
+        const accepted = response.response;
+        // The library created the recipient's membership and selected it for
+        // this session; the invited organization becomes the last-used hint.
+        if (accepted?.member.userId && accepted.invitation.organizationId)
+          await auth.lastOrganization?.remember(
+            accepted.member.userId,
+            accepted.invitation.organizationId,
+          );
         return {
           ok: true,
           value: {
-            organizationId:
-              response.response?.invitation.organizationId ?? null,
+            organizationId: accepted?.invitation.organizationId ?? null,
           },
         };
       } catch {

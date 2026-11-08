@@ -82,8 +82,38 @@ test("sign in sends exact credentials, locks pending and ignores returnTo", asyn
   await expect(page.locator("html")).toHaveAttribute("data-cache", "no-store");
   await expect(page.locator("html")).toHaveAttribute("data-redirect", "error");
   release();
-  await expect(page).toHaveURL(/\/account$/);
-  await expect(page.getByText("No organizations are available.")).toBeVisible();
+  await expect(page).toHaveURL(/\/workspace$/);
+});
+
+test("sign in honors a same-origin next path and rejects unsafe values", async ({
+  page,
+}) => {
+  await respond(page, "sign-in", { ok: true });
+  await respond(page, "organizations", {
+    ok: true,
+    value: { currentOrganizationId: null, options: [] },
+  });
+  const attempt = async (next: string) => {
+    await page.goto(`/sign-in?next=${encodeURIComponent(next)}`);
+    await page.getByLabel("Email", { exact: true }).fill(email);
+    await page.getByLabel("Password", { exact: true }).fill(password);
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  };
+  await attempt("/invitations/synthetic-invitation");
+  await expect(page).toHaveURL(/\/invitations\/synthetic-invitation$/);
+  for (const unsafe of [
+    "//evil.example",
+    "/\\evil.example",
+    "https://evil.example/",
+    "javascript:alert(1)",
+    "/ok\nSet-Cookie:x",
+  ]) {
+    await attempt(unsafe);
+    await expect(page).toHaveURL(/\/workspace$/);
+    expect(new URL(page.url()).origin).toBe(
+      new URL(test.info().project.use.baseURL ?? page.url()).origin,
+    );
+  }
 });
 
 test("signup explains membership and sends canonical fields only", async ({
@@ -286,16 +316,21 @@ test("account loads live choices, switches with only organization ID and signs o
   await page
     .getByRole("button", { name: "Switch organization", exact: true })
     .click();
-  await expect(page.getByLabel("Organization", { exact: true })).toHaveValue(
-    "synthetic-b",
-  );
-  const selectionStatus = page
-    .getByRole("form", { name: "Switch organization" })
-    .getByRole("status");
-  await expect(selectionStatus).toContainText(
-    "Organization selection request completed.",
-  );
-  await expect(selectionStatus).toBeFocused();
+  await expect(page).toHaveURL(/\/workspace$/);
+});
+
+test("account always offers a way to the workspace and signs out", async ({
+  page,
+}) => {
+  await respond(page, "organizations", {
+    ok: true,
+    value: { currentOrganizationId: null, options: [] },
+  });
+  await respond(page, "sign-out", { ok: true });
+  await page.goto("/account");
+  await expect(
+    page.getByRole("link", { name: "Open workspace" }),
+  ).toHaveAttribute("href", "/workspace");
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page).toHaveURL(/\/sign-in$/);
 });
@@ -377,6 +412,46 @@ test("invitation uses route ID, denies expired link and has responsive fixed nav
   });
 });
 
+test("invitation failures offer sign-in with next or email verification", async ({
+  page,
+}) => {
+  await page.route("**/api/auth/invitations/accept", (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify(failure("UNAUTHENTICATED")),
+    }),
+  );
+  await page.goto("/invitations/synthetic-invitation");
+  await page
+    .getByRole("button", { name: "Accept invitation", exact: true })
+    .click();
+  const link = page.getByRole("link", { name: /Sign in to accept/ });
+  await expect(link).toBeVisible();
+  const href = new URL(
+    (await link.getAttribute("href")) ?? "",
+    "http://relay.invalid",
+  );
+  expect(href.pathname).toBe("/sign-in");
+  expect(href.searchParams.get("next")).toBe(
+    "/invitations/synthetic-invitation",
+  );
+  await page.unroute("**/api/auth/invitations/accept");
+  await page.route("**/api/auth/invitations/accept", (route) =>
+    route.fulfill({
+      status: 403,
+      contentType: "application/json",
+      body: JSON.stringify(failure("FORBIDDEN")),
+    }),
+  );
+  await page
+    .getByRole("button", { name: "Accept invitation", exact: true })
+    .click();
+  await expect(
+    page.getByRole("link", { name: "Verify your email address" }),
+  ).toHaveAttribute("href", "/verify-email");
+});
+
 test("confirmation and invitation success, expired reset and network failure remain safe", async ({
   page,
 }) => {
@@ -399,9 +474,7 @@ test("confirmation and invitation success, expired reset and network failure rem
   await page
     .getByRole("button", { name: "Accept invitation", exact: true })
     .click();
-  await expect(page.getByRole("status")).toHaveText(
-    "Invitation request completed.",
-  );
+  await expect(page).toHaveURL(/\/workspace$/);
   await page.route("**/api/auth/sign-in", (route) => route.abort("failed"));
   await page.goto("/sign-in");
   await page.getByLabel("Email", { exact: true }).fill(email);

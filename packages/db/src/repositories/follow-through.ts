@@ -11,6 +11,24 @@ import {
 import { sql } from "drizzle-orm";
 import type { Database } from "../types.ts";
 
+/**
+ * Mirrors withOrganizationHint in @relay/notifications (db does not depend on
+ * that package). The org query value is a selector hint only, never authority.
+ */
+export function organizationAppPath(
+  path: string,
+  organizationId: string,
+): string {
+  if (
+    !/^[A-Za-z0-9][A-Za-z0-9_:-]{0,127}$/.test(organizationId) ||
+    !path.startsWith("/workspace/") ||
+    path.includes("?") ||
+    path.includes("#")
+  )
+    return path;
+  return `${path}?org=${encodeURIComponent(organizationId)}`;
+}
+
 type Executor = Pick<Database, "execute">;
 export type FollowThroughSettings = OrganizationSettings;
 export type SettingsUpdate = UpdateOrganizationSettings;
@@ -903,7 +921,7 @@ async function createNotification(
       : urgentNew
         ? "Urgent need requires attention"
         : "Need assigned to you";
-  const appPath = "/workspace/needs";
+  const appPath = organizationAppPath("/workspace/needs", organizationId);
   const inserted = await tx.execute(
     sql`insert into in_app_notification(organization_id,id,recipient_id,revision,type,need_id,title,app_path,dedupe_key,created_at) values (${organizationId},${id},${recipientId},1,${type},${needId},${title},${appPath},${dedupeKey},${time}) on conflict do nothing returning id`,
   );

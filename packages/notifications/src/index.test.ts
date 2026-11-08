@@ -6,8 +6,10 @@ import {
   createSmtpTransport,
   createTelegramTransport,
   evaluateNeedDeadlines,
+  isOrganizationHintId,
   routeNeedNotification,
   safeAppPath,
+  withOrganizationHint,
 } from "./index.js";
 
 const context: TenantContext = {
@@ -272,5 +274,66 @@ describe("notification adapters and routing", () => {
     expect(evaluateNeedDeadlines([need("assigned")], now, new Set())).toEqual(
       [],
     );
+  });
+});
+
+describe("organization hint links", () => {
+  it("sets the hint while preserving query and hash", () => {
+    expect(withOrganizationHint("/workspace/needs", "tidepath")).toBe(
+      "/workspace/needs?org=tidepath",
+    );
+    expect(withOrganizationHint("/workspace/needs?org=old#top", "new_2")).toBe(
+      "/workspace/needs?org=new_2#top",
+    );
+  });
+  it("refuses bad ids and non-workspace or suspicious paths", () => {
+    for (const id of ["", "a b", "a&org=b", "../x", "a%2Fb", "-x", "é"])
+      expect(withOrganizationHint("/workspace/needs", id)).toBeNull();
+    for (const p of [
+      "/other/needs",
+      "//evil.test/workspace/x",
+      "https://evil.test/workspace/x",
+      "/workspace/%2e%2e/admin",
+      "/workspace/../x",
+      "/workspace/a\\b",
+      "/workspace/a\nb",
+    ])
+      expect(withOrganizationHint(p, "org1")).toBeNull();
+    expect(isOrganizationHintId("org:1-a_b")).toBe(true);
+  });
+  it("accepts valid org links and rejects injected params", () => {
+    expect(safeAppPath("/workspace/needs")).toBe("/workspace/needs");
+    expect(safeAppPath("/workspace/needs?org=tidepath")).toBe(
+      "/workspace/needs?org=tidepath",
+    );
+    for (const p of [
+      "/workspace/needs?org=a&next=https://evil.test",
+      "/workspace/needs?next=/x",
+      "/workspace/needs?org=a&org=b",
+      "/workspace/needs?org=",
+      "/workspace/needs?org=a%20b",
+      "/workspace/needs?org=https://evil.test",
+      "/workspace/needs?org=a\u0001",
+    ])
+      expect(safeAppPath(p)).toBeNull();
+  });
+  it("delivers org-hinted links and rejects injected ones", async () => {
+    const adapter = createSafeTestTransport();
+    const msg = {
+      deliveryKey: "dh",
+      recipientId: "m1",
+      template: "urgent",
+      appPath: "/workspace/needs?org=tidepath",
+    };
+    expect((await adapter.deliver(context, msg)).ok).toBe(true);
+    expect(
+      (
+        await adapter.deliver(context, {
+          ...msg,
+          deliveryKey: "dh2",
+          appPath: "/workspace/needs?next=x",
+        })
+      ).ok,
+    ).toBe(false);
   });
 });

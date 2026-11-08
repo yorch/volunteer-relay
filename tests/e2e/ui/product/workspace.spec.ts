@@ -693,12 +693,58 @@ test("staff without a current organization is directed to choose one", async ({
   await expect(
     page.getByRole("heading", { name: "Choose an organization" }),
   ).toBeVisible();
+  await expect(page.getByRole("radio")).toHaveCount(2);
   await expect(
-    page.getByRole("link", { name: "Choose organization in your account" }),
-  ).toHaveAttribute("href", "/account");
+    page.getByRole("button", { name: "Open workspace" }),
+  ).toBeDisabled();
+  let selected: unknown;
+  await page.route("**/api/auth/organizations/select", (route) => {
+    selected = route.request().postDataJSON();
+    return route.fulfill({ json: { ok: true } });
+  });
+  await page.route("**/api/product/workspace", (route) =>
+    route.fulfill({ json: { ok: true, value: snapshot } }),
+  );
+  await page.getByRole("radio", { name: /Second/ }).check();
+  await page.getByRole("button", { name: "Open workspace" }).click();
+  await expect.poll(() => selected).toEqual({ organizationId: "org-2" });
+  await expect(page).toHaveURL(/\/workspace$/);
+  await expect(
+    page.getByRole("heading", { name: "Choose an organization" }),
+  ).toHaveCount(0);
   await expect(
     page.getByText("You do not have permission to access this workspace."),
   ).toHaveCount(0);
+});
+
+test("user with no organizations sees the not-in-an-organization page", async ({
+  page,
+}) => {
+  await page.route("**/api/product/workspace", (route) =>
+    route.fulfill({
+      status: 403,
+      json: { ok: false, error: { code: "FORBIDDEN" } },
+    }),
+  );
+  await page.route("**/api/auth/organizations", (route) =>
+    route.fulfill({
+      json: { ok: true, value: { currentOrganizationId: null, options: [] } },
+    }),
+  );
+  await page.route("**/api/auth/sign-out", (route) =>
+    route.fulfill({ json: { ok: true } }),
+  );
+  await page.goto("/workspace");
+  await expect(
+    page.getByRole("heading", { name: "You're not in an organization yet" }),
+  ).toBeVisible();
+  await expect(page.getByText("Workspace unavailable")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "verified" })).toHaveAttribute(
+    "href",
+    "/verify-email",
+  );
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/sign-in$/);
 });
 
 test("ledger identifies activities and exposes their source without opening correction", async ({
