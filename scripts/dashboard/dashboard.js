@@ -147,7 +147,17 @@ function render() {
   $("monitor-note").textContent = monitor?.checkedAt
     ? `Last watcher check: ${date(monitor.checkedAt)}. ${monitor.error ?? "Reports are observations; agents still post their own progress and answers."}`
     : "Start with bun run agents:watch. The dashboard continues reading the live board independently.";
+  const watchdog = data.watchdog;
+  $("monitor-note").textContent +=
+    ` Watchdog: ${watchdog?.state ?? "unavailable"}; last ${date(watchdog?.checkedAt)}, next ${date(watchdog?.nextCheck)}; recovery disabled. Unavailable signals: ${watchdog?.unavailableSignals?.join(", ") ?? "unknown"}.`;
   $("monitor-alerts").replaceChildren(
+    ...(watchdog?.codes ?? []).map((code) =>
+      el(
+        "p",
+        `WATCHDOG · ${code} · persistent observation; inspect before retry`,
+        "watch-alert",
+      ),
+    ),
     ...(monitor?.alerts ?? []).map((alert) =>
       el(
         "p",

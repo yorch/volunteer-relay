@@ -379,8 +379,21 @@ console.log(JSON.stringify({type:'agent_settled',aborted:false}));
       );
       expect((await load()).scheduling?.maxParallel).toBe(4);
       expect((await load()).scheduling?.allowedTasks).toEqual(["P1-06"]);
-      controller.abort();
+      expect(
+        JSON.parse(await readFile(join(directory, "desired.json"), "utf8"))
+          .desiredRunning,
+      ).toBe(true);
+      if (harness === "codex") {
+        await writeFile(
+          join(directory, "commands/00000000-0000-4000-8000-000000000003.json"),
+          JSON.stringify({ action: "rollout", at: new Date().toISOString() }),
+        );
+      } else controller.abort();
       await running;
+      expect(
+        JSON.parse(await readFile(join(directory, "desired.json"), "utf8"))
+          .desiredRunning,
+      ).toBe(harness === "codex");
       expect((await load()).running).toBe(false);
     } finally {
       controller.abort();

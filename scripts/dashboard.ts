@@ -3,11 +3,11 @@ import { readdir, readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-
 import { readHeadless } from "./dashboard/headless.ts";
 import { createTraceStore, traceIdPattern } from "./operational-traces.ts";
 import { schedulingFingerprint, schedulingReason } from "./scheduling.ts";
 import type { Config, State } from "./supervisor.ts";
+import { watchdogHealth } from "./watchdog/dashboard.ts";
 
 interface Message {
   id: string;
@@ -214,6 +214,7 @@ export async function snapshot(root: string) {
   return {
     updatedAt: new Date().toISOString(),
     monitor: await monitorStatus(board.store),
+    watchdog: await watchdogHealth(board.store),
     headless: {
       ...headless,
       configState:

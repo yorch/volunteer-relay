@@ -440,6 +440,12 @@ export async function serve(
         "Prior run interrupted; inspect worktree and retry explicitly";
     }
     state.scheduling = loadedScheduling(config);
+    await atomic(join(directory, "desired.json"), {
+      version: 1,
+      desiredRunning: true,
+      reason: "start",
+      at: new Date().toISOString(),
+    });
     state.running = true;
     state.pid = process.pid;
     state.draining = false;
@@ -463,7 +469,15 @@ export async function serve(
     const historical = initial.messages.map((m) => `message:${m.id}`);
     await save();
     while (!state.draining || children.size) {
-      if (signal.aborted) state.draining = true;
+      if (signal.aborted && !state.draining) {
+        await atomic(join(directory, "desired.json"), {
+          version: 1,
+          desiredRunning: false,
+          reason: "intentional-stop",
+          at: new Date().toISOString(),
+        });
+        state.draining = true;
+      }
       const pendingCommands = await Promise.all(
         (await readdir(commandsDir))
           .filter(
@@ -486,7 +500,18 @@ export async function serve(
           a.file.localeCompare(b.file),
       );
       for (const { file, value: c } of pendingCommands) {
-        if (c.action === "stop") state.draining = true;
+        if (["stop", "rollout"].includes(c.action)) {
+          await atomic(join(directory, "desired.json"), {
+            version: 1,
+            desiredRunning: c.action === "rollout",
+            reason:
+              c.action === "rollout"
+                ? "authorized-rollout"
+                : "intentional-stop",
+            at: new Date().toISOString(),
+          });
+          state.draining = true;
+        }
         if (c.lane && lanes.includes(c.lane)) {
           if (c.action === "pause" && !state.held.includes(c.lane))
             state.held.push(c.lane);
@@ -907,11 +932,13 @@ if (
           2,
         ),
       );
-    else if (["pause", "resume", "retry", "nudge", "stop"].includes(action)) {
+    else if (
+      ["pause", "resume", "retry", "nudge", "stop", "rollout"].includes(action)
+    ) {
       const laneIndex = args.indexOf("--lane");
       const lane = args[laneIndex + 1] as Lane;
       if (
-        action !== "stop" &&
+        !["stop", "rollout"].includes(action) &&
         (!args.includes("--lane") || !lanes.includes(lane))
       )
         throw new Error("Specify --lane A|B|C|D|E|F|R|V");
@@ -919,7 +946,7 @@ if (
       await atomic(join(directory, "commands", `${randomUUID()}.json`), {
         action,
         at: new Date().toISOString(),
-        lane: action === "stop" ? undefined : lane,
+        lane: ["stop", "rollout"].includes(action) ? undefined : lane,
         text: textIndex >= 0 ? args[textIndex + 1] : undefined,
       });
       console.log(`Queued ${action}${action === "stop" ? "" : ` for ${lane}`}`);
@@ -937,7 +964,7 @@ if (
       await serve(config, directory, controller.signal);
     } else
       throw new Error(
-        "Use start, status, pause/resume/retry/nudge --lane X [--text message], or stop (drains active runs)",
+        "Use start, status, pause/resume/retry/nudge --lane X [--text message], stop (intentional) or rollout (authorized drain)",
       );
   } catch (error) {
     console.error(`supervisor: ${(error as Error).message}`);
