@@ -1,5 +1,7 @@
 # Demo guidance
 
+For a timed run-of-show when presenting to an audience, see the [three-minute demo script](demo-script.md).
+
 Use a separate development environment and synthetic data only. The development Compose profile and demo tooling are distinct from the production profile; `DEMO_MODE=true` is deliberately rejected in production. Never seed demo records into a live organization, copy real source evidence into a demo, or enable real notifications for a demonstration.
 
 For a private walkthrough, start the development stack using the repository's setup instructions and local Mailpit. Model extraction is disabled unless an external provider and its budget and pricing are configured; the deterministic fixture provider is used by tests. Verify the selected organization and role before demonstrating intake, inbox review, needs and reports. Explain that unknown duration and date remain unknown, that pending contributions do not count as approved time, and that a delivery attempt is not human acknowledgment. Review the inbox's original evidence and preserve possible duplicate imports for staff review.
