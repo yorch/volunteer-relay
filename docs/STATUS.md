@@ -1,6 +1,6 @@
 # Milestone status
 
-Updated 2026-11-08. This summary supersedes the historical status entries below, which describe earlier checkpoints and are retained for context. Product functionality through M2–M7 is implemented in the current tree; implementation is not a claim that all live-service or deployment acceptance gates have passed. See [product implementation evidence](tasks/PRODUCT-IMPLEMENTATION.md) for scoped verification.
+Updated 2026-11-08. This summary supersedes the historical status entries below, which describe earlier checkpoints and are retained for context. Product functionality through M2–M7 is implemented in the current tree; this describes functional scope, not full prototype UX acceptance or a claim that all live-service and deployment gates have passed. **Prototype design parity remains open**: see the [product parity assessment](design/product-parity.md) and the follow-up task [P2-06](tasks/P2-06.md). See [product implementation evidence](tasks/PRODUCT-IMPLEMENTATION.md) for scoped verification.
 
 | Milestone | Current product scope                                                                                 | Remaining gate                                                                                                                  |
 | --------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |

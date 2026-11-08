@@ -2,6 +2,8 @@
 
 **Current product status:** M2–M7 implementation and evidence are summarized in [PRODUCT-IMPLEMENTATION.md](PRODUCT-IMPLEMENTATION.md) and [STATUS.md](../STATUS.md). The dispatch and phase descriptions below are historical planning context; their statements that product work is queued or fixture-only have been superseded.
 
+**Open UI acceptance:** Functional product screens are implemented, but full prototype UX parity remains open. See the [product parity assessment](../design/product-parity.md) and follow-up [P2-06](P2-06.md); current browser checks do not close that design gate.
+
 ## Current product task status
 
 | Product task cards                | Current implementation and verification                                                                                                                                            | Open external or acceptance work                                                                                                                                       |
