@@ -7,6 +7,23 @@ v2 incorporates an adversarial review pass (codex, read-only, against the real
 source); contested claims were re-verified by hand. §9 lists what changed and
 why. Where v2 and v1 disagree, v2 wins.
 
+## 0. Decisions taken (v3)
+
+| Question           | Decision                                                                                                                                                                                                                                                                           |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Certified provider | **versitygw** (Apache-2.0, stateless, POSIX backend) as the reference target; adapter written to the lowest-common-denominator API so AWS S3, R2, SeaweedFS and RustFS also work. MinIO CE is archived upstream (last source-only release 2025-10, UI gutted) and is not a target. |
+| Orphan cleanup     | **Bucket reconciliation only.** No intent table, no migration, no second connection. The per-digest advisory lock plus a global reference check remain the authority; object age is hygiene.                                                                                       |
+| Cutover            | **No migration.** New installs choose a backend at install time; existing filesystem installs stay on filesystem. No dual-read, so no resurrection window.                                                                                                                         |
+| Scope              | Steps 1–5 implemented: ports, rewiring, S3 adapter, reconciliation + version-aware erasure, readiness/docs/compose.                                                                                                                                                                |
+
+Status: implemented on `agents/A-S3-01`, **not** reviewed or accepted. The
+filesystem backend keeps byte-for-byte behaviour (verified by the existing
+suites). The live check against a real versitygw `v1.10.0` container produced
+`bucket: created`, digest match, list hit, erase converge and
+`capacityIsUnknown: true`. That is provider evidence, not an acceptance claim,
+and the shared Postgres-backed integration suites have not been re-run for this
+branch (they need a private database).
+
 Related: IMPLEMENTATION-PLAN.md ("retain an interface for future object
 storage", single-host local-disk limitation), ADR 0005 (attachment identity),
 docs/CONTRACTS.md (private attachment reads), docs/operations.md (backup /
@@ -20,17 +37,17 @@ is build/tooling and stays local, but three of those items are operationally
 load-bearing and must appear in the change's blast radius even though they are
 not migrated:
 
-| FS user | Runtime state? | S3-backed? |
-|---|---|---|
-| `packages/intake/src/{index,private-reader,blob-writes,telegram-photo}.ts` | bytes + intents | **yes** |
-| `apps/web/lib/product/extensions.ts`, `apps/web/lib/auth/product-demo.ts` | via intake | wiring only |
-| `apps/web/lib/telegram/production.ts` | via intake (webhook path) | wiring only |
-| `apps/web/lib/product/operations.ts`, `apps/web/app/api/ready/route.ts` | capacity probe | semantics change |
-| `apps/worker/src/{index,telegram}.ts` | read / erase | wiring only |
-| `scripts/retention.ts` | **signed redaction ledger required for safe restore** | no — but backup/restore contract must be revised |
-| `packages/db/src/migrations.ts` | no (bundled code) | no |
-| `scripts/**` coordination board, evidence, dashboard, watchdog leases, usage ledger | no (local operator tooling) | no |
-| `/tmp`, Next.js `.next/cache`, Postgres volume, Caddy state | no | no |
+| FS user                                                                             | Runtime state?                                        | S3-backed?                                       |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------ |
+| `packages/intake/src/{index,private-reader,blob-writes,telegram-photo}.ts`          | bytes + intents                                       | **yes**                                          |
+| `apps/web/lib/product/extensions.ts`, `apps/web/lib/auth/product-demo.ts`           | via intake                                            | wiring only                                      |
+| `apps/web/lib/telegram/production.ts`                                               | via intake (webhook path)                             | wiring only                                      |
+| `apps/web/lib/product/operations.ts`, `apps/web/app/api/ready/route.ts`             | capacity probe                                        | semantics change                                 |
+| `apps/worker/src/{index,telegram}.ts`                                               | read / erase                                          | wiring only                                      |
+| `scripts/retention.ts`                                                              | **signed redaction ledger required for safe restore** | no — but backup/restore contract must be revised |
+| `packages/db/src/migrations.ts`                                                     | no (bundled code)                                     | no                                               |
+| `scripts/**` coordination board, evidence, dashboard, watchdog leases, usage ledger | no (local operator tooling)                           | no                                               |
+| `/tmp`, Next.js `.next/cache`, Postgres volume, Caddy state                         | no                                                    | no                                               |
 
 So: attachment blobs + intent spool + capacity signal. "Move everything to S3"
 is not a meaningful goal — the operator tooling is deliberately host-local, and
@@ -43,6 +60,7 @@ construct `createPrivateFilesystemBlobStore(root, {maxBytes})` directly and
 import the free `readPrivateBlob` / `erasePrivateBlob`.
 
 Writes (`put` → `BlobWrite`), all wrapped in `withTrackedBlobWrites`:
+
 1. `packages/intake/src/index.ts:724` — the adapter (mime sniff, size bound,
    `statfs` precheck, digest key, temp + `rename`, `fsync`).
 2. `packages/intake/src/telegram-photo.ts:77` — Telegram photo intake.
@@ -55,11 +73,11 @@ Writes (`put` → `BlobWrite`), all wrapped in `withTrackedBlobWrites`:
 
 Reads (`readPrivateBlob(root, key)` → `Uint8Array | null`):
 7. `apps/web/lib/product/extensions.ts:165` → `AttachmentReader`
-   (`packages/domain/core/src/attachments/attachment-reader.ts`), which
-   **already re-hashes the bytes and compares length + SHA-256** against the
-   database row before returning them. Any S3 read path inherits that check —
-   so "verify on read" is existing behaviour to preserve, not an improvement to
-   add.
+(`packages/domain/core/src/attachments/attachment-reader.ts`), which
+**already re-hashes the bytes and compares length + SHA-256** against the
+database row before returning them. Any S3 read path inherits that check —
+so "verify on read" is existing behaviour to preserve, not an improvement to
+add.
 8. `apps/web/lib/product/production.ts:56` — the `AttachmentReader` blob port.
 9. `apps/worker/src/index.ts:198` — extraction image input.
 10. `apps/web/lib/auth/product-demo.ts:44` — demo self-check.
@@ -70,12 +88,14 @@ Erases (`erasePrivateBlob(root, key, sha256)`, digest-verified, idempotent):
 `extensions.ts:314,461`, `product-demo.ts:76`.
 
 Staging / settlement:
+
 - `withTrackedBlobWrites` stages an intent under `<root>/.pending` **before**
   the write, and runs `settle` in a `finally` — **on success as well as
   failure** (v1 implied failure only). `settle` is `pruneUnreferencedBlob`.
 - `recoverPendingBlobWrites` sweeps `.pending`, ≥1 h age, ≤100 entries.
 
 Capacity / readiness:
+
 - `put()` refuses below `2 * maxBytes` free; `GET /api/ready` applies the same
   floor; `GET operations` reports nullable `availableStorageBytes`.
 
@@ -103,6 +123,7 @@ while holding it (`extensions.ts:251–269`, `telegram/production.ts:78–90`).
   only for the window where the **process dies** mid-transaction.
 
 Consequences for S3:
+
 - Reconciliation GC is still the right crash-window mechanism, but it must
   take the same advisory lock per candidate key and do the same global
   reference check. Age is then only cheap hygiene (avoid churning fresh
@@ -113,6 +134,11 @@ Consequences for S3:
   the other's evidence. The bucket/prefix must be exclusively owned and its
   ownership asserted at startup (deployment id recorded in the bucket, refuse
   on mismatch).
+- Both upload paths call the store _inside_ the accepting transaction while
+  holding the digest lock. That is what makes compensation correct, but it also
+  means remote storage latency now sits inside a database transaction and
+  extends lock hold time. This is accepted, not hidden: keep the endpoint local,
+  and treat lock waits as a capacity signal rather than raising timeouts.
 
 ## 4. Proposed seam
 
@@ -120,16 +146,21 @@ Two contracts, not one — v1's single port could not express lifecycle
 enumeration, so implementers would have bypassed it.
 
 ```ts
-export interface PrivateBlobStore {            // hot path, per-request
-  put(bytes: Uint8Array): Promise<BlobWrite>;   // idempotent per digest
-  read(key: string): Promise<Uint8Array | null>;// null when absent/unreadable
+export interface PrivateBlobStore {
+  // hot path, per-request
+  put(bytes: Uint8Array): Promise<BlobWrite>; // idempotent per digest
+  read(key: string): Promise<Uint8Array | null>; // null when absent/unreadable
   erase(key: string, sha256: string): Promise<void>; // idempotent
   capacity(): Promise<{ availableBytes: number | null }>; // null = unknown
 }
 
-export interface BlobLifecycle {               // worker-only, out of the hot path
+export interface BlobLifecycle {
+  // worker-only, out of the hot path
   // Bounded, resumable enumeration. Never used by request handlers.
-  scan(cursor: string | null, limit: number): Promise<{
+  scan(
+    cursor: string | null,
+    limit: number,
+  ): Promise<{
     objects: Array<{ key: string; updatedAt: Date }>;
     cursor: string | null;
   }>;
@@ -139,6 +170,7 @@ export interface BlobLifecycle {               // worker-only, out of the hot pa
 ```
 
 Rules the interface must state, because they are where the bugs live:
+
 - every method has a deadline and a bounded payload; no unbounded buffers;
 - typed error taxonomy (`absent | denied | quota | unavailable | corrupt`)
   mapped to `Result` codes at the edge, never leaking provider strings;
@@ -215,15 +247,15 @@ the shared lock. S3 equivalent must answer three questions v1 left open:
 
 ### 5.5 Portability matrix (corrected)
 
-| Capability | AWS S3 | MinIO | R2 | B2 | Design stance |
-|---|---|---|---|---|---|
-| Path-style addressing | yes | optional (configurable, not required) | no (virtual-host) | yes | config flag, default auto |
-| `If-None-Match: *` | yes | yes | yes (extension) | no | not used |
-| Object SHA-256 checksum | yes | yes | per-type, versioned | partial | precheck only |
-| `ListObjectsV2` | yes | yes | yes | yes | ≤1000 keys/page, resumable |
-| Strong read-after-write | yes | yes | yes | same-second caveats | do not assume for B2 |
-| Versioning | optional | optional | n/a | yes | erasure hazard |
-| SSE-KMS headers | yes | yes (KES) | **rejected** | partial | capability-probed |
+| Capability              | AWS S3   | MinIO                                 | R2                  | B2                  | Design stance              |
+| ----------------------- | -------- | ------------------------------------- | ------------------- | ------------------- | -------------------------- |
+| Path-style addressing   | yes      | optional (configurable, not required) | no (virtual-host)   | yes                 | config flag, default auto  |
+| `If-None-Match: *`      | yes      | yes                                   | yes (extension)     | no                  | not used                   |
+| Object SHA-256 checksum | yes      | yes                                   | per-type, versioned | partial             | precheck only              |
+| `ListObjectsV2`         | yes      | yes                                   | yes                 | yes                 | ≤1000 keys/page, resumable |
+| Strong read-after-write | yes      | yes                                   | yes                 | same-second caveats | do not assume for B2       |
+| Versioning              | optional | optional                              | n/a                 | yes                 | erasure hazard             |
+| SSE-KMS headers         | yes      | yes (KES)                             | **rejected**        | partial             | capability-probed          |
 
 Only this API surface is used: `PutObject`, `GetObject`, `HeadObject`,
 `DeleteObject`, `HeadBucket`, `ListObjectsV2` (+ version verbs in versions
@@ -279,15 +311,15 @@ dangerous:
 
 ### 5.9 Ownership and staging
 
-| Slice | Owner | Content |
-|---|---|---|
-| Ports + config schema + capability probe | A | `packages/contracts`, `packages/config`, new `packages/blob` |
-| FS adapter extracted from intake, behaviour unchanged | A, C review | intake re-exports only |
-| S3 adapter, reconciliation sweep, version-aware erasure | A | `packages/blob`, worker entrypoint |
-| Readiness + operations capacity | A | `app/api/ready`, `product/operations.ts` |
-| Call-site rewiring (6 files, incl. telegram webhook) | A (may delegate) | intake, extensions, demo, telegram, worker |
-| Migration script, docs, compose MinIO dev profile | A | `scripts/`, `docs/operations.md`, `compose*.yaml` |
-| Exact-tip adversarial review | R | review only |
+| Slice                                                   | Owner            | Content                                                      |
+| ------------------------------------------------------- | ---------------- | ------------------------------------------------------------ |
+| Ports + config schema + capability probe                | A                | `packages/contracts`, `packages/config`, new `packages/blob` |
+| FS adapter extracted from intake, behaviour unchanged   | A, C review      | intake re-exports only                                       |
+| S3 adapter, reconciliation sweep, version-aware erasure | A                | `packages/blob`, worker entrypoint                           |
+| Readiness + operations capacity                         | A                | `app/api/ready`, `product/operations.ts`                     |
+| Call-site rewiring (6 files, incl. telegram webhook)    | A (may delegate) | intake, extensions, demo, telegram, worker                   |
+| Migration script, docs, compose MinIO dev profile       | A                | `scripts/`, `docs/operations.md`, `compose*.yaml`            |
+| Exact-tip adversarial review                            | R                | review only                                                  |
 
 Crosses C and E lanes → needs an explicit A-scoped card with frozen interfaces
 before implementation, per AGENTS.md.
@@ -306,9 +338,9 @@ before implementation, per AGENTS.md.
    version-aware erasure; wire into the worker beside the existing recovery
    sweep.
 5. Readiness/capacity switch; docs; compose MinIO dev profile; production
-   compose without the attachments volume for S3 mode (also update
-   `volume-init` and `tools`, which mount it today, without touching Caddy
-   state).
+   compose note that the attachments volume is unused in S3 mode (it stays
+   declared because `volume-init` also prepares Caddy state; operators remove
+   the mount in their own manifest).
 6. Migration script, quiesced cutover, bucket backup/restore procedure.
 
 Steps 1–2 are pure refactors and carry almost all of the risk reduction.
