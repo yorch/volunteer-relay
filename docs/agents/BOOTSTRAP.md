@@ -12,17 +12,9 @@ Check Git, Node and Bun. Use **Node 26.11.1** and **Bun 1.4.1**, not whichever v
 
 ## 2. Discover the assignment and create/resume your worktree
 
-Set your lane parameters using the launch prompt or this first-wave table. Paths are siblings of the primary checkout; if that directory is inaccessible, request normal write approval or agree a different path with A, rather than silently working on main.
+Use the newly approved assignment and task card for lane, task ID, exact base SHA, branch/worktree path and private service resources. Do not use a historical first-wave table or resume prompt as authority. Choose unused ports and a task-private Compose project/database only when the actual card needs them; B owns migration generation/order, while another lane may provision an isolated test DB without generating migrations. Preserve existing owned resources and never reuse another task's database or server. With no assignment, prepare tools and publish availability only; do not invent implementation work or adopt a legacy claim.
 
-| Agent | Task  | Branch         | Worktree basename | Web port | PostgreSQL port | Private Compose project |
-| ----- | ----- | -------------- | ----------------- | -------- | --------------- | ----------------------- |
-| B     | P1-01 | agents/B-P1-01 | volunteer-relay-B | 3101     | 55431           | relay-b-p1-01           |
-| D     | P2-01 | agents/D-P2-01 | volunteer-relay-D | 3102     | 55432           | relay-d-p2-01           |
-| E     | P2-00 | agents/E-P2-00 | volunteer-relay-E | 3103     | 55433           | relay-e-p2-00           |
-
-C/F use the task assigned on the board and agree unused resource names/ports with A when activated. This table reserves first-wave conventions, not authority to start another task or a default database shared by workers.
-
-From the primary checkout, run `node scripts/agents.mjs init` and `node scripts/agents.mjs board` under Node 26.11.1. The CLI needs no dependency installation to read the board. Set `RELAY_COORD_DIR` to the same absolute store path printed by init in every command/session (normally `<primary>/.relay-coordination`). Use the board assignment's exact `baseCommit` as `RELAY_BASE`. If there is no assignment yet, use the primary checkout's current committed HEAD for setup only; publish availability and finish environment preparation rather than waiting for A to create directories. Do not assign yourself a task.
+From the primary checkout, run `node scripts/agents.mjs init` and `node scripts/agents.mjs board` under Node 26.11.1. The CLI needs no dependency installation to read the board. The pinned external Crewplane executable must already be installed. Unset RELAY_COORD_DIR and CREWPLANE_COORD_DIR; linked worktrees automatically share the primary .crewplane-state namespace. Use the board assignment's exact `baseCommit` as `RELAY_BASE`. If there is no assignment yet, use the primary checkout's current committed HEAD for setup only; publish availability and finish environment preparation rather than waiting for A to create directories. Do not assign yourself a task.
 
 Inspect branch/path registrations first. For a new branch and nonexistent worktree path:
 
@@ -68,7 +60,7 @@ if (existsSync('.env.local')) {
 NODE
 ```
 
-Do not set NODE_ENV globally for all tools: Next build/dev and tests choose their proper environment. The Node scripts/worker do not themselves load this file; Bun may load dotenv files while dispatching, so do not rely on implicit behavior. For commands needing configuration, use Node's `--env-file=.env.local` explicitly, or export the specific needed variables in that command environment. Next environment loading is rooted at apps/web, not the root file created above, so use the explicit Node flag for the dev command too. Shell parameters such as RELAY_COORD_DIR must be repeated/persisted through the harness's normal environment mechanism.
+Do not set NODE_ENV globally for all tools: Next build/dev and tests choose their proper environment. The Node scripts/worker do not themselves load this file; Bun may load dotenv files while dispatching, so do not rely on implicit behavior. For commands needing configuration, use Node's `--env-file=.env.local` explicitly, or export the specific needed variables in that command environment. Next environment loading is rooted at apps/web, not the root file created above, so use the explicit Node flag for the dev command too. Keep both coordination-store overrides unset; use automatic linked-worktree discovery.
 
 The optional `just` recipes documented in README.md honour the ports and `RELAY_COMPOSE_PROJECT` in `.env.local`, so `just services`, `just testdb`, `just migrate` and `just dev` work with your lane parameters once the file above exists. Keep using your own parameters: do not run `just env` or `just setup` as a worker, because they create the default local ports and Compose project intended for a single shared local stack.
 

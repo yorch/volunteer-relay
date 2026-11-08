@@ -1,3 +1,5 @@
+> Historical extracted-runtime design. The implementation is maintained in Crewplane v0.2.0, not Relay scripts. This card grants no new work; current operation follows docs/agents/README.md and HEADLESS.md.
+
 # Frozen scheduling reload policy v1
 
 C explicit exception owns ONLY scripts/config-reload.ts and scripts/config-reload.test.ts; A keeps supervisor loop/state/dashboard integration. Pure backend module, no filesystem/process/supervisor/config mutation. Import Config as a TYPE only. Export `evaluateSchedulingReload(current:Config,candidate:unknown,validate:(value:unknown)=>Config):{config:Config,outcome:'applied'|'unchanged'|'invalid'|'deferred',errorCode:null|'INVALID_CONFIG'|'RESTART_REQUIRED'}`.

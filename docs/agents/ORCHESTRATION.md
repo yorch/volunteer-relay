@@ -1,3 +1,5 @@
+> Historical extracted-runtime design. The implementation is maintained in Crewplane v0.2.0, not Relay scripts. This card grants no new work; current operation follows docs/agents/README.md and HEADLESS.md.
+
 # Supervisor operating contract
 
 The deterministic supervisor starts only explicitly assigned, allowlisted tasks. The coordinator scopes the next gate; it must not equate an empty dispatched queue with a completed plan. A remaining backlog generates one planning event per backlog/acceptance revision. A must dispatch independent accepted-baseline scopes, record a real dependency/decision, or explain a gate; it must not poll the board through repeated model turns.

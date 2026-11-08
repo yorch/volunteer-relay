@@ -1,3 +1,5 @@
+> Historical extracted-runtime design. The implementation is maintained in Crewplane v0.2.0, not Relay scripts. This card grants no new work; current operation follows docs/agents/README.md and HEADLESS.md.
+
 # Waiting policy v1 frozen delegation
 
 C/P0-26 narrow exception: scripts/wait-policy.ts and scripts/wait-policy.test.ts ONLY. A owns supervisor/board/dashboard integration. No config, task metadata, native session or other lane files. Export evaluateTurnWait(input) pure function and its types.

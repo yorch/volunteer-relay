@@ -23,3 +23,7 @@ video/.env.local
 video/.auth/
 video/generated/
 video/output/
+
+# External Crewplane private state/artifacts (legacy Relay state stays excluded).
+.crewplane-state/
+.crewplane-local/

@@ -1,3 +1,5 @@
+> Historical extracted-runtime design. The implementation is maintained in Crewplane v0.2.0, not Relay scripts. This card grants no new work; current operation follows docs/agents/README.md and HEADLESS.md.
+
 # Evidence v1 handoff interface
 
 Canonical coordinator interface: scripts/evidence/contract.ts (A-owned/read-only to F). F is explicitly delegated ONLY P0-20 store/capture/test/pilot paths. Implement `createEvidenceStore(root, limits?) -> Promise<EvidenceStore>` in store.ts; no API/dashboard/trace edits. A will integrate P0-22 serving/gallery and opaque P0-15 links. No application/shared package entity added.

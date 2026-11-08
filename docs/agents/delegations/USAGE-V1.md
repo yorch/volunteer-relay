@@ -1,3 +1,5 @@
+> Historical extracted-runtime design. The implementation is maintained in Crewplane v0.2.0, not Relay scripts. This card grants no new work; current operation follows docs/agents/README.md and HEADLESS.md.
+
 # Usage ledger v1 frozen delegation
 
 E/P0-27 owns ONLY scripts/usage-ledger.ts/test by explicit exception. Export types and implementation in that module; A owns native mapping/API/composition. Independent normalized fixtures are sufficient; no dependency on unfinished telemetry/UI. No native/model/home-session reads.

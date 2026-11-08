@@ -1,3 +1,5 @@
+> Historical extracted-runtime design. The implementation is maintained in Crewplane v0.2.0, not Relay scripts. This card grants no new work; current operation follows docs/agents/README.md and HEADLESS.md.
+
 # Watchdog v1 frozen delegation
 
 B/P0-29 exception: only scripts/watchdog/policy.ts, policy.test.ts, service.ts, service.test.ts. No supervisor/dashboard/manifest/config edits. Export types from policy.ts; service imports those types. A alone composes live input/service ownership/dashboard. Node26, no subprocess models, no commands from message data.

@@ -13,3 +13,6 @@ node_modules
 **/playwright-report
 **/next-env.d.ts
 **/.pi/tasks
+
+**/.crewplane-state
+**/.crewplane-local

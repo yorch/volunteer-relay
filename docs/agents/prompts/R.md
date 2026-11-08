@@ -14,7 +14,7 @@ Discover the primary repository from the operator's path, normally `/Users/yorch
 
 ```sh
 export RELAY_PRIMARY=/Users/yorch/code/volunteer-relay
-export RELAY_COORD_DIR=/Users/yorch/code/volunteer-relay/.relay-coordination
+unset RELAY_COORD_DIR CREWPLANE_COORD_DIR
 ```
 
 Use **Node 26.11.1** and **Bun 1.4.1**. Check `node --version` and `bun --version` in the same environment used for commands. For example an installed fnm supports `fnm exec --using=26.11.1 node ...`; repeat that wrapper if needed. If tools are absent, follow the pinned installation guidance in docs/agents/BOOTSTRAP.md, without using its implementation-lane task/claim/DB defaults. Respect the harness's normal permission mechanism for sibling paths, Git metadata, shared board writes, Docker and downloads.

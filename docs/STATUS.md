@@ -20,6 +20,14 @@ On 2026-11-08 at 14:08 UTC, the coordinator archived the superseded P2-05 and P3
 
 The rich demo seed ([P7-06](tasks/P7-06.md)) is complete, opt-in and production-refusing, with a populated walkthrough and repeat-safe fictional data. The full app revamp ([P2-06](tasks/P2-06.md)) is complete: real overview, three-pane review, needs board, compact ledger/reports, volunteer and import flows, and consistent administration/privacy screens. The original HTML remains unchanged. Current pending product gates are external model/transport evaluation and target-host deployment/recovery; no implementation agent remains assigned to this UI task.
 
+## Crewplane adoption — P0-33
+
+The adoption PR replaces the copied orchestration engine/dashboard/watchdog/evidence modules with separately installed Crewplane v0.2.0, pinned in .crewplane-version. Relay keeps crewplane.json role/document policy, full lane prompts and thin Node26 command adapters. Installation/cutover/rollback is documented in docs/agents/README.md and ADR 0011. The existing bun/just command surface remains; native harness/engine behavior is maintained and tested upstream.
+
+Local verification passed: frozen Bun install, Node26.11.1 bun run verify (498 tests across 59 files, type checks and production build), Justfile formatting, and real released-binary synthetic worktree/claim/question/frozen submission/pinned review/linear acceptance tests. Adapter tests cover exact version/missing binary, legacy/custom-store refusal, verified native-child default-store injection, canonical primary prompts (including spaces/# in paths), and exit/signal settlement. The pinned upstream installer and macOS arm64 artifact checksum were independently verified in a temporary install. Existing Biome warnings in untouched product/site/browser files remain; no new adapter warnings are introduced. Database, browser-product and live-provider gates were not rerun because application paths, packages, interfaces, migrations and the lockfile are unchanged.
+
+This is a source adoption PR, not live activation: no real Crewplane namespace, private runtime configuration, task assignment, enabled lane, harness, supervisor, watcher or dashboard was started by it. .relay-coordination and all old resources remain preserved, never migrated or resumed. Existing primary untracked media/prompt files and other worktrees are outside the task. Future activation requires the explicit stopped-process/resource inspection and newly authorized assignments in the cutover guide; a new empty board is not product completion.
+
 ## Historical checkpoints — superseded status
 
 The sections below preserve earlier project history. Statements about future scope, blockers or test counts describe their dates and do not override the summary above.
