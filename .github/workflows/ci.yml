@@ -36,8 +36,22 @@ jobs:
           const {db,close}=createDatabase(process.env.DATABASE_URL);
           try { await db.execute("select 1"); } finally { await close(); }'
       - run: docker compose exec -T worker node -e 'if(process.versions.node!=="26.11.1")process.exit(1)'
+      # Production slim-web smoke: the published image must serve as uid 1000
+      # without dev sources. It joins the Compose network to reach postgres.
+      - run: docker build -f infra/Dockerfile --target web -t relay-web:ci .
+      - run: >-
+          docker run -d --name relay-web-ci -p 127.0.0.1:3300:3000
+          --network volunteer-relay_default
+          -e DATABASE_URL=postgres://relay:relay@postgres:5432/relay
+          -e BETTER_AUTH_SECRET="$(openssl rand -hex 32)"
+          relay-web:ci
+      - run: curl --fail --retry 10 --retry-delay 3 --retry-connrefused http://127.0.0.1:3300/api/health
+      - run: >-
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3300/dev/foundation)" = "404"
       - if: always()
-        run: docker compose logs && docker compose down
+        run: >-
+          docker rm -f relay-web-ci >/dev/null 2>&1 || true;
+          docker compose logs && docker compose down
 
   browser:
     runs-on: ubuntu-latest

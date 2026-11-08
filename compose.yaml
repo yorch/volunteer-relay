@@ -24,7 +24,7 @@ services:
     build:
       context: .
       dockerfile: infra/Dockerfile
-      target: web
+      target: dev
     # This is the local development topology. Production serving is a P7 task.
     command:
       [
