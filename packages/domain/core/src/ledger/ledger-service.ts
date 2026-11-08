@@ -560,7 +560,9 @@ export function createLedgerService({
       if (staff.ok) {
         membershipId = undefined;
       } else {
+        if (staff.error.code !== "FORBIDDEN") return staff;
         const submit = await authorization.require(context, "source:submit");
+        if (!submit.ok && submit.error.code !== "FORBIDDEN") return submit;
         if (!submit.ok)
           return failure(
             "FORBIDDEN",

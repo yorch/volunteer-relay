@@ -73,9 +73,8 @@ export function createSourceRepository({
 }: SourceRepositoryDependencies): SourceRepository {
   async function holdsReviewAuthority(
     context: TenantContext,
-  ): Promise<boolean> {
-    const review = await authorization.require(context, "review:write");
-    return review.ok;
+  ): Promise<import("@relay/contracts").Result<void>> {
+    return authorization.require(context, "review:write");
   }
 
   // Returns a denial for a submission, or null when the caller may submit it.
@@ -98,7 +97,11 @@ export function createSourceRepository({
     if (!submit.ok) return submit;
 
     const staff = await holdsReviewAuthority(context);
-    if (!staff && envelope.author.membershipId !== context.actor.membershipId)
+    if (!staff.ok && staff.error.code !== "FORBIDDEN") return staff;
+    if (
+      !staff.ok &&
+      envelope.author.membershipId !== context.actor.membershipId
+    )
       return failure(
         "FORBIDDEN",
         "A volunteer may only submit as their own membership",
@@ -122,11 +125,14 @@ export function createSourceRepository({
       };
 
     const staff = await holdsReviewAuthority(context);
-    if (staff) return { denial: null, staff: true };
+    if (staff.ok) return { denial: null, staff: true };
+    if (staff.error.code !== "FORBIDDEN") return { denial: staff };
 
     // A report-reader holds report:read only and therefore gets no evidence
     // access at all; the denial happens before any existence lookup.
     const submit = await authorization.require(context, "source:submit");
+    if (!submit.ok && submit.error.code !== "FORBIDDEN")
+      return { denial: submit };
     if (!submit.ok)
       return {
         denial: failure(

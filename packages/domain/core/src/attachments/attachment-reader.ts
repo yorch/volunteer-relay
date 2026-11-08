@@ -37,9 +37,11 @@ export function createAttachmentReader({
 
       const staff = await authorization.require(context, "review:write");
       if (!staff.ok) {
+        if (staff.error.code !== "FORBIDDEN") return staff;
         // A report-reader holds report:read only and gets no evidence access;
         // the denial happens before any existence lookup or blob read.
         const submit = await authorization.require(context, "source:submit");
+        if (!submit.ok && submit.error.code !== "FORBIDDEN") return submit;
         if (!submit.ok)
           return failure(
             "FORBIDDEN",

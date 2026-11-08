@@ -5,6 +5,7 @@
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "@relay/contracts": "workspace:*"
+    "@relay/contracts": "workspace:*",
+    "zod": "4.6.7"
   }
 }

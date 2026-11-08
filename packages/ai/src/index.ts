@@ -23,6 +23,7 @@ export {
   findSpan,
   verifyProposalEvidence,
 } from "./evidence.ts";
+export { createOpenAIProvider } from "./openai.ts";
 export type {
   ExtractionProvider,
   ExtractionProviderRequest,

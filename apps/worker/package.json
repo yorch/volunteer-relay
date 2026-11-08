@@ -6,6 +6,7 @@
   "dependencies": {
     "@relay/config": "workspace:*",
     "@relay/contracts": "workspace:*",
-    "@relay/db": "workspace:*"
+    "@relay/db": "workspace:*",
+    "@relay/ai": "workspace:*"
   }
 }

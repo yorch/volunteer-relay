@@ -33,6 +33,7 @@
       "name": "@relay/worker",
       "version": "0.0.0",
       "dependencies": {
+        "@relay/ai": "workspace:*",
         "@relay/config": "workspace:*",
         "@relay/contracts": "workspace:*",
         "@relay/db": "workspace:*",
@@ -43,6 +44,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@relay/contracts": "workspace:*",
+        "zod": "4.6.7",
       },
     },
     "packages/config": {
