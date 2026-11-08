@@ -290,6 +290,11 @@ ownership).
 
 ### 5.8 Migration and cutover
 
+Implemented in `docs/design/s3-migration.md` (verified copy under the digest
+lock, transition store with both-store erasure, and a cutover runbook). The
+original warning below still holds for any hand-rolled attempt that skips those
+three pieces.
+
 Keys are already `<aa>/<digest>`, so migration is a verified byte copy
 (`scripts/blob-migrate.ts`, `--dry-run`, idempotent, per-object digest check).
 v1's "read fallback for one release" was under-specified; as written it is
