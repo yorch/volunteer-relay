@@ -13,6 +13,8 @@ root manifests stay with their owners; the workspace consumes them.
 - **Resuming in a new session?** Read [`docs/state.md`](docs/state.md) first: current
   snapshot, exact resume commands, resource identifiers, sync rules and cleanup
   order. It also records the footage commit so drift is detectable.
+- **Starting a _new_ video?** [`docs/kickoff.md`](docs/kickoff.md) has paste-ready
+  session prompts plus the phase plan.
 - **Why the cut looks like this?** [`docs/decisions.md`](docs/decisions.md).
 - **What could still improve?** [`docs/improvement-backlog.md`](docs/improvement-backlog.md).
 

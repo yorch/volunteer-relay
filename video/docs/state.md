@@ -37,6 +37,7 @@ the UI stabilises (see “Recapture because the app moved”).
 7. `video/docs/readiness-report.md` (status per subsystem, measured numbers)
 8. `video/docs/improvement-backlog.md` (known next steps, not yet implemented)
 9. `video/docs/setup-checklist.md` + `video/docs/asset-licenses.md` (identities, licences)
+10. `video/docs/kickoff.md` (only when starting a _new_ video rather than resuming this one)
 
 ## What is finished
 
