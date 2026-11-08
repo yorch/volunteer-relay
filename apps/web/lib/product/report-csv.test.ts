@@ -4,6 +4,9 @@ import {
   csvCell,
   reportCsv,
   topContributors,
+  VOLUNTEER_CSV_COLUMNS,
+  volunteerCsv,
+  volunteerDetail,
   volunteerRoster,
 } from "./report-csv.ts";
 
@@ -346,5 +349,149 @@ describe("reportCsv", () => {
     );
     expect(row.weekFrom).toBe("");
     expect(row.weekHours).toBe("");
+  });
+});
+
+describe("volunteerDetail", () => {
+  const weekRange = { from: "2026-11-09", to: "2026-11-15" };
+  const activity = (
+    activity_id: unknown,
+    minutes: number,
+    approved: number,
+    local_date: unknown = "2026-11-10",
+    kind: unknown = "Garden",
+  ) => ({ activity_id, kind, local_date, minutes, approved });
+
+  it("zero-fills the eight weeks oldest first, ignoring rows outside the window", () => {
+    const detail = volunteerDetail({
+      membershipId: "m1",
+      weekRange,
+      weeks: [
+        { week_start: "2026-11-09", minutes: 30 },
+        { week_start: "2026-10-12", minutes: "45" },
+        // Before the window: never folded into the oldest week.
+        { week_start: "2026-09-14", minutes: 600 },
+        { week_start: null, minutes: 999 },
+      ],
+      unknownDate: { count: 2 },
+      activities: [],
+    });
+    expect(detail.weeks).toEqual([
+      { weekStart: "2026-09-21", approvedMinutes: 0 },
+      { weekStart: "2026-09-28", approvedMinutes: 0 },
+      { weekStart: "2026-10-05", approvedMinutes: 0 },
+      { weekStart: "2026-10-12", approvedMinutes: 45 },
+      { weekStart: "2026-10-19", approvedMinutes: 0 },
+      { weekStart: "2026-10-26", approvedMinutes: 0 },
+      { weekStart: "2026-11-02", approvedMinutes: 0 },
+      { weekStart: "2026-11-09", approvedMinutes: 30 },
+    ]);
+    expect(detail.unknownDateContributions).toBe(2);
+    expect(detail.byActivity).toEqual([]);
+    expect(detail.byActivityTruncated).toBe(false);
+  });
+  it("keeps the trend unknown (null), not zeros, when the week is unknown", () => {
+    const detail = volunteerDetail({
+      membershipId: "m1",
+      weekRange: null,
+      weeks: [{ week_start: "2026-11-09", minutes: 30 }],
+      unknownDate: {},
+      activities: [],
+    });
+    expect(detail.weeks).toBeNull();
+    expect(detail.unknownDateContributions).toBe(0);
+  });
+  it("orders activities by minutes then id, keeps unknown dates and flags the cut", () => {
+    const detail = volunteerDetail({
+      membershipId: "m1",
+      weekRange,
+      weeks: [],
+      unknownDate: { count: 0 },
+      activities: [
+        activity("b", 30, 1),
+        activity("a", 30, 2, null, "Kitchen shift"),
+        activity("c", 90, 1, "2026-10-01"),
+        activity(null, 500, 1),
+        activity("empty", 0, 0),
+      ],
+      limit: 2,
+    });
+    expect(detail.byActivity).toEqual([
+      {
+        activityId: "c",
+        kind: "Garden",
+        localDate: "2026-10-01",
+        approvedMinutes: 90,
+        approvedContributions: 1,
+      },
+      {
+        activityId: "a",
+        kind: "Kitchen shift",
+        localDate: null,
+        approvedMinutes: 30,
+        approvedContributions: 2,
+      },
+    ]);
+    expect(detail.byActivityTruncated).toBe(true);
+  });
+  it("is attached by buildProductReport only when provided", () => {
+    expect(buildProductReport(base)).not.toHaveProperty("volunteerDetail");
+    const detail = volunteerDetail({
+      membershipId: "m1",
+      weekRange,
+      weeks: [],
+      unknownDate: {},
+      activities: [],
+    });
+    expect(
+      buildProductReport({ ...base, volunteerDetail: detail }).volunteerDetail,
+    ).toEqual(detail);
+  });
+});
+
+describe("volunteerCsv", () => {
+  const v = (
+    membershipId: string,
+    approvedMinutes: number,
+    weekApprovedMinutes: number | null,
+  ) => ({
+    membershipId,
+    approvedMinutes,
+    weekApprovedMinutes,
+    approvedContributions: approvedMinutes ? 1 : 0,
+    pendingContributions: approvedMinutes ? 0 : 1,
+    pendingUnknownDuration: 0,
+  });
+  it("writes a header and one row per volunteer in roster order", () => {
+    const text = volunteerCsv(
+      [v("m-a", 90, 30), v("m-b", 0, 0)],
+      new Map([
+        ["m-a", "Ana"],
+        ["m-b", "Ben"],
+      ]),
+    );
+    expect(text).toBe(
+      [
+        '"membershipId","volunteerName","approvedMinutes","approvedHours","weekApprovedMinutes","approvedContributions","pendingContributions","pendingUnknownDuration"',
+        '"m-a","Ana","90","1.5","30","1","0","0"',
+        '"m-b","Ben","0","0","0","0","1","0"',
+        "",
+      ].join("\r\n"),
+    );
+  });
+  it("leaves unknown week and former-member name empty, and neutralizes formulas in names", () => {
+    const text = volunteerCsv(
+      [v("m-a", 60, null), v("m-gone", 30, 0)],
+      new Map([["m-a", '=HYPERLINK("x")']]),
+    );
+    const [, first, second] = text.split("\r\n");
+    expect(first).toBe('"m-a","\'=HYPERLINK(""x"")","60","1","","1","0","0"');
+    expect(second).toBe('"m-gone","","30","0.5","0","1","0","0"');
+  });
+  it("is a header alone for an empty roster", () => {
+    expect(volunteerCsv([], new Map()).split("\r\n")).toEqual([
+      VOLUNTEER_CSV_COLUMNS.map((c) => `"${c}"`).join(","),
+      "",
+    ]);
   });
 });

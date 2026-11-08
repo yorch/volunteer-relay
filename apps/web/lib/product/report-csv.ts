@@ -1,11 +1,15 @@
 import {
   type ProductReport,
+  REPORT_DETAIL_ACTIVITIES_LIMIT,
   REPORT_TOP_CONTRIBUTORS_LIMIT,
   REPORT_VOLUNTEERS_LIMIT,
   type ReportContributor,
+  type ReportDetailActivity,
   type ReportQuery,
   type ReportVolunteer,
+  type ReportVolunteerDetail,
   type ReportWeekRange,
+  reportDetailWeekStarts,
 } from "@relay/contracts";
 
 /** A raw SQL row; every field is coerced and checked here. */
@@ -115,6 +119,70 @@ export function volunteerRoster(
   };
 }
 
+const localDate = (value: unknown) => {
+  if (value === null || value === undefined) return null;
+  const text =
+    value instanceof Date ? value.toISOString().slice(0, 10) : String(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
+};
+
+/**
+ * Maps the per-volunteer detail rows. `weeks` rows are `week_start` (a
+ * Monday local date) and `minutes`; every expected week is zero-filled, a
+ * known 0, and rows outside the window are ignored. With an unknown report
+ * week the trend is null, never zeros. `activities` rows are `activity_id`,
+ * `kind`, `local_date`, `minutes`, `approved`, fetched one past `limit` so
+ * the cut can be flagged; rows without an approved contribution are dropped.
+ */
+export function volunteerDetail(input: {
+  membershipId: string;
+  weekRange: ReportWeekRange | null;
+  weeks: readonly ReportRow[];
+  unknownDate: ReportRow;
+  activities: readonly ReportRow[];
+  limit?: number;
+}): ReportVolunteerDetail {
+  const limit = Math.max(0, input.limit ?? REPORT_DETAIL_ACTIVITIES_LIMIT);
+  const byWeek = new Map<string, number>();
+  for (const row of input.weeks) {
+    const start = localDate(row.week_start);
+    if (start) byWeek.set(start, (byWeek.get(start) ?? 0) + count(row.minutes));
+  }
+  const activities = input.activities
+    .flatMap((row): ReportDetailActivity[] => {
+      const activityId = row.activity_id;
+      const approvedContributions = count(row.approved);
+      if (typeof activityId !== "string" || !activityId) return [];
+      if (approvedContributions === 0) return [];
+      return [
+        {
+          activityId,
+          kind: typeof row.kind === "string" ? row.kind : "",
+          localDate: localDate(row.local_date),
+          approvedMinutes: count(row.minutes),
+          approvedContributions,
+        },
+      ];
+    })
+    .sort(
+      (a, b) =>
+        b.approvedMinutes - a.approvedMinutes ||
+        byCodeUnit(a.activityId, b.activityId),
+    );
+  return {
+    membershipId: input.membershipId,
+    weeks: input.weekRange
+      ? reportDetailWeekStarts(input.weekRange).map((weekStart) => ({
+          weekStart,
+          approvedMinutes: byWeek.get(weekStart) ?? 0,
+        }))
+      : null,
+    unknownDateContributions: count(input.unknownDate.count),
+    byActivity: activities.slice(0, limit),
+    byActivityTruncated: activities.length > limit,
+  };
+}
+
 /**
  * Builds the report projection from aggregate rows. Staff-only inputs
  * (`contributors`, `oldestQueued`, `volunteers`) are passed as null for
@@ -132,6 +200,7 @@ export function buildProductReport(input: {
   contributors: readonly ReportRow[] | null;
   oldestQueued: ReportRow | null;
   volunteers?: readonly ReportRow[] | null;
+  volunteerDetail?: ReportVolunteerDetail | null;
 }): ProductReport {
   const { query: q, totals: r, needs: n } = input;
   const minutes = count(r.minutes);
@@ -167,7 +236,53 @@ export function buildProductReport(input: {
     ...(input.volunteers
       ? volunteerRoster(input.volunteers, { weekKnown: weekMinutes !== null })
       : {}),
+    ...(input.volunteerDetail
+      ? { volunteerDetail: input.volunteerDetail }
+      : {}),
   };
+}
+
+/** Column order of the staff per-volunteer CSV (`view=volunteers`). */
+export const VOLUNTEER_CSV_COLUMNS = [
+  "membershipId",
+  "volunteerName",
+  "approvedMinutes",
+  "approvedHours",
+  "weekApprovedMinutes",
+  "approvedContributions",
+  "pendingContributions",
+  "pendingUnknownDuration",
+] as const;
+
+/**
+ * The staff per-volunteer CSV: a header and one row per roster volunteer in
+ * roster order. `names` maps a membership id to the member's current
+ * organization-scoped display name; a former member's name is an empty cell.
+ * Unknown values (an unknown week) are empty cells, never zero, and every
+ * cell goes through the same formula guard as the aggregate export.
+ */
+export function volunteerCsv(
+  volunteers: readonly ReportVolunteer[],
+  names: ReadonlyMap<string, string>,
+) {
+  const lines = [VOLUNTEER_CSV_COLUMNS.map(csvCell).join(",")];
+  for (const v of volunteers) {
+    lines.push(
+      [
+        v.membershipId,
+        names.get(v.membershipId) ?? null,
+        v.approvedMinutes,
+        v.approvedMinutes / 60,
+        v.weekApprovedMinutes,
+        v.approvedContributions,
+        v.pendingContributions,
+        v.pendingUnknownDuration,
+      ]
+        .map(csvCell)
+        .join(","),
+    );
+  }
+  return `${lines.join("\r\n")}\r\n`;
 }
 
 /**

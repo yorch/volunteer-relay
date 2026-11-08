@@ -617,3 +617,218 @@
     color: #000;
   }
 }
+/* Volunteer roster v2: search, sort, pagination and the detail panel. */
+.rosterControls {
+  display: grid;
+  grid-template-columns: minmax(0, 20rem) auto;
+  align-items: end;
+  gap: var(--relay-space-3, 12px) var(--relay-space-4, 16px);
+  margin: 0 0 var(--relay-space-4, 16px);
+  min-width: 0;
+}
+.rosterSortField {
+  display: none;
+}
+.rosterToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--relay-space-2, 8px);
+  min-height: 44px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.rosterToggle input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+}
+.sortButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--relay-space-1, 4px);
+  min-height: 32px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+.sortButton:hover {
+  color: var(--relay-ink, #172b26);
+  text-decoration: underline;
+}
+.sortButton:focus-visible {
+  outline: 3px solid var(--relay-focus, #895311);
+  outline-offset: 2px;
+}
+.sortMark {
+  font-size: 0.7em;
+}
+.reportTable th[aria-sort="none"] .sortMark {
+  opacity: 0.55;
+}
+.reportTable thead th:not(:first-child) .sortButton {
+  flex-direction: row-reverse;
+}
+.rosterName {
+  display: inline-grid;
+  gap: 2px;
+}
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--relay-space-3, 12px);
+  margin-top: var(--relay-space-4, 16px);
+  min-width: 0;
+}
+.pagerStatus {
+  margin: 0;
+  color: var(--relay-muted, #4d6058);
+  font-variant-numeric: tabular-nums;
+}
+.pagerButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--relay-space-2, 8px);
+}
+.printOnly {
+  display: none;
+}
+.detailHeading {
+  margin: var(--relay-space-4, 16px) 0 var(--relay-space-2, 8px);
+  font-size: var(--relay-text-md, 1.0625rem);
+}
+.weekChart {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 2px;
+  margin: var(--relay-space-3, 12px) 0;
+  min-width: 0;
+}
+.weekColumn {
+  display: grid;
+  grid-template-rows: auto 8rem auto;
+  align-content: start;
+  justify-items: center;
+  gap: var(--relay-space-1, 4px);
+  min-width: 0;
+}
+.weekValue {
+  color: var(--relay-ink, #172b26);
+  font-size: var(--relay-text-xs, 0.75rem);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.weekTrack {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-bottom: 1px solid var(--relay-line-strong, #c2cfc4);
+}
+.weekBar {
+  width: min(100%, 2.5rem);
+  border-radius: 4px 4px 0 0;
+  background: var(--relay-viz-1, #196c5b);
+  forced-color-adjust: none;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.weekLabel {
+  display: grid;
+  justify-items: center;
+  color: var(--relay-muted, #4d6058);
+  font-size: var(--relay-text-xs, 0.75rem);
+  text-align: center;
+  white-space: nowrap;
+}
+.weekCurrent {
+  color: var(--relay-ink, #172b26);
+  font-weight: 700;
+}
+@media (forced-colors: active) {
+  .weekBar {
+    background: CanvasText;
+  }
+}
+@media (max-width: 640px) {
+  .rosterControls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rosterSortField {
+    display: grid;
+  }
+  /* The visually hidden header row reappears when a sort button is focused. */
+  .rosterTable thead:focus-within {
+    position: static;
+    display: block;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+  }
+  .rosterTable thead:focus-within tr {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--relay-space-2, 8px);
+  }
+  .rosterTable thead:focus-within th {
+    display: block;
+    width: auto;
+    border: 0;
+    padding: var(--relay-space-1, 4px);
+  }
+  .weekValue {
+    font-size: 0.625rem;
+  }
+  .weekColumn {
+    grid-template-rows: auto 6rem auto;
+  }
+  .weekLabel {
+    font-size: 0.625rem;
+    white-space: normal;
+  }
+}
+@media print {
+  .printRoot .rosterControls,
+  .printRoot .pager,
+  .printRoot .sortMark {
+    display: none;
+  }
+  .printRoot .sortButton {
+    pointer-events: none;
+  }
+  .printRoot .printOnly {
+    display: block;
+    margin: 4pt 0 0;
+  }
+  .detailCard {
+    break-inside: avoid;
+  }
+  .printRoot .weekValue,
+  .printRoot .weekLabel,
+  .printRoot .weekCurrent {
+    color: #000;
+  }
+  .printRoot .weekTrack {
+    border-bottom-color: #000;
+  }
+}
+/* Beats the stacked-row display rules at every width. */
+.rosterTable tbody tr.offPage {
+  display: none;
+}
+@media print {
+  .printRoot .rosterTable tbody tr.offPage {
+    display: table-row;
+  }
+}
