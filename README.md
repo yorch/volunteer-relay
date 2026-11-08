@@ -55,4 +55,4 @@ Start with one coordinator and three workers (B data/auth, D extraction, E UI). 
 
 ## Browser smoke checks
 
-A provides the shared Chromium runner; E owns product UI specs. After `bun run test:e2e:install`, run `bun run test:e2e` for the current browser suite at 1440/1024/390/320px. These checks run separately from `bun run verify`. See tests/e2e/README.md for isolated ports, preview reuse and the limits of baseline smoke coverage.
+After `bun run test:e2e:install`, run `bun run test:e2e` for the current browser suite at 1440/1024/390/320px. These checks run separately from `bun run verify`. See [browser verification](tests/e2e/README.md) for isolated ports, preview reuse and test coverage limits.
