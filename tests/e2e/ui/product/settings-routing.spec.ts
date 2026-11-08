@@ -114,3 +114,41 @@ test("duplicate category routes are blocked before a request", async ({
   ).toBeVisible();
   expect(saves).toBe(0);
 });
+
+test("unavailable fallback requires an explicit replacement or removal", async ({
+  page,
+}) => {
+  let body: Record<string, unknown> | null = null;
+  await page.route("**/api/product/settings", (route) => {
+    if (route.request().method() === "GET")
+      return route.fulfill({
+        json: {
+          ok: true,
+          value: { ...settings, fallbackMembershipId: "former-staff" },
+        },
+      });
+    body = route.request().postDataJSON();
+    return route.fulfill({ json: { ok: true, value: settings } });
+  });
+  await page.goto("/workspace/settings");
+  const fallback = page.getByLabel("Fallback member", { exact: false });
+  await expect(fallback).toBeEnabled();
+  await expect(fallback).toHaveValue("former-staff");
+  await page
+    .getByLabel("Organization timezone", { exact: false })
+    .fill("Europe/London");
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(
+    page.getByText(
+      "Choose an available fallback member or explicitly select No fallback member.",
+    ),
+  ).toBeVisible();
+  expect(body).toBeNull();
+  await fallback.selectOption("");
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect.poll(() => body).not.toBeNull();
+  expect(body).toMatchObject({
+    fallbackMembershipId: null,
+    timezone: "Europe/London",
+  });
+});

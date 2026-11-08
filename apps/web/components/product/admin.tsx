@@ -223,11 +223,21 @@ function SettingsForm({
       memberIds: [...memberIds],
     })),
   );
+  const [fallback, setFallback] = useState(initial.fallbackMembershipId ?? "");
   const [localError, setLocalError] = useState("");
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     if (!membersReady) return;
+    if (
+      fallback &&
+      !members.some((member) => member.membershipId === fallback)
+    ) {
+      setLocalError(
+        "Choose an available fallback member or explicitly select No fallback member.",
+      );
+      return;
+    }
     const routes: Record<string, string[]> = Object.create(null);
     for (const row of routing) {
       const category = row.category.trim();
@@ -459,9 +469,18 @@ function SettingsForm({
                   Fallback member
                   <select
                     name="fallback"
-                    defaultValue={initial.fallbackMembershipId ?? ""}
+                    value={fallback}
+                    onChange={(event) => setFallback(event.target.value)}
                   >
                     <option value="">No fallback member</option>
+                    {fallback &&
+                      !members.some(
+                        (member) => member.membershipId === fallback,
+                      ) && (
+                        <option value={fallback}>
+                          Unavailable previous recipient — choose a replacement
+                        </option>
+                      )}
                     {members.map((m) => (
                       <option key={m.membershipId} value={m.membershipId}>
                         {m.name}
