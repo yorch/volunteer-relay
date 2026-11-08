@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createBlobStore } from "@relay/blob";
 import { parseEnvironment } from "@relay/config";
+import type { AuthOrganizationOption } from "@relay/contracts";
 import {
   and,
   createAttachmentMetadataStore,
@@ -13,6 +14,7 @@ import {
   eq,
   schema,
 } from "@relay/db";
+import { isContractRole } from "@relay/domain/auth";
 import {
   createAttachmentReader,
   createLedgerService,
@@ -40,10 +42,14 @@ export async function productHandler(request: Request) {
       const blobs = createBlobStore(env);
       const authorization = createTenantAuthorization({ db });
       const auth = createProductionAuth(db);
+      const memberships = createMembershipReader(db);
+      const followThrough = createFollowThroughRepository(db);
+      const timezoneFor = async (organizationId: string) =>
+        (await followThrough.getSettingsInternal(organizationId)).timezone;
       const sessions = createSessionResolver({
         auth,
         authorization,
-        memberships: createMembershipReader(db),
+        memberships,
         appUrl: env.APP_URL,
         mailConfigured: true,
       });
@@ -66,16 +72,21 @@ export async function productHandler(request: Request) {
         attachments,
         store: blobs,
         maxBytes: env.ATTACHMENT_MAX_BYTES,
-        timezone: async (org) =>
-          (await createFollowThroughRepository(db).getSettingsInternal(org))
-            .timezone,
+        timezone: timezoneFor,
+        transactional: (tx) => {
+          const scopedSettings = createFollowThroughRepository(tx);
+          return {
+            authorization: createTenantAuthorization({ db: tx }),
+            processing: createProcessingRepository(tx),
+            timezone: async (organizationId) =>
+              (await scopedSettings.getSettingsInternal(organizationId))
+                .timezone,
+          };
+        },
       });
       const followHttp = createFollowThroughHttp(db, auth, sessions);
       const operations = createOperationsHttp(db, blobs);
-      const retention = createRetentionHttp(
-        db,
-        process.env.RETENTION_LEDGER_KEY,
-      );
+      const retention = createRetentionHttp(db, env.RETENTION_LEDGER_KEY);
       handler = createProductHandler({
         extensions: async (context, path, request) =>
           (await followHttp(context, path, request)) ??
@@ -84,18 +95,10 @@ export async function productHandler(request: Request) {
           extended(context, path, request),
         appUrl: env.APP_URL,
         activityFacts: createWorkspaceActivityReader(db),
-        timezone: async (context) =>
-          (
-            await createFollowThroughRepository(db).getSettingsInternal(
-              context.organizationId,
-            )
-          ).timezone,
+        timezone: (context) => timezoneFor(context.organizationId),
         authorization,
-        sources: createSourceRepository({
-          authorization,
-          store: createSourceStore(db),
-        }),
-        processing: createProcessingRepository(db),
+        sources,
+        processing,
         ledger: createLedgerService({ authorization, store }),
         needs: createNeedService({ authorization, store }),
         async resolve(req, responseHeaders) {
@@ -108,18 +111,31 @@ export async function productHandler(request: Request) {
             responseHeaders.append("set-cookie", cookie);
           if (!session.response?.user)
             return productFailure("UNAUTHENTICATED", correlationId);
-          const organizations = await sessions.listAvailableOrganizations({
-            headers: req.headers,
-            responseHeaders,
-            correlationId,
-          });
-          if (!organizations.ok) return organizations;
+          // The session was verified above; list memberships directly instead
+          // of re-reading the session (a second read duplicates set-cookie).
+          let rows: Awaited<
+            ReturnType<typeof memberships.listMembershipsForUser>
+          >;
+          try {
+            rows = await memberships.listMembershipsForUser(
+              session.response.user.id,
+            );
+          } catch {
+            return productFailure("DEPENDENCY_UNAVAILABLE", correlationId);
+          }
+          const organizations = rows
+            .filter((row) => isContractRole(row.role))
+            .map((row) => ({
+              organizationId: row.organizationId,
+              membershipId: row.membershipId,
+              name: row.organizationName,
+              slug: row.organizationSlug,
+              role: row.role as AuthOrganizationOption["role"],
+            }));
           const selected = session.response.session.activeOrganizationId;
           const organization =
-            organizations.value.find((o) => o.organizationId === selected) ??
-            (organizations.value.length === 1
-              ? organizations.value[0]
-              : undefined);
+            organizations.find((o) => o.organizationId === selected) ??
+            (organizations.length === 1 ? organizations[0] : undefined);
           if (!organization) return productFailure("FORBIDDEN", correlationId);
           const context = await authorization.resolve(
             session.response.user.id,

@@ -116,9 +116,14 @@ describe("Telegram verified ingress", () => {
     expect((await f.handler(request(body))).status).toBe(200);
     expect(f.consume).toHaveBeenCalledWith("single-use-token", "12");
     body.message.text = "/ack foreign need 1";
-    expect((await f.handler(request(body))).status).toBe(403);
+    const foreign = await f.handler(request(body));
+    // Terminally refused: answered with a reply so Telegram does not redeliver.
+    expect(foreign.status).toBe(200);
+    expect(await foreign.json()).toMatchObject({ method: "sendMessage" });
     expect(f.deps.needs.transition).not.toHaveBeenCalled();
     body.message.chat.type = "group";
-    expect((await f.handler(request(body))).status).toBe(422);
+    const group = await f.handler(request(body));
+    expect(group.status).toBe(200);
+    expect(await group.json()).toEqual({ ok: true });
   });
 });

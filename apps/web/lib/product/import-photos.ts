@@ -1,10 +1,13 @@
 import { createHash } from "node:crypto";
 import {
   type BlobWrite,
+  createPhotoTransform,
   detectedImageMime,
   type ImportPreview,
 } from "@relay/intake";
 import sharp from "sharp";
+
+const photoTransform = createPhotoTransform(sharp);
 
 const MAX_INPUT = 5 * 1024 * 1024;
 const MAX_FILES = 10;
@@ -240,20 +243,7 @@ export async function prepareImportPhotos(
             throw new Error("size");
           const bytes = Buffer.from(await file.arrayBuffer());
           if (!detectedImageMime(bytes)) throw new Error("type");
-          const output = await sharp(bytes, {
-            limitInputPixels: 40000000,
-            failOn: "warning",
-            animated: false,
-          })
-            .rotate()
-            .resize({
-              width: 2000,
-              height: 2000,
-              fit: "inside",
-              withoutEnlargement: true,
-            })
-            .png()
-            .toBuffer();
+          const output = await photoTransform(bytes);
           if (output.length > maxBytes) throw new Error("size");
           const hash = createHash("sha256").update(output).digest("hex");
           blob = {

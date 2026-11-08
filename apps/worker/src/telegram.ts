@@ -1,9 +1,4 @@
-import { randomUUID } from "node:crypto";
-import {
-  type BlobIdentity,
-  type PrivateBlobStore,
-  withTrackedBlobWrites,
-} from "@relay/blob";
+import { type PrivateBlobStore, withTrackedBlobWrites } from "@relay/blob";
 import type { parseEnvironment } from "@relay/config";
 import {
   createDomainStore,
@@ -17,11 +12,45 @@ import {
 import { createAuthorizationService } from "@relay/domain/auth";
 import { createNeedService, createSourceRepository } from "@relay/domain/core";
 import {
-  createTelegramIngress,
-  createTelegramPhotoLoader,
+  createPhotoTransform,
+  createTelegramRuntime,
+  createTelegramUpdateAttempts,
+  MAX_TELEGRAM_UPDATE_ATTEMPTS,
+  type TelegramTransactionalDependencies,
   type TelegramUpdate,
 } from "@relay/intake";
 import sharp from "sharp";
+
+/** Ingress services built from one transaction so every read shares it. */
+function transactionalDependencies(
+  db: Database,
+): TelegramTransactionalDependencies {
+  const authorization = createAuthorizationService({
+      memberships: createMembershipReader(db),
+    }),
+    links = createFollowThroughRepository(db),
+    sources = createSourceRepository({
+      authorization,
+      store: createSourceStore(db),
+    });
+  return {
+    links,
+    authorization,
+    sources,
+    needs: createNeedService({ authorization, store: createDomainStore(db) }),
+    timezone: async (org) => (await links.getSettingsInternal(org)).timezone,
+    replaySource: async (context, key) => {
+      const rows = await db.execute(
+        sql`select source_id,revision from source_revision where organization_id=${context.organizationId} and channel='telegram' and idempotency_key=${key}`,
+      );
+      const row = rows.rows[0];
+      return row
+        ? sources.get(context, String(row.source_id), Number(row.revision))
+        : { ok: true as const, value: null };
+    },
+  };
+}
+
 export async function pollTelegram(
   db: Database,
   env: ReturnType<typeof parseEnvironment>,
@@ -30,64 +59,45 @@ export async function pollTelegram(
 ) {
   if (env.TELEGRAM_TRANSPORT !== "polling" || !env.TELEGRAM_BOT_TOKEN) return;
   const botToken = env.TELEGRAM_BOT_TOKEN;
-  const pollingSecret = randomUUID();
-  const handlerFor = (
-    db: Database,
-    note: (identity: BlobIdentity) => Promise<void>,
-  ) => {
-    const authorization = createAuthorizationService({
-        memberships: createMembershipReader(db),
-      }),
-      links = createFollowThroughRepository(db),
-      sources = createSourceRepository({
-        authorization,
-        store: createSourceStore(db),
-      }),
-      secret = pollingSecret;
-    return createTelegramIngress({
-      secret,
-      links,
-      authorization,
-      sources,
-      needs: createNeedService({ authorization, store: createDomainStore(db) }),
-      timezone: async (org) => (await links.getSettingsInternal(org)).timezone,
-      replaySource: async (context, key) => {
-        const rows = await db.execute(
-          sql`select source_id,revision from source_revision where organization_id=${context.organizationId} and channel='telegram' and idempotency_key=${key}`,
-        );
-        const row = rows.rows[0];
-        return row
-          ? sources.get(context, String(row.source_id), Number(row.revision))
-          : { ok: true as const, value: null };
-      },
-      photo: createTelegramPhotoLoader({
-        botToken: botToken,
+  const runtime = createTelegramRuntime({
+    // Updates come from getUpdates, never from an inbound request.
+    secret: "",
+    botToken,
+    maxBytes: env.ATTACHMENT_MAX_BYTES,
+    store,
+    transform: createPhotoTransform(sharp),
+    linked: async (identity) =>
+      (
+        await transactionalDependencies(db).links.resolveTelegramIdentity(
+          identity,
+        )
+      ).ok,
+    transaction: (work) =>
+      withTrackedBlobWrites(
         store,
-        maxBytes: env.ATTACHMENT_MAX_BYTES,
-        withBlobLock: async (key, put) => {
-          await db.execute(
-            sql`select pg_advisory_xact_lock(hashtextextended(${`blob:${key}`},0))`,
-          );
-          await note({ storageKey: key, sha256: key.slice(3) });
-          return put();
-        },
-        transform: async (bytes) =>
-          sharp(Buffer.from(bytes), {
-            limitInputPixels: 40000000,
-            failOn: "warning",
-          })
-            .rotate()
-            .resize({
-              width: 2000,
-              height: 2000,
-              fit: "inside",
-              withoutEnlargement: true,
-            })
-            .png()
-            .toBuffer(),
-      }),
-    });
-  };
+        async (note) =>
+          db.transaction(async (tx) => {
+            const scoped = tx as unknown as Database;
+            return work({
+              deps: transactionalDependencies(scoped),
+              lockBlob: async (storageKey, sha256) => {
+                await scoped.execute(
+                  sql`select pg_advisory_xact_lock(hashtextextended(${`blob:${storageKey}`},0))`,
+                );
+                await note({ storageKey, sha256 });
+              },
+            });
+          }),
+        (identity, done) =>
+          pruneUnreferencedBlob(
+            db,
+            identity,
+            (key, sha) => store.erase(key, sha),
+            done,
+          ),
+      ),
+  });
+  const attempts = createTelegramUpdateAttempts();
   let offset: number | undefined;
   while (!stopped()) {
     try {
@@ -116,34 +126,25 @@ export async function pollTelegram(
         if (stopped()) break;
         if (!Number.isSafeInteger(update.update_id))
           throw new Error("Invalid update");
-        const handled = await withTrackedBlobWrites(
-          store,
-          async (note) =>
-            db.transaction(async (tx) =>
-              handlerFor(
-                tx as unknown as Database,
-                note,
-              )(
-                new Request("http://worker.invalid/telegram", {
-                  method: "POST",
-                  headers: {
-                    "x-telegram-bot-api-secret-token": pollingSecret,
-                    "content-type": "application/json",
-                  },
-                  body: JSON.stringify(update),
-                }),
-              ),
-            ),
-          (identity, done) =>
-            pruneUnreferencedBlob(
-              db,
-              identity,
-              (key, sha) => store.erase(key, sha),
-              done,
-            ),
-        );
-        if (handled.status >= 500) throw new Error("Ingress unavailable");
-        if (handled.ok) {
+        let handled: Response;
+        try {
+          handled = await runtime.handleUpdate(update);
+        } catch {
+          handled = new Response(null, { status: 503 });
+        }
+        if (handled.status >= 500) {
+          if (!attempts.failed(update.update_id))
+            throw new Error("Ingress unavailable");
+          // Only the numeric update id is logged; never message content.
+          console.warn(
+            JSON.stringify({
+              service: "worker",
+              event: "telegram-update-skipped",
+              updateId: update.update_id,
+              attempts: MAX_TELEGRAM_UPDATE_ATTEMPTS,
+            }),
+          );
+        } else if (handled.ok) {
           const payload = (await handled.json()) as Record<string, unknown>;
           if (payload.method === "sendMessage") {
             const delivery = await fetch(
@@ -154,8 +155,8 @@ export async function pollTelegram(
                 body: JSON.stringify(payload),
                 signal: AbortSignal.timeout(10000),
               },
-            );
-            if (!delivery.ok)
+            ).catch(() => null);
+            if (!delivery?.ok)
               console.warn(
                 JSON.stringify({
                   service: "worker",
@@ -164,6 +165,7 @@ export async function pollTelegram(
               );
           }
         }
+        attempts.settled(update.update_id);
         offset = update.update_id + 1;
       }
     } catch {

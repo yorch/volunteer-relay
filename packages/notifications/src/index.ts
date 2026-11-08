@@ -64,11 +64,50 @@ function isTimeout(cause: unknown): boolean {
   );
 }
 
-function transport(send: Delivery): NotificationTransport {
-  const replay = new Map<
-    string,
-    { digest: string; pending?: Promise<string> }
-  >();
+/**
+ * In-process replay is only a short-lived optimisation for concurrent or
+ * immediate retries; durable replay safety comes from the database lease and
+ * accepted_at. The map is therefore bounded by age and entry count.
+ */
+export type ReplayCacheOptions = {
+  maxEntries?: number;
+  ttlMs?: number;
+  now?: () => number;
+};
+type ReplayEntry = {
+  digest: string;
+  pending?: Promise<string>;
+  expiresAt: number;
+};
+
+function transport(
+  send: Delivery,
+  options: ReplayCacheOptions = {},
+): NotificationTransport {
+  const maxEntries = Math.max(1, options.maxEntries ?? 1000);
+  const ttlMs = Math.max(1, options.ttlMs ?? 60 * 60 * 1000);
+  const now = options.now ?? Date.now;
+  const entries = new Map<string, ReplayEntry>();
+  const replay = {
+    get(scope: string): ReplayEntry | undefined {
+      const entry = entries.get(scope);
+      if (entry && entry.expiresAt <= now()) {
+        entries.delete(scope);
+        return undefined;
+      }
+      return entry;
+    },
+    set(scope: string, entry: { digest: string; pending?: Promise<string> }) {
+      const at = now();
+      // Refresh recency: delete first so insertion order tracks last write.
+      entries.delete(scope);
+      for (const [key, value] of entries) {
+        if (entries.size < maxEntries && value.expiresAt > at) break;
+        entries.delete(key);
+      }
+      entries.set(scope, { ...entry, expiresAt: at + ttlMs });
+    },
+  };
   return {
     async deliver(context, message) {
       const path = safeAppPath(message.appPath);
@@ -141,6 +180,7 @@ function transport(send: Delivery): NotificationTransport {
 
 export function createSafeTestTransport(
   deliver?: Delivery,
+  replay?: ReplayCacheOptions,
 ): NotificationTransport {
   let sequence = 0;
   return transport(
@@ -149,6 +189,7 @@ export function createSafeTestTransport(
         sequence++;
         return `test-${sequence}-${message.deliveryKey}`;
       }),
+    replay,
   );
 }
 
