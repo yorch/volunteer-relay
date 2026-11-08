@@ -9,5 +9,5 @@
   gap: 1rem;
 }
 .muted {
-  color: var(--relay-muted);
+  color: var(--relay-muted, #53675f);
 }

@@ -11,6 +11,14 @@
   flex-direction: column;
   min-width: 0;
 }
+@media (min-width: 761px) {
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+    overflow-y: auto;
+  }
+}
 .brand {
   display: inline-flex;
   align-items: center;
@@ -23,7 +31,7 @@
   white-space: nowrap;
 }
 .brandDot {
-  color: #718f78;
+  color: #4a6d55;
 }
 .mark {
   display: grid;
@@ -67,10 +75,10 @@
 }
 .organization small {
   display: block;
-  font-size: 0.57rem;
+  font-size: 0.6875rem;
   letter-spacing: 0.09em;
   font-weight: 700;
-  color: #60746a;
+  color: var(--relay-muted, #53675f);
   margin-bottom: 4px;
 }
 .organization strong {
@@ -91,8 +99,8 @@
 }
 .navGroup .overline {
   margin: 0 10px 8px;
-  color: #60746a;
-  font-size: 0.62rem;
+  color: var(--relay-muted, #53675f);
+  font-size: 0.6875rem;
   letter-spacing: 0.12em;
   font-weight: 750;
   text-transform: uppercase;
@@ -110,10 +118,14 @@
   align-items: center;
   gap: 11px;
   padding: 8px 10px;
-  color: #465e53;
-  font-size: 0.83rem;
+  color: #3f574c;
+  font-size: var(--relay-text-sm, 0.875rem);
   text-decoration: none;
-  border-radius: 7px;
+  border-radius: var(--relay-radius-md, 0.5rem);
+  transition:
+    background-color var(--relay-duration, 140ms) var(--relay-ease, ease),
+    color var(--relay-duration, 140ms) var(--relay-ease, ease),
+    box-shadow var(--relay-duration, 140ms) var(--relay-ease, ease);
 }
 .navigation svg,
 .accountIcon svg {
@@ -125,16 +137,28 @@
   background: #e3eae0;
 }
 .navigation a[aria-current="page"] {
-  background: #dce8db;
-  color: #245b49;
+  background: var(--relay-paper, #fff);
+  color: var(--relay-teal, #196c5b);
   font-weight: 750;
+  box-shadow:
+    var(--relay-shadow-sm, 0 1px 2px #1f353114),
+    inset 3px 0 0 var(--relay-teal, #196c5b);
+}
+@media (forced-colors: active) {
+  .navigation a[aria-current="page"] {
+    border-left: 3px solid Highlight;
+  }
 }
 .count {
   margin-left: auto;
-  background: #ffffffa8;
-  border-radius: 5px;
-  padding: 1px 6px;
-  font-size: 0.7rem;
+  background: var(--relay-paper, #fff);
+  border: 1px solid var(--relay-line, #dce5dc);
+  border-radius: 999px;
+  min-width: 1.5rem;
+  text-align: center;
+  padding: 1px 8px;
+  font-size: var(--relay-text-xs, 0.75rem);
+  font-weight: 700;
 }
 .account {
   margin-top: auto;
@@ -167,7 +191,7 @@
 .topbar {
   min-height: 67px;
   border-bottom: 1px solid #e1e7df;
-  background: #ffffff99;
+  background: #fbfbf8;
   padding: 12px 32px;
   display: flex;
   align-items: center;
@@ -190,6 +214,11 @@
   padding: 29px 32px;
   max-width: 90rem;
   margin-inline: auto;
+}
+@media (min-width: 1200px) {
+  .content {
+    padding: 2rem 2.5rem;
+  }
 }
 .skip {
   position: fixed;
@@ -221,6 +250,7 @@
   padding: 1rem 2rem;
   border-bottom: 1px solid #dfe5db;
   background: white;
+  box-shadow: var(--relay-shadow-sm, 0 1px 2px #1f353114);
 }
 .volunteerOrg {
   border-left: 1px solid #dfe5db;
