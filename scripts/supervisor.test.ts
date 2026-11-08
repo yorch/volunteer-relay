@@ -444,3 +444,34 @@ it("schedules V only for pinned A requests, separately from R within existing li
     plan(b, s, { ...cfg, allowedTasks: [] }).some((w) => w.lane === "V"),
   ).toBe(false);
 });
+
+it("waits without repeat wake, wakes for fresh answer, preserves failure pause and holds", () => {
+  const b = board();
+  const s = state();
+  const w = plan(b, s, config).find((item) => item.lane === "B");
+  if (!w) throw Error("Missing fixture");
+  const r = record(w.key, "B");
+  r.waitingForEvent = true;
+  r.seen = w.events;
+  s.records[r.key] = r;
+  expect(plan(b, s, config).some((item) => item.lane === "B")).toBe(false);
+  b.messages.push({
+    id: "fresh-answer",
+    from: "A",
+    to: "B",
+    kind: "answer",
+    task: "P1-06",
+    replyTo: "question",
+    at: "2026-11-07T00:02:00Z",
+    text: "Synthetic resolution",
+  });
+  expect(plan(b, s, config).some((item) => item.lane === "B")).toBe(true);
+  r.seen.push("message:fresh-answer");
+  expect(plan(b, s, config).some((item) => item.lane === "B")).toBe(false);
+  r.seen = w.events;
+  r.status = "paused";
+  expect(plan(b, s, config).some((item) => item.lane === "B")).toBe(false);
+  r.status = "idle";
+  s.held = ["B"];
+  expect(plan(b, s, config).some((item) => item.lane === "B")).toBe(false);
+});

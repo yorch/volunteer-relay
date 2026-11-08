@@ -31,6 +31,7 @@ import {
   type TraceInput,
 } from "./operational-traces.ts";
 import { type LoadedScheduling, loadedScheduling } from "./scheduling.ts";
+import { evaluateTurnWait } from "./wait-policy.ts";
 import { acquire } from "./watch.ts";
 
 export const lanes = ["A", "B", "C", "D", "E", "F", "R", "V"] as const;
@@ -71,6 +72,7 @@ export interface RecordState {
   runs: number[];
   progress?: string;
   noProgress: number;
+  waitingForEvent?: boolean;
   inputTokens: number;
   outputTokens: number;
 }
@@ -273,6 +275,7 @@ export function plan(
       fresh.length ||
       state.notices[lane]?.length ||
       (unfinished &&
+        !old.waitingForEvent &&
         !outgoingQuestion &&
         now - Date.parse(old.finishedAt ?? "1970-01-01") > 15000)
     ) {
@@ -744,8 +747,38 @@ export async function serve(
               validFinal(final) && !stream.invalid && !!stream.sessionId;
             if (invocation.harness === "pi" && valid)
               await atomic(output, final);
-            const after = progress(await snapshot(config.root), cwd);
-            record.noProgress = after === before ? record.noProgress + 1 : 0;
+            const completedBoard = await snapshot(config.root);
+            const after = progress(completedBoard, cwd);
+            const explicitWait =
+              completedBoard.unanswered.some(
+                (m) =>
+                  m.from === work.lane &&
+                  ["question", "request"].includes(m.kind),
+              ) ||
+              completedBoard.tasks.some(
+                (t) =>
+                  t.id === work.task && t.live?.status?.state === "blocked",
+              );
+            const wait = evaluateTurnWait({
+              previousNoProgress: record.noProgress,
+              progressChanged: after !== before,
+              finalState: valid ? final.state : "working",
+              failure: traceIOFailed
+                ? "trace"
+                : timedOut
+                  ? "timeout"
+                  : code !== 0
+                    ? "cli"
+                    : !valid
+                      ? "invalid"
+                      : null,
+              operatorHeld: state.held.includes(work.lane),
+              pendingEventIds: [],
+              seenEventIds: [],
+              explicitWait,
+            });
+            record.noProgress = wait.noProgress;
+            record.waitingForEvent = wait.disposition === "waiting";
             record.progress = after;
             const pause = traceIOFailed
               ? "Operational trace persistence unavailable"
@@ -757,9 +790,11 @@ export async function serve(
                     ? "No valid final result; inspect before retry"
                     : final.state === "needs_operator"
                       ? "Operator input needed"
-                      : record.noProgress >= 2
-                        ? "Two runs without recorded progress; inspect before retry"
-                        : null;
+                      : wait.reason === "operator"
+                        ? "Operator hold"
+                        : wait.reason === "no-progress"
+                          ? "Two runs without recorded progress; inspect before retry"
+                          : null;
             record.summary = valid ? final.summary : "";
             record.status = pause ? "paused" : "idle";
             record.reason =
