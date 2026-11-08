@@ -577,6 +577,11 @@ export function createProcessingRepository(db: Database) {
           const rows = await tx.execute(
             sql`select envelope from source_revision where organization_id = ${context.organizationId} and source_id = ${supplied.sourceId} order by revision desc limit 1`,
           );
+          const tombstone = await tx.execute(
+            sql`select 1 from source_redaction where organization_id=${context.organizationId} and source_id=${supplied.sourceId}`,
+          );
+          if (tombstone.rows.length)
+            throw new Abort("NOT_FOUND", "Source not found");
           const stored = rows.rows[0]?.envelope as SourceEnvelope | undefined;
           if (!stored || stored.revision !== supplied.revision)
             throw new Abort("CONFLICT", "Source revision is stale");
@@ -619,7 +624,7 @@ export function createProcessingRepository(db: Database) {
         if (!staff(await authorize(db, context)))
           return fail(context, "FORBIDDEN", "Review authority required");
         const rows = await db.execute(
-          sql`select r.proposal, r.revision, s.envelope from extraction_run r join source_revision s on (s.organization_id,s.source_id,s.revision)=(r.organization_id,r.source_id,r.source_revision) where r.organization_id=${context.organizationId} and r.status='review' and not exists (select 1 from source_revision newer where newer.organization_id=r.organization_id and newer.source_id=r.source_id and newer.revision>r.source_revision) order by r.created_at,r.run_id`,
+          sql`select r.proposal, r.revision, s.envelope from extraction_run r join source_revision s on (s.organization_id,s.source_id,s.revision)=(r.organization_id,r.source_id,r.source_revision) where r.organization_id=${context.organizationId} and r.status='review' and not exists (select 1 from source_redaction z where z.organization_id=r.organization_id and z.source_id=r.source_id) and not exists (select 1 from source_revision newer where newer.organization_id=r.organization_id and newer.source_id=r.source_id and newer.revision>r.source_revision) order by r.created_at,r.run_id`,
         );
         return success(
           rows.rows.map((row) => ({
@@ -645,6 +650,11 @@ export function createProcessingRepository(db: Database) {
         const role = await authorize(db, context);
         if (!staff(role) && role !== "volunteer")
           return fail(context, "FORBIDDEN", "Source authority required");
+        const redacted = await db.execute(
+          sql`select 1 from source_redaction where organization_id=${context.organizationId} and source_id=${sourceId}`,
+        );
+        if (redacted.rows.length)
+          return fail(context, "NOT_FOUND", "Source not found");
         const rows = await db.execute(
           sql`select envelope,author_membership_id from source_revision where organization_id=${context.organizationId} and source_id=${sourceId} order by revision desc limit 1`,
         );
@@ -675,7 +685,7 @@ export function createProcessingRepository(db: Database) {
         const actorId =
           context.actor.kind === "user" ? context.actor.membershipId : "";
         const rows = await db.execute(
-          sql`select s.source_id,s.revision,coalesce(r.status,case when w.failed or (w.attempts>=3 and (w.lease_until is null or w.lease_until<=now())) then 'failed' else 'queued' end) as status from source_revision s left join extraction_run r on (r.organization_id,r.source_id,r.source_revision)=(s.organization_id,s.source_id,s.revision) left join processing_work w on (w.organization_id,w.source_id,w.source_revision)=(s.organization_id,s.source_id,s.revision) where s.organization_id=${context.organizationId} and (${staff(role)} or s.author_membership_id=${actorId}) and not exists (select 1 from source_revision n where n.organization_id=s.organization_id and n.source_id=s.source_id and n.revision>s.revision) order by s.received_at desc,s.source_id`,
+          sql`select s.source_id,s.revision,coalesce(r.status,case when w.failed or (w.attempts>=3 and (w.lease_until is null or w.lease_until<=now())) then 'failed' else 'queued' end) as status from source_revision s left join extraction_run r on (r.organization_id,r.source_id,r.source_revision)=(s.organization_id,s.source_id,s.revision) left join processing_work w on (w.organization_id,w.source_id,w.source_revision)=(s.organization_id,s.source_id,s.revision) where s.organization_id=${context.organizationId} and not exists (select 1 from source_redaction z where z.organization_id=s.organization_id and z.source_id=s.source_id) and (${staff(role)} or s.author_membership_id=${actorId}) and not exists (select 1 from source_revision n where n.organization_id=s.organization_id and n.source_id=s.source_id and n.revision>s.revision) order by s.received_at desc,s.source_id`,
         );
         return success(
           rows.rows.map((row) => ({
@@ -703,10 +713,10 @@ export function createProcessingRepository(db: Database) {
             sql`update processing_work set failed=true,lease_until=null,lease_token=null where attempts=3 and lease_until<=now()`,
           );
           await tx.execute(
-            sql`insert into processing_work (organization_id,source_id,source_revision) select s.organization_id,s.source_id,s.revision from source_revision s where not exists (select 1 from source_revision n where n.organization_id=s.organization_id and n.source_id=s.source_id and n.revision>s.revision) and not exists (select 1 from extraction_run r where r.organization_id=s.organization_id and r.source_id=s.source_id and r.source_revision=s.revision) on conflict do nothing`,
+            sql`insert into processing_work (organization_id,source_id,source_revision) select s.organization_id,s.source_id,s.revision from source_revision s where not exists (select 1 from source_redaction z where z.organization_id=s.organization_id and z.source_id=s.source_id) and not exists (select 1 from source_revision n where n.organization_id=s.organization_id and n.source_id=s.source_id and n.revision>s.revision) and not exists (select 1 from extraction_run r where r.organization_id=s.organization_id and r.source_id=s.source_id and r.source_revision=s.revision) on conflict do nothing`,
           );
           const rows = await tx.execute(
-            sql`with picked as (select w.organization_id,w.source_id,w.source_revision from processing_work w where w.attempts<3 and (w.lease_until is null or w.lease_until<=now()) and (w.retry_after is null or w.retry_after<=now()) and not exists (select 1 from source_revision n where n.organization_id=w.organization_id and n.source_id=w.source_id and n.revision>w.source_revision) order by w.source_id for update skip locked limit ${limit}), leased as (update processing_work w set attempts=w.attempts+1,lease_token=gen_random_uuid()::text,lease_until=now()+interval '5 minutes',failed=false from picked p where (w.organization_id,w.source_id,w.source_revision)=(p.organization_id,p.source_id,p.source_revision) returning w.*) select s.envelope,w.lease_token from leased w join source_revision s on (s.organization_id,s.source_id,s.revision)=(w.organization_id,w.source_id,w.source_revision)`,
+            sql`with picked as (select w.organization_id,w.source_id,w.source_revision from processing_work w where not exists (select 1 from source_redaction z where z.organization_id=w.organization_id and z.source_id=w.source_id) and w.attempts<3 and (w.lease_until is null or w.lease_until<=now()) and (w.retry_after is null or w.retry_after<=now()) and not exists (select 1 from source_revision n where n.organization_id=w.organization_id and n.source_id=w.source_id and n.revision>w.source_revision) order by w.source_id for update skip locked limit ${limit}), leased as (update processing_work w set attempts=w.attempts+1,lease_token=gen_random_uuid()::text,lease_until=now()+interval '5 minutes',failed=false from picked p where (w.organization_id,w.source_id,w.source_revision)=(p.organization_id,p.source_id,p.source_revision) returning w.*) select s.envelope,w.lease_token from leased w join source_revision s on (s.organization_id,s.source_id,s.revision)=(w.organization_id,w.source_id,w.source_revision)`,
           );
           return rows.rows.map((row) => ({
             source: row.envelope as SourceEnvelope,
@@ -765,6 +775,11 @@ export function createProcessingRepository(db: Database) {
             sql`select id from source where organization_id=${context.organizationId} and id=${input.sourceId} for update`,
           );
           if (!locked.rows.length)
+            throw new Abort("NOT_FOUND", "Source not found");
+          const redacted = await tx.execute(
+            sql`select 1 from source_redaction where organization_id=${context.organizationId} and source_id=${input.sourceId}`,
+          );
+          if (redacted.rows.length)
             throw new Abort("NOT_FOUND", "Source not found");
           const latest = await tx.execute(
             sql`select revision from source_revision where organization_id=${context.organizationId} and source_id=${input.sourceId} order by revision desc limit 1`,

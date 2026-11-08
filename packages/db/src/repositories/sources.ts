@@ -377,6 +377,14 @@ async function ensureAttachmentIdentities(
   revision: StoredRevisionRecord,
 ): Promise<void> {
   for (const attachment of revision.attachments) {
+    const inconsistent = await tx.execute(
+      sql`select 1 from source_attachment_identity where storage_key=${attachment.storageKey} and sha256<>${attachment.sha256} limit 1`,
+    );
+    if (inconsistent.rows.length)
+      throw new OutcomeRollback({
+        kind: "conflict",
+        reason: "attachment-identity",
+      });
     const created = await tx
       .insert(sourceAttachmentIdentity)
       .values({
@@ -531,6 +539,13 @@ export function createSourceStore(db: Database): SourceStoreRecord {
     event: SourceReceivedEventRecord,
   ): Promise<RevisionInsertOutcomeRecord> {
     return db.transaction(async (tx) => {
+      // Blob upload and erasure adapters use this same transaction-level lock.
+      for (const key of [
+        ...new Set(revision.attachments.map((entry) => entry.storageKey)),
+      ].sort())
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${"blob:"} || ${key},0))`,
+        );
       // Identity row is created once, then locked so concurrent appends of the
       // same source serialize inside the database.
       await tx.execute(
@@ -542,6 +557,11 @@ export function createSourceStore(db: Database): SourceStoreRecord {
       if (locked.rows.length === 0)
         throw new Error("source identity row missing after upsert");
 
+      const redacted = await tx.execute(
+        sql`select 1 from source_redaction where organization_id=${revision.organizationId} and source_id=${revision.sourceId}`,
+      );
+      if (redacted.rows.length)
+        throw new OutcomeRollback({ kind: "conflict", reason: "revision" });
       // Classify an existing idempotency key BEFORE any new-target validation:
       // a still-authorized caller replaying an accepted envelope must get the
       // original receipt even if the historical author has since left.
@@ -600,6 +620,10 @@ export function createSourceStore(db: Database): SourceStoreRecord {
     },
 
     async findRevision({ organizationId, sourceId, revision }) {
+      const redacted = await db.execute(
+        sql`select 1 from source_redaction where organization_id=${organizationId} and source_id=${sourceId}`,
+      );
+      if (redacted.rows.length) return null;
       const rows = await db
         .select()
         .from(sourceRevision)

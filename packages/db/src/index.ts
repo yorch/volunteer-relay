@@ -22,6 +22,7 @@ export * from "./repositories/follow-through.ts";
 export * from "./repositories/memberships.ts";
 export * from "./repositories/model-budget.ts";
 export * from "./repositories/processing.ts";
+export * from "./repositories/retention.ts";
 export * from "./repositories/sources.ts";
 export * as schema from "./schema/index.ts";
 export * from "./seed-data.ts";

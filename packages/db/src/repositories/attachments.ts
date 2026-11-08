@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { sourceAttachmentIdentity, sourceRevision } from "../schema/index.ts";
 import type { Database } from "../types.ts";
 
@@ -29,6 +29,10 @@ export function createAttachmentMetadataStore(
 ): AttachmentMetadataStoreRecord {
   return {
     async find(organizationId, sourceId, attachmentId) {
+      const redacted = await db.execute(
+        sql`select 1 from source_redaction where organization_id=${organizationId} and source_id=${sourceId}`,
+      );
+      if (redacted.rows.length) return null;
       const rows = await db
         .select({
           storageKey: sourceAttachmentIdentity.storageKey,

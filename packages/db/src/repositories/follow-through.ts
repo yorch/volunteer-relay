@@ -787,7 +787,7 @@ export function createFollowThroughRepository(
         if (!role || context.actor.kind !== "user")
           return err(context, "FORBIDDEN", "Membership required");
         const rows = await db.execute(
-          sql`select envelope,author_membership_id from source_revision where organization_id=${context.organizationId} and channel='telegram' and channel_identity=${channelIdentity} and external_message_id=${externalMessageId} order by revision desc limit 1`,
+          sql`select envelope,author_membership_id from source_revision where organization_id=${context.organizationId} and channel='telegram' and channel_identity=${channelIdentity} and external_message_id=${externalMessageId} and not exists(select 1 from source_redaction z where z.organization_id=source_revision.organization_id and z.source_id=source_revision.source_id) order by revision desc limit 1`,
         );
         const row = rows.rows[0];
         if (!row) return ok(null);
