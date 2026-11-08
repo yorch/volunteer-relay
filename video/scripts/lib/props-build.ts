@@ -1,8 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
+import { accentCues } from "../../src/lib/accents.ts";
 import { type Cue, cueSchema } from "../../src/lib/captions.ts";
 import { paths } from "../../src/lib/env.ts";
 import type { HackathonVideoProps } from "../../src/lib/props.ts";
+import type { Box } from "../../src/lib/schema.ts";
 import { productScenes, type SceneManifest } from "../../src/lib/schema.ts";
 import type { Timeline } from "../../src/lib/timeline.ts";
 import {
@@ -81,6 +83,7 @@ export function buildRenderProps(input: {
 }): HackathonVideoProps {
   const captureFiles: Record<string, string> = {};
   const captureOrigins: Record<string, "hosted" | "local"> = {};
+  const captureRegions: Record<string, Record<string, Box>> = {};
   for (const scene of productScenes(input.manifest)) {
     const asset = input.captures?.scenes.find(
       (entry) => entry.sceneId === scene.id,
@@ -88,12 +91,22 @@ export function buildRenderProps(input: {
     if (!asset) continue;
     captureFiles[scene.id] = capturePublicPath(scene.id);
     captureOrigins[scene.id] = asset.origin;
+    captureRegions[scene.id] = asset.regions ?? {};
   }
   const narrationFiles: Record<string, string> = {};
   if (input.narration)
     for (const asset of input.narration.scenes)
       narrationFiles[asset.sceneId] = narrationPublicPath(asset.sceneId);
   const cues = cuesForTimeline(input.timeline, readCueSets());
+  const accents = accentCues(
+    input.timeline.scenes.map((scene) => ({
+      startFrame: scene.startFrame,
+      markers:
+        input.captures?.scenes.find((asset) => asset.sceneId === scene.id)
+          ?.markers ?? [],
+    })),
+    input.timeline.fps,
+  );
   return {
     timeline: input.timeline,
     mode: input.mode,
@@ -108,5 +121,10 @@ export function buildRenderProps(input: {
     cues,
     musicFile: null,
     captureOrigins,
+    captureRegions,
+    accents,
+    accentFiles: accents.length
+      ? { click: "audio/click.mp3", confirm: "audio/confirm.mp3" }
+      : null,
   };
 }

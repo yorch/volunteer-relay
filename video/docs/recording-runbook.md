@@ -121,7 +121,7 @@ Holds are narration-aware: after narration exists, a take runs until the measure
 narration plus its tail fits, so the timeline's footage-length guard passes
 without looping anything.
 
-Each take: fresh 1920×1080 context, per-role storage state, readiness marker,
+Each take: fresh 2560×1440 context downscaled to 1920×1080 (the workspace fits without scrolling, so recorded element boxes and clicks stay put), a visible DOM cursor driven by real mouse events, per-role storage state, readiness marker,
 checkpoint assertion (`fixtures/expected-results.json`), scripted staff action,
 post-action checkpoint assertion, hold to the scene minimum, then close. The WebM
 is normalised to H.264 yuv420p 30 fps 1920×1080 and published with its own
@@ -164,7 +164,7 @@ Frame rules: 30 fps, integer boundaries, scene = `max(minSeconds, narration +
 0.6s tail)` rounded up, capped per scene; the programme is rejected above 180 s.
 Captions are stored per scene and rebased for the proof excerpt.
 
-Rendering normalises narration per scene to −16 LUFS and adds a true-peak limiter
+Rendering synthesises two short ffmpeg UI accents (no third-party licence), normalises narration per scene to −16 LUFS and adds a true-peak limiter
 when the gain would exceed −1 dBTP, so no manual gain staging is needed; the
 measured result is reported by `video:validate`.
 

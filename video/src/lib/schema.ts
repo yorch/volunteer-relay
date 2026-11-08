@@ -33,6 +33,27 @@ export const focusSchema = z
   })
   .strict();
 
+export const boxSchema = z
+  .object({
+    x: z.number().min(0).max(1),
+    y: z.number().min(0).max(1),
+    w: z.number().positive().max(1),
+    h: z.number().positive().max(1),
+  })
+  .strict();
+export type Box = z.infer<typeof boxSchema>;
+
+/** Spotlight over a recorded element, timed against the scene. */
+export const annotationSchema = z
+  .object({
+    region: z.string().min(1),
+    atSeconds: z.number().finite().nonnegative(),
+    holdSeconds: durationSeconds,
+    label: z.string().min(1).max(60).nullable(),
+  })
+  .strict();
+export type Annotation = z.infer<typeof annotationSchema>;
+
 export const capturePlanSchema = z
   .object({
     /** Stable checkpoint id proved by an application-state assertion. */
@@ -58,6 +79,7 @@ export const sceneSchema = z
     onScreenDisclosure: z.string().min(1).nullable(),
     capture: capturePlanSchema.nullable(),
     overlays: z.array(overlaySchema).max(6),
+    annotations: z.array(annotationSchema).max(4).default([]),
     focus: z.array(focusSchema).max(4),
     minSeconds: durationSeconds,
     maxSeconds: durationSeconds,

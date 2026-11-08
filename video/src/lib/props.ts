@@ -1,6 +1,7 @@
 import scenesJson from "../../scenes.json";
+import type { AccentCue } from "./accents.ts";
 import { type Cue, cueSchema } from "./captions.ts";
-import { parseSceneManifest } from "./schema.ts";
+import { type Box, parseSceneManifest } from "./schema.ts";
 import { buildTimeline, type Timeline } from "./timeline.ts";
 
 /**
@@ -25,6 +26,11 @@ export interface HackathonVideoProps extends Record<string, unknown> {
   musicFile: string | null;
   /** Shown per product scene so footage origin is never ambiguous. */
   captureOrigins: Record<string, "hosted" | "local">;
+  /** Recorded element boxes per scene, used by spotlight annotations. */
+  captureRegions: Record<string, Record<string, Box>>;
+  /** Sparse UI accents placed on real action markers. */
+  accents: AccentCue[];
+  accentFiles: { click: string; confirm: string } | null;
 }
 
 export function nominalProps(): HackathonVideoProps {
@@ -55,6 +61,9 @@ export function nominalProps(): HackathonVideoProps {
     cues: [],
     musicFile: null,
     captureOrigins: {},
+    captureRegions: {},
+    accents: [],
+    accentFiles: null,
   };
 }
 

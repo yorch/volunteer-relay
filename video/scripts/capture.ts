@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { chromium } from "@playwright/test";
+import { chromium, type Locator } from "@playwright/test";
 import {
   ensureDir,
   gitCommit,
@@ -13,6 +13,7 @@ import {
 import { paths, repoRoot } from "../src/lib/env.ts";
 import { probeMedia } from "../src/lib/probe.ts";
 import { loadExpectedResults, loadScenario } from "../src/lib/scenario.ts";
+import type { Box } from "../src/lib/schema.ts";
 import { productScenes, type Scene } from "../src/lib/schema.ts";
 import { resolveTarget } from "../src/lib/target.ts";
 import { assertTotals, sceneActions } from "./lib/actions.ts";
@@ -26,6 +27,7 @@ import {
 } from "./lib/assets.ts";
 import { loadEverything } from "./lib/script.ts";
 import {
+  installCursor,
   newRecordingContext,
   openPage,
   storageStatePath,
@@ -51,7 +53,7 @@ function normalizeCapture(sceneId: string): ReturnType<typeof probeMedia> {
     "-i",
     raw,
     "-vf",
-    "scale=1920:1080:flags=lanczos,fps=30,setsar=1",
+    "scale=1920:1080:flags=lanczos:force_original_aspect_ratio=decrease,fps=30,setsar=1",
     "-c:v",
     "libx264",
     "-preset",
@@ -118,6 +120,7 @@ async function captureScene(
   };
   let produced: string | null = null;
   let probe: ReturnType<typeof probeMedia>;
+  const regions: Record<string, Box> = {};
   try {
     const context = await newRecordingContext(
       browser,
@@ -126,15 +129,92 @@ async function captureScene(
     );
     const page = await openPage(context, target, scene.capture.route);
     await page.evaluate(() => window.scrollTo(0, 0));
+    await installCursor(page);
     const ready = page.getByText(scene.capture.readyText, { exact: false });
     await ready.first().waitFor({ timeout: 30_000 });
 
+    const viewport = page.viewportSize() ?? { width: 1920, height: 1080 };
+    /** Scroll only when the element's centre is genuinely outside the frame. */
+    const ensureInView = async (locator: Locator) => {
+      let box = await locator.boundingBox().catch(() => null);
+      const inside =
+        box !== null &&
+        box.x + box.width / 2 >= 0 &&
+        box.x + box.width / 2 <= viewport.width &&
+        box.y + box.height / 2 >= 0 &&
+        box.y + box.height / 2 <= viewport.height;
+      if (!inside) {
+        await locator.scrollIntoViewIfNeeded().catch(() => {});
+        box = await locator.boundingBox().catch(() => null);
+      }
+      return box;
+    };
+    const boxFor = async (locator: Locator): Promise<Box | null> => {
+      const visible = await locator
+        .waitFor({ state: "visible", timeout: 5_000 })
+        .then(() => true)
+        .catch(() => false);
+      if (!visible) return null;
+      const box = await ensureInView(locator);
+      if (!box) return null;
+      return {
+        x: box.x / viewport.width,
+        y: box.y / viewport.height,
+        w: box.width / viewport.width,
+        h: box.height / viewport.height,
+      };
+    };
+    const region = async (label: string, locators: Locator | Locator[]) => {
+      const list = Array.isArray(locators) ? locators : [locators];
+      const boxes: Box[] = [];
+      for (const locator of list) {
+        const box = await boxFor(locator);
+        if (box) boxes.push(box);
+      }
+      const first = boxes[0];
+      if (!first) return;
+      const left = Math.max(0, Math.min(...boxes.map((b) => b.x)));
+      const top = Math.max(0, Math.min(...boxes.map((b) => b.y)));
+      const right = Math.min(1, Math.max(...boxes.map((b) => b.x + b.w)));
+      const bottom = Math.min(1, Math.max(...boxes.map((b) => b.y + b.h)));
+      // Elements taller than the viewport clip to the visible area.
+      if (right - left < 0.02 || bottom - top < 0.02) return;
+      regions[label] = { x: left, y: top, w: right - left, h: bottom - top };
+    };
+    const moveTo = async (locator: Locator) => {
+      const box = await ensureInView(locator);
+      if (!box) throw new Error("Cannot move the pointer: element has no box");
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, {
+        steps: 16,
+      });
+      await page.waitForTimeout(140);
+    };
     const actionContext = {
       page,
       target,
       scenario,
       expected,
       mark,
+      region,
+      click: async (locator: Locator) => {
+        await moveTo(locator);
+        await page.mouse.down();
+        await page.waitForTimeout(70);
+        await page.mouse.up();
+      },
+      typeInto: async (locator: Locator, text: string) => {
+        await moveTo(locator);
+        await page.mouse.down();
+        await page.mouse.up();
+        await page.keyboard.press("ControlOrMeta+A");
+        await page.keyboard.type(text, { delay: 42 });
+      },
+      fill: async (locator: Locator, value: string) => {
+        await moveTo(locator);
+        await page.mouse.down();
+        await page.mouse.up();
+        await locator.fill(value);
+      },
     };
     await assertTotals(actionContext, action.startsFrom);
     mark(`checkpoint:${action.startsFrom}`);
@@ -196,6 +276,7 @@ async function captureScene(
     checkpointId: action.startsFrom,
     role: scene.capture.role,
     recordedAt,
+    regions,
     markers,
   };
 }

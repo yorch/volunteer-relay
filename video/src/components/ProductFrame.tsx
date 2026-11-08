@@ -5,6 +5,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
+import { focusCss, focusTransform } from "../lib/focus-transform.ts";
 import type { Focus } from "../lib/schema.ts";
 import { theme, typography } from "../theme.ts";
 
@@ -28,27 +29,8 @@ export function ProductFrame({
 }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const seconds = frame / fps;
-  const active = focus.find(
-    (target) =>
-      seconds >= target.atSeconds &&
-      seconds < target.atSeconds + target.holdSeconds,
-  );
-  let scale = 1;
-  let translateX = 0;
-  let translateY = 0;
-  if (active) {
-    const elapsed = seconds - active.atSeconds;
-    const remaining = active.atSeconds + active.holdSeconds - seconds;
-    const ramp = Math.min(
-      1,
-      Math.max(0, elapsed / 1.2, remaining < 1.2 ? remaining / 1.2 : 1),
-    );
-    const eased = ramp * ramp * (3 - 2 * ramp);
-    scale = 1 + (active.scale - 1) * eased;
-    translateX = (0.5 - active.x) * 100 * active.scale * eased;
-    translateY = (0.5 - active.y) * 100 * active.scale * eased;
-  }
+  const transform = focusTransform(frame / fps, focus);
+  const css = focusCss(transform);
   return (
     <AbsoluteFill style={{ background: theme.ink }}>
       {missing || !captureFile ? (
@@ -68,7 +50,7 @@ export function ProductFrame({
       ) : (
         <AbsoluteFill
           style={{
-            transform: `translate(${translateX}%, ${translateY}%) scale(${scale})`,
+            transform: css,
           }}
         >
           <OffthreadVideo

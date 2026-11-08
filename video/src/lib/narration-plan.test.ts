@@ -11,6 +11,7 @@ const scene = (id: string) =>
     onScreenDisclosure: null,
     capture: null,
     overlays: [],
+    annotations: [],
     focus: [],
     minSeconds: 10,
     maxSeconds: 20,

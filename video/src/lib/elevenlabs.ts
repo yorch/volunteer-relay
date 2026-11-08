@@ -24,7 +24,9 @@ export const narrationVoiceSettings: VoiceSettings = {
   similarity_boost: 0.75,
   style: 0,
   use_speaker_boost: true,
-  speed: 1,
+  // 1.10 lifts the read from ~129 wpm to ~142 wpm without sounding rushed;
+  // eleven_multilingual_v2 supports 0.7–1.2.
+  speed: 1.1,
 };
 
 export interface NarrationRequest {

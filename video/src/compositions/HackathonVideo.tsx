@@ -61,6 +61,25 @@ export function HackathonVideo(props: HackathonVideoProps) {
           </Sequence>
         );
       })}
+      {props.accentFiles
+        ? props.accents.map((cue) => (
+            <Sequence
+              key={`${cue.kind}-${cue.atFrame}`}
+              from={cue.atFrame}
+              durationInFrames={60}
+              layout="none"
+            >
+              <Audio
+                src={staticFile(
+                  cue.kind === "confirm"
+                    ? (props.accentFiles?.confirm ?? "")
+                    : (props.accentFiles?.click ?? ""),
+                )}
+                volume={cue.kind === "confirm" ? 0.22 : 0.16}
+              />
+            </Sequence>
+          ))
+        : null}
       {props.assets.music && props.musicFile ? (
         <Audio src={staticFile(props.musicFile)} loop volume={0.08} />
       ) : null}

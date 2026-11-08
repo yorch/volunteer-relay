@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { writeJson } from "../../src/lib/cli.ts";
 import { paths } from "../../src/lib/env.ts";
+import { boxSchema } from "../../src/lib/schema.ts";
 import { narrationSourceSchema } from "../../src/lib/timeline.ts";
 
 /**
@@ -50,6 +51,8 @@ export const captureAssetSchema = z
     checkpointId: z.string(),
     role: z.string(),
     recordedAt: z.string(),
+    /** Normalised boxes of the elements the scene annotates. */
+    regions: z.record(z.string(), boxSchema).default({}),
     markers: z.array(
       z
         .object({ label: z.string(), atSeconds: z.number().nonnegative() })

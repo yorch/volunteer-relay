@@ -1,17 +1,20 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import type {
   ExpectedResults,
   ObservedTotals,
   RecordingScenario,
 } from "../../src/lib/scenario.ts";
 import { compareTotals } from "../../src/lib/scenario.ts";
+import type { Box } from "../../src/lib/schema.ts";
 import type { CaptureTarget } from "../../src/lib/target.ts";
 import { readTotals } from "./totals.ts";
 
 /**
  * Typed capture actions, one per product scene. Each entry proves the visible
- * state it records and asserts persisted totals; a failed assertion aborts the
- * take instead of rendering a plausible but wrong scene.
+ * state it records, performs the action with a visible pointer and real typing,
+ * records the on-screen regions the composition annotates, and asserts persisted
+ * totals. A failed assertion aborts the take instead of rendering a plausible
+ * but wrong scene.
  */
 
 export interface ActionContext {
@@ -21,12 +24,18 @@ export interface ActionContext {
   expected: ExpectedResults;
   /** Records a timestamped action marker for the capture manifest. */
   mark: (label: string) => void;
+  /** Moves the visible pointer, then clicks. */
+  click: (locator: Locator) => Promise<void>;
+  /** Moves the pointer to the field and types at a human pace. */
+  typeInto: (locator: Locator, text: string) => Promise<void>;
+  /** Clicks the field, then sets a non-text value (dates, selects). */
+  fill: (locator: Locator, value: string) => Promise<void>;
+  /** Records one element (or the union of several) for spotlight annotation. */
+  region: (label: string, locators: Locator | Locator[]) => Promise<void>;
 }
 
 export interface SceneAction {
-  /** Checkpoint the scene begins from. */
   startsFrom: string;
-  /** Checkpoint the scene must establish (or preserve) when it ends. */
   establishes: string | null;
   run: (context: ActionContext) => Promise<void>;
 }
@@ -62,19 +71,25 @@ export async function assertTotals(
   return observed;
 }
 
-async function selectReviewItem(page: Page, text: string): Promise<void> {
-  await page
+async function selectReviewItem(
+  context: ActionContext,
+  text: string,
+): Promise<void> {
+  const item = context.page
     .getByRole("button", { name: new RegExp(text) })
-    .first()
-    .click();
-  await page.getByRole("heading", { name: "Proposed fields" }).waitFor();
+    .first();
+  await context.click(item);
+  await context.page
+    .getByRole("heading", { name: "Proposed fields" })
+    .waitFor();
 }
 
 export const sceneActions: Record<string, SceneAction> = {
   S02: {
     startsFrom: "baseline",
     establishes: null,
-    async run({ page, mark }) {
+    async run(context) {
+      const { page, mark } = context;
       await page.getByRole("heading", { name: "Source inbox" }).waitFor();
       const awaiting = page.getByRole("heading", { name: /Awaiting review/ });
       await awaiting.waitFor();
@@ -84,23 +99,36 @@ export const sceneActions: Record<string, SceneAction> = {
         throw new Error(
           `The review queue count is not the authored baseline: ${text}`,
         );
+      await context.region(
+        "queue",
+        page
+          .getByRole("heading", { name: /Awaiting review/ })
+          .locator("xpath=ancestor::section[1]"),
+      );
+      await context.click(
+        page.locator('input[name="search"], input[type="search"]'),
+      );
+      await page.keyboard.press("Escape");
       mark("queue-verified");
     },
   },
   S03: {
     startsFrom: "baseline",
     establishes: null,
-    async run({ page, mark }) {
+    async run(context) {
+      const { page, mark } = context;
       mark("inbox-ready");
-      await selectReviewItem(page, SHARED_REVIEW_TEXT);
+      await selectReviewItem(context, SHARED_REVIEW_TEXT);
       mark("review-opened");
       const original = page.getByRole("heading", { name: "Original update" });
       await original.waitFor();
       const evidence = page
         .locator("p")
-        .filter({ hasText: "planted seedlings" });
+        .filter({ hasText: "planted seedlings" })
+        .first();
       if ((await evidence.count()) === 0)
         throw new Error("The original update text is not visible");
+
       const durations = page.getByLabel(/Duration in minutes/);
       const count = await durations.count();
       if (count < 2)
@@ -112,7 +140,24 @@ export const sceneActions: Record<string, SceneAction> = {
         if (value !== "60")
           throw new Error(`Proposed duration ${index + 1} is ${value}, not 60`);
       }
+      await context.click(durations.nth(1));
+      await page.keyboard.press("Tab");
       mark("proposal-verified");
+      // Record after the interaction settles, so boxes match the final view.
+      await context.region("evidence", evidence);
+      await context.region("contributions", [
+        durations.nth(0),
+        durations.nth(1),
+      ]);
+      await context.region(
+        "proposal",
+        page
+          .locator("section")
+          .filter({
+            has: page.getByRole("heading", { name: "Proposed fields" }),
+          })
+          .first(),
+      );
     },
   },
   S04: {
@@ -120,26 +165,46 @@ export const sceneActions: Record<string, SceneAction> = {
     establishes: "after-s04",
     async run(context) {
       const { page, mark } = context;
-      await selectReviewItem(page, SHARED_REVIEW_TEXT);
+      await selectReviewItem(context, SHARED_REVIEW_TEXT);
       mark("proposal-open");
-      await page.getByRole("button", { name: "Accept proposal" }).click();
+      const accept = page.getByRole("button", { name: "Accept proposal" });
+      await context.region("accept", accept);
+      await context.click(accept);
       await page.getByText("Proposal accepted.").waitFor();
       mark("accepted");
-      await page.goto(`${context.target.baseUrl}/workspace/activities`, {
-        waitUntil: "domcontentloaded",
-      });
+      // Navigate by clicking the real nav item, but never depend on SPA timing:
+      // if the client route does not settle, load the page directly.
+      await context.click(
+        page.getByRole("link", { name: "Activities" }).first(),
+      );
+      await page
+        .waitForURL(/\/workspace\/activities/, { timeout: 10_000 })
+        .catch(async () => {
+          await page.goto(`${context.target.baseUrl}/workspace/activities`, {
+            waitUntil: "domcontentloaded",
+          });
+        });
       await page
         .getByRole("heading", { name: "Contribution ledger" })
-        .waitFor();
+        .waitFor({ timeout: 20_000 });
       mark("ledger-visible");
+      const rows = page.getByRole("listitem");
+      const rowCount = await rows.count();
+      if (rowCount >= 2)
+        await context.region("ledger-pair", [rows.nth(0), rows.nth(1)]);
+      await context.region(
+        "ledger",
+        page.getByRole("heading", { name: "Contribution ledger" }),
+      );
     },
   },
   S05: {
     startsFrom: "after-s04",
     establishes: "after-s05",
-    async run({ page, mark }) {
+    async run(context) {
+      const { page, mark } = context;
       await page.getByRole("heading", { name: "Source inbox" }).waitFor();
-      await selectReviewItem(page, DUPLICATE_TEXT);
+      await selectReviewItem(context, DUPLICATE_TEXT);
       mark("duplicate-open");
       const unresolved = page.getByRole("heading", {
         name: "Unresolved in original proposal",
@@ -154,11 +219,13 @@ export const sceneActions: Record<string, SceneAction> = {
         throw new Error(
           `The possible-duplicate flag is not visible in the review pane. Saw: ${body.slice(0, 400)}`,
         );
-      await page
-        .getByLabel(/Review reason/)
-        .fill("Duplicate of the approved garden visit.");
-      mark("reason-entered");
-      await page.getByRole("button", { name: "Reject proposal" }).click();
+      await context.region("duplicate", unresolved);
+      const reason = page.getByLabel(/Review reason/);
+      await context.region("reason", reason);
+      await context.typeInto(reason, "Duplicate of the approved garden visit.");
+      mark("reason-typed");
+      const reject = page.getByRole("button", { name: "Reject proposal" });
+      await context.click(reject);
       await page.getByText("Proposal rejected.").waitFor();
       mark("rejected");
     },
@@ -166,26 +233,21 @@ export const sceneActions: Record<string, SceneAction> = {
   S06: {
     startsFrom: "after-s05",
     establishes: "after-s06",
-    async run({ page, target, mark }) {
+    async run(context) {
+      const { page, mark } = context;
       await page.getByRole("heading", { name: "Needs board" }).waitFor();
-      // Anchor on the need's own heading, then its nearest card section: the
-      // outer workspace wrapper also matches a section filter.
       const card = page
         .getByRole("heading", { name: URGENT_NEED })
         .locator("xpath=ancestor::section[1]");
       await card.waitFor();
       mark("needs-board");
+      await context.region("need", card);
 
-      /**
-       * The manage panel collapses whenever the need changes revision, and the
-       * details node is replaced. Toggle until the action select exposes the
-       * action we need; the snapshot refresh lands a beat after the notice.
-       */
       async function selectAction(desired: "assign" | "acknowledge") {
         for (let attempt = 0; attempt < 8; attempt += 1) {
+          const summary = card.locator("details").first().locator("summary");
           const select = card.getByLabel("Action");
-          if (!(await select.isVisible()))
-            await card.locator("details").first().locator("summary").click();
+          if (!(await select.isVisible())) await context.click(summary);
           try {
             await select.waitFor({ state: "visible", timeout: 2_000 });
             const available = await select
@@ -194,16 +256,13 @@ export const sceneActions: Record<string, SceneAction> = {
                 options.map((option) => (option as HTMLOptionElement).value),
               );
             if (available.includes(desired)) {
+              await context.click(select);
               await select.selectOption(desired);
               return;
             }
           } catch {
             // Detached mid-render; retry with the fresh node.
           }
-          await card
-            .getByText("Need updated.")
-            .waitFor({ timeout: 1_000 })
-            .catch(() => {});
         }
         throw new Error(
           `The need's manage panel never exposed the ${desired} action`,
@@ -211,22 +270,30 @@ export const sceneActions: Record<string, SceneAction> = {
       }
 
       await selectAction("assign");
-      await card.getByLabel("Owner").selectOption({ label: "Demo Owner" });
-      await card.getByLabel("Acknowledge by").fill("2026-11-12T17:00");
+      const owner = card.getByLabel("Owner");
+      await context.region("owner", owner);
+      await context.click(owner);
+      await owner.selectOption({ label: "Demo Owner" });
+      const deadline = card.getByLabel("Acknowledge by");
+      await context.fill(deadline, "2026-11-12T17:00");
       mark("assignment-filled");
-      await card.getByRole("button", { name: "Update need" }).click();
+      await context.click(card.getByRole("button", { name: "Update need" }));
       await page.getByText("Need updated.").waitFor();
       await card.getByText("assigned", { exact: true }).waitFor();
       mark("assigned");
 
       await selectAction("acknowledge");
-      await card.getByRole("button", { name: "Update need" }).click();
+      await context.click(card.getByRole("button", { name: "Update need" }));
       await page.getByText("Need updated.").waitFor();
       await card.getByText("acknowledged", { exact: true }).waitFor();
       mark("acknowledged");
+      await context.region(
+        "status",
+        card.getByText("acknowledged", { exact: true }),
+      );
 
       const workspace = await page.request.get(
-        `${target.baseUrl}/api/product/workspace`,
+        `${context.target.baseUrl}/api/product/workspace`,
         { headers: { accept: "application/json" } },
       );
       const body = (await workspace.json()) as {
@@ -245,17 +312,36 @@ export const sceneActions: Record<string, SceneAction> = {
   S07: {
     startsFrom: "after-s06",
     establishes: null,
-    async run({ page, scenario, mark }) {
+    async run(context) {
+      const { page, scenario, mark } = context;
       await page.getByRole("heading", { name: "Summary" }).waitFor();
-      await page.getByLabel("From date").fill(scenario.dateWindow.from);
-      await page.getByLabel("To date").fill(scenario.dateWindow.to);
-      await page.getByRole("button", { name: "Apply filters" }).click();
+      const from = page.getByLabel("From date");
+      await context.fill(from, scenario.dateWindow.from);
+      const to = page.getByLabel("To date");
+      await context.fill(to, scenario.dateWindow.to);
+      const apply = page.getByRole("button", { name: "Apply filters" });
+      await context.click(apply);
       await page.getByRole("heading", { name: "Approved hours" }).waitFor();
       mark("report-filtered");
+      await context.region("filter", page.locator("section").first());
       const minutes = page.getByRole("row", { name: /Approved minutes/ });
       const text = (await minutes.textContent()) ?? "";
       if (!/300/.test(text))
         throw new Error(`Approved minutes should be 300, saw: ${text}`);
+      await context.region("metrics", [
+        page
+          .getByRole("heading", { name: "Approved hours" })
+          .locator("xpath=ancestor::section[1]"),
+        page
+          .getByRole("heading", { name: "Pending contributions" })
+          .locator("xpath=ancestor::section[1]"),
+      ]);
+      await context.region(
+        "table",
+        page
+          .getByRole("heading", { name: "At a glance" })
+          .locator("xpath=ancestor::section[1]"),
+      );
       const pending = page.getByRole("heading", {
         name: "Pending contributions",
       });
@@ -264,3 +350,5 @@ export const sceneActions: Record<string, SceneAction> = {
     },
   },
 };
+
+export type RegionMap = Record<string, Box>;

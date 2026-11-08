@@ -5,10 +5,10 @@
   "captureOrigin": "local",
   "manifestScenes": 8,
   "output": "/Users/yorch/code/volunteer-relay/video/output/final.mp4",
-  "bytes": 14320386,
+  "bytes": 25545630,
   "measured": {
     "path": "/Users/yorch/code/volunteer-relay/video/output/final.mp4",
-    "durationSeconds": 176.2,
+    "durationSeconds": 157.3,
     "width": 1920,
     "height": 1080,
     "fps": 30,
@@ -17,8 +17,8 @@
     "hasAudio": true
   },
   "loudness": {
-    "integratedLufs": -16.5,
+    "integratedLufs": -16.4,
     "truePeakDb": -4
   },
-  "renderedAt": "2026-11-08T18:43:49.009Z"
+  "renderedAt": "2026-11-08T19:33:29.969Z"
 }

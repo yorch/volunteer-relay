@@ -21,15 +21,16 @@
         }
       ],
       "focus": [],
-      "minSeconds": 18,
-      "maxSeconds": 26
+      "minSeconds": 16,
+      "maxSeconds": 26,
+      "annotations": []
     },
     {
       "id": "S02",
       "title": "Introduce the product",
       "kind": "product",
       "narration": "This is the problem behind challenge five: coordinators rebuild their week from chats, texts and photos — forty volunteers, four hours a week, by hand. Volunteer Relay turns those updates into traceable records, and needs someone owns. Here is the coordinator's inbox, with review work waiting.",
-      "onScreenDisclosure": "Synthetic demo data",
+      "onScreenDisclosure": null,
       "capture": {
         "checkpointId": "baseline",
         "role": "coordinator",
@@ -45,22 +46,30 @@
       ],
       "focus": [
         {
-          "x": 0.5,
+          "x": 0.38,
           "y": 0.45,
+          "scale": 1.05,
+          "atSeconds": 1,
+          "holdSeconds": 9
+        },
+        {
+          "x": 0.6,
+          "y": 0.42,
           "scale": 1.04,
-          "atSeconds": 6,
-          "holdSeconds": 14
+          "atSeconds": 12,
+          "holdSeconds": 9
         }
       ],
-      "minSeconds": 18,
-      "maxSeconds": 26
+      "minSeconds": 20,
+      "maxSeconds": 26,
+      "annotations": []
     },
     {
       "id": "S03",
       "title": "One everyday update",
       "kind": "product",
       "narration": "Volunteers report in their own words. This update describes one shared garden visit, two volunteers, and the time each of them gave. Relay proposes an activity and two contributions, and keeps every proposed field tied to the original message. Nothing is approved until staff decide.",
-      "onScreenDisclosure": "Authored demo proposal · no live model call",
+      "onScreenDisclosure": "Prepared demo proposal",
       "capture": {
         "checkpointId": "baseline",
         "role": "coordinator",
@@ -76,22 +85,30 @@
       ],
       "focus": [
         {
-          "x": 0.5,
+          "x": 0.3,
+          "y": 0.42,
+          "scale": 1.06,
+          "atSeconds": 1,
+          "holdSeconds": 8
+        },
+        {
+          "x": 0.76,
           "y": 0.55,
-          "scale": 1.05,
-          "atSeconds": 8,
-          "holdSeconds": 16
+          "scale": 1.07,
+          "atSeconds": 10,
+          "holdSeconds": 9
         }
       ],
-      "minSeconds": 22,
-      "maxSeconds": 32
+      "minSeconds": 18,
+      "maxSeconds": 32,
+      "annotations": []
     },
     {
       "id": "S04",
       "title": "Inspect and approve",
       "kind": "product",
       "narration": "One message holds a visit for two people. One shared hour means one visit and two volunteer-hours, so approving it records two separate contributions of sixty minutes each. Staff can inspect the evidence first, and anything missing or unresolved stays visible instead of being guessed. Nothing is guessed.",
-      "onScreenDisclosure": "Synthetic demo data",
+      "onScreenDisclosure": null,
       "capture": {
         "checkpointId": "baseline",
         "role": "coordinator",
@@ -107,22 +124,30 @@
       ],
       "focus": [
         {
+          "x": 0.55,
+          "y": 0.45,
+          "scale": 1.04,
+          "atSeconds": 1,
+          "holdSeconds": 8
+        },
+        {
           "x": 0.5,
-          "y": 0.5,
-          "scale": 1.03,
-          "atSeconds": 14,
-          "holdSeconds": 10
+          "y": 0.55,
+          "scale": 1.06,
+          "atSeconds": 11,
+          "holdSeconds": 9
         }
       ],
-      "minSeconds": 22,
-      "maxSeconds": 32
+      "minSeconds": 18,
+      "maxSeconds": 32,
+      "annotations": []
     },
     {
       "id": "S05",
       "title": "Duplicate report",
       "kind": "product",
       "narration": "A later update describes the same visit. Counting every message would inflate the totals, so Relay raises the possible duplicate for staff review. Rejecting it leaves the approved ledger unchanged, and the decision stays attached to its source.",
-      "onScreenDisclosure": "Synthetic demo data",
+      "onScreenDisclosure": null,
       "capture": {
         "checkpointId": "after-s04",
         "role": "coordinator",
@@ -138,22 +163,30 @@
       ],
       "focus": [
         {
-          "x": 0.5,
-          "y": 0.6,
-          "scale": 1.06,
-          "atSeconds": 4,
-          "holdSeconds": 14
+          "x": 0.74,
+          "y": 0.42,
+          "scale": 1.05,
+          "atSeconds": 1,
+          "holdSeconds": 9
+        },
+        {
+          "x": 0.72,
+          "y": 0.8,
+          "scale": 1.07,
+          "atSeconds": 11,
+          "holdSeconds": 8
         }
       ],
-      "minSeconds": 20,
-      "maxSeconds": 28
+      "minSeconds": 15,
+      "maxSeconds": 28,
+      "annotations": []
     },
     {
       "id": "S06",
       "title": "Ownership and acknowledgment",
       "kind": "product",
       "narration": "An urgent need should never wait on a buried message. Staff assign an owner, set an acknowledgment deadline, and later record the outcome. If acknowledgment stalls, the worker escalates at the deadline. Delivery is not acknowledgment, and the board shows what still needs attention. Acknowledgment is a person, not a delivery receipt.",
-      "onScreenDisclosure": "Synthetic demo data",
+      "onScreenDisclosure": null,
       "capture": {
         "checkpointId": "after-s05",
         "role": "owner",
@@ -169,22 +202,30 @@
       ],
       "focus": [
         {
-          "x": 0.5,
-          "y": 0.4,
-          "scale": 1.04,
-          "atSeconds": 10,
-          "holdSeconds": 12
+          "x": 0.45,
+          "y": 0.45,
+          "scale": 1.05,
+          "atSeconds": 1,
+          "holdSeconds": 10
+        },
+        {
+          "x": 0.45,
+          "y": 0.62,
+          "scale": 1.06,
+          "atSeconds": 13,
+          "holdSeconds": 9
         }
       ],
       "minSeconds": 22,
-      "maxSeconds": 32
+      "maxSeconds": 32,
+      "annotations": []
     },
     {
       "id": "S07",
       "title": "Report with evidence",
       "kind": "product",
       "narration": "At the end of the week the report comes from the same records the team used to do its work. Approved hours, contributions, open needs and pending items are counted consistently, and unknown time stays unknown rather than becoming zero. Every decision is kept in an audit history with its source, so report and work share one source.",
-      "onScreenDisclosure": "Synthetic demo data",
+      "onScreenDisclosure": null,
       "capture": {
         "checkpointId": "after-s06",
         "role": "coordinator",
@@ -200,27 +241,36 @@
       ],
       "focus": [
         {
+          "x": 0.45,
+          "y": 0.4,
+          "scale": 1.04,
+          "atSeconds": 1,
+          "holdSeconds": 9
+        },
+        {
           "x": 0.5,
-          "y": 0.5,
-          "scale": 1.03,
+          "y": 0.68,
+          "scale": 1.05,
           "atSeconds": 12,
-          "holdSeconds": 12
+          "holdSeconds": 9
         }
       ],
-      "minSeconds": 22,
-      "maxSeconds": 30
+      "minSeconds": 20,
+      "maxSeconds": 30,
+      "annotations": []
     },
     {
       "id": "S08",
       "title": "Close",
       "kind": "graphic",
       "narration": "Volunteer Relay. Every hour counted, every need connected. Built for nonprofit teams, with fictional demo data and an open-source implementation. The repository holds the code, the plan and the recording notes.",
-      "onScreenDisclosure": "Fictional demo data · MIT licensed · AI narration",
+      "onScreenDisclosure": "AI narration · MIT licensed",
       "capture": null,
       "overlays": [],
       "focus": [],
-      "minSeconds": 16,
-      "maxSeconds": 24
+      "minSeconds": 15,
+      "maxSeconds": 24,
+      "annotations": []
     }
   ]
 }

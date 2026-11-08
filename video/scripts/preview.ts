@@ -4,6 +4,7 @@ import { log, requireNode26, run, writeJson } from "../src/lib/cli.ts";
 import { paths, videoRoot } from "../src/lib/env.ts";
 import { parseSceneManifest } from "../src/lib/schema.ts";
 import { parseTimeline } from "../src/lib/timeline.ts";
+import { ensureAccentAudio } from "./lib/accents.ts";
 import { readCaptureManifest, readNarrationManifest } from "./lib/assets.ts";
 import { mixNarration } from "./lib/audio-mix.ts";
 import { resolveBrowserExecutable } from "./lib/browser.ts";
@@ -37,6 +38,7 @@ function main(): void {
     narration,
     mode: "full",
   });
+  ensureAccentAudio();
   const mix = narration ? mixNarration(narration) : null;
   if (mix) {
     props.narrationFiles = mix.files;

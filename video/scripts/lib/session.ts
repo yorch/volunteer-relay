@@ -205,14 +205,56 @@ export async function newRecordingContext(
 ): Promise<BrowserContext> {
   const storageState = storageStatePath(role);
   assertOriginAllowed(target.baseUrl, target.allowedOrigin);
+  // Capture larger than delivery so a full workspace fits without scrolling,
+  // then downscale to 1920x1080 in normalisation. CSS zoom was tried and broke
+  // fixed-position chrome; a bigger viewport keeps the layout faithful.
   const context = await browser.newContext({
-    viewport: { width: 1920, height: 1080 },
+    viewport: { width: 2560, height: 1440 },
     deviceScaleFactor: 1,
     storageState,
     ignoreHTTPSErrors: false,
-    recordVideo: { dir: paths.captures, size: { width: 1920, height: 1080 } },
+    recordVideo: { dir: paths.captures, size: { width: 2560, height: 1440 } },
   });
   return context;
+}
+
+/**
+ * Visible pointer for captured footage. Playwright's headless mouse has no OS
+ * cursor, so a DOM overlay follows the real mouse events we dispatch. It is a
+ * presentational overlay tied to genuine actions, never a fake click.
+ */
+export async function installCursor(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    if (document.getElementById("__relay_cursor")) return;
+    const style = document.createElement("style");
+    style.textContent = `
+      #__relay_cursor{position:fixed;z-index:2147483647;width:28px;height:28px;border-radius:50%;
+        background:rgba(255,255,255,.96);border:2px solid #174f42;box-shadow:0 2px 8px rgba(0,0,0,.35);
+        left:-40px;top:-40px;pointer-events:none;transform:translate(-50%,-50%);transition:opacity .2s}
+      #__relay_ripple{position:fixed;z-index:2147483646;width:20px;height:20px;border-radius:50%;
+        background:rgba(23,108,87,.35);opacity:0;pointer-events:none;transform:translate(-50%,-50%)}`;
+    document.head.append(style);
+    const cursor = document.createElement("div");
+    cursor.id = "__relay_cursor";
+    const ripple = document.createElement("div");
+    ripple.id = "__relay_ripple";
+    document.body.append(ripple, cursor);
+    document.addEventListener("mousemove", (event) => {
+      cursor.style.left = `${event.clientX}px`;
+      cursor.style.top = `${event.clientY}px`;
+    });
+    document.addEventListener("mousedown", (event) => {
+      ripple.style.left = `${event.clientX}px`;
+      ripple.style.top = `${event.clientY}px`;
+      ripple.animate(
+        [
+          { opacity: 0.9, width: "14px", height: "14px" },
+          { opacity: 0, width: "72px", height: "72px" },
+        ],
+        { duration: 420, easing: "ease-out" },
+      );
+    });
+  });
 }
 
 export async function openPage(
@@ -225,5 +267,7 @@ export async function openPage(
   assertOriginAllowed(url, target.allowedOrigin);
   await page.goto(url, { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle").catch(() => {});
+  await page.addStyleTag({ content: "*{transition:none!important}" });
+  await page.waitForTimeout(150);
   return page;
 }

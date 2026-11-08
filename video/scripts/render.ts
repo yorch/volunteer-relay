@@ -18,6 +18,7 @@ import {
   subsetTimeline,
   type Timeline,
 } from "../src/lib/timeline.ts";
+import { ensureAccentAudio } from "./lib/accents.ts";
 import { readCaptureManifest, readNarrationManifest } from "./lib/assets.ts";
 import { mixNarration } from "./lib/audio-mix.ts";
 import { resolveBrowserExecutable } from "./lib/browser.ts";
@@ -146,6 +147,7 @@ async function main(): Promise<void> {
     narration,
     mode,
   });
+  ensureAccentAudio();
   const mix = narration ? mixNarration(narration) : null;
   if (mix) {
     props.narrationFiles = mix.files;
