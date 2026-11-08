@@ -39,7 +39,13 @@ export function createEmailVerification(
           token,
         });
       } catch {
-        // Recipient-specific delivery failure cannot enumerate accounts.
+        // Recipient-specific delivery failure cannot enumerate accounts, so the
+        // caller still sees success. Leave an operator-visible trace that says
+        // only that delivery failed: no address, no token, no driver detail.
+        // The error object is deliberately not inspected — `name` and `message`
+        // are mutable transport strings, not a trusted category. The pending row
+        // survives, so /verify-email can send a fresh link.
+        console.warn("auth.verification.delivery_failed");
       }
     },
     async confirm(token: string): Promise<boolean> {

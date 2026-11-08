@@ -218,16 +218,34 @@ export function createAuthHttpHandlers({
         call,
       ),
     ),
-    signUp: mutation(authSignUpCommandSchema, (input, call) =>
-      sdk(
+    signUp: mutation(authSignUpCommandSchema, async (input, call) => {
+      const created = await sdk(
         auth.api.signUpEmail({
           body: input,
           headers: call.request.headers,
           asResponse: true,
         }),
         call,
-      ),
-    ),
+      );
+      if (!created.ok) return created;
+      // The account exists whether or not this send succeeds, so the failure is
+      // never surfaced and never turns a created account into a failed sign-up:
+      // the recipient can request a fresh link at /verify-email. Without this
+      // call nothing is sent at all, because the SDK has no sendOnSignUp wiring.
+      const verification = await sessions.requestEmailVerification({
+        email: input.email,
+        ...helper(call),
+      });
+      // A missing mail callback and a failed token insert both return here and
+      // never reach the delivery warning, which would leave an account with no
+      // verification row and no operator signal — the exact symptom that made
+      // this bug hard to diagnose. `code` is a closed union, not transport text.
+      if (!verification.ok)
+        console.warn("auth.signup.verification_unavailable", {
+          code: verification.error.code,
+        });
+      return created;
+    }),
     signOut: mutation(
       {
         safeParse: (v: unknown) =>
