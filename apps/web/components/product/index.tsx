@@ -566,42 +566,48 @@ function Volunteer({
       <span className={styles.eyebrow}>Your volunteer workspace</span>
       <h1>How did you help today?</h1>
       <p>Share an update with your team.</p>
-      <Card>
-        <form onSubmit={submit}>
-          <label htmlFor="update">Your update</label>
-          <textarea
-            id="update"
-            required
-            maxLength={20000}
-            value={text}
-            onChange={(e) => {
-              setText(e.target.value);
-              photoKey.current = null;
-            }}
-            rows={6}
-            placeholder="Tell your team what you did, when it happened, and how long you spent."
-          />
-          <label htmlFor="photo">
-            Photo (optional; PNG, JPEG or WebP, up to 10 MB)
-          </label>
-          <input
-            id="photo"
-            ref={photoInput}
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            onChange={(e) => {
-              setPhoto(e.target.files?.[0] ?? null);
-              photoKey.current = null;
-              setPhotoError("");
-            }}
-          />
-          {photoError && <p role="alert">{photoError}</p>}
-          <button disabled={pending} type="submit">
-            {pending ? "Sending…" : "Send update"}
-          </button>
-        </form>
-        {receipt && <p role="status">{receipt}</p>}
-      </Card>
+      <div className={styles.volunteerForm}>
+        <Card>
+          <form onSubmit={submit}>
+            <label htmlFor="update">Your update</label>
+            <textarea
+              id="update"
+              required
+              maxLength={20000}
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value);
+                photoKey.current = null;
+              }}
+              rows={6}
+              placeholder="Tell your team what you did, when it happened, and how long you spent."
+            />
+            <label htmlFor="photo">
+              Photo (optional; PNG, JPEG or WebP, up to 10 MB)
+            </label>
+            <input
+              id="photo"
+              ref={photoInput}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(e) => {
+                setPhoto(e.target.files?.[0] ?? null);
+                photoKey.current = null;
+                setPhotoError("");
+              }}
+            />
+            {photoError && <p role="alert">{photoError}</p>}
+            <button disabled={pending} type="submit">
+              {pending ? "Sending…" : "Send update"}
+            </button>
+          </form>
+          {receipt && (
+            <p className={styles.notice} role="status">
+              {receipt}
+            </p>
+          )}
+        </Card>
+      </div>
       <Card>
         <h2>Your updates</h2>
         {snapshot.sources.length ? (
@@ -1984,55 +1990,89 @@ function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
       </p>
       <Card>
         <form onSubmit={previewImport} onChange={invalidate}>
-          <label>
-            Format
-            <select
-              value={format}
-              onChange={(e) =>
-                setFormat(e.target.value as ImportDraft["format"])
-              }
-            >
-              <option value="csv">CSV</option>
-              <option value="json">JSON</option>
-              <option value="whatsapp">WhatsApp</option>
-            </select>
-          </label>
-          <label>
-            Text file (JSON, CSV or TXT, up to 5 MB)
-            <input
-              type="file"
-              accept=".json,.csv,.txt,application/json,text/csv,text/plain"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                if (
-                  file.size > 5 * 1024 * 1024 ||
-                  !/\.(json|csv|txt)$/i.test(file.name)
-                ) {
-                  setError("Choose a JSON, CSV or TXT file up to 5 MB.");
-                  return;
+          <div className={styles.importGrid}>
+            <label>
+              Format
+              <select
+                value={format}
+                onChange={(e) =>
+                  setFormat(e.target.value as ImportDraft["format"])
                 }
-                setReading(true);
-                try {
-                  setText(await file.text());
-                  setError("");
-                } catch {
-                  setError("Could not read the selected file.");
-                } finally {
-                  setReading(false);
+              >
+                <option value="csv">CSV</option>
+                <option value="json">JSON</option>
+                <option value="whatsapp">WhatsApp</option>
+              </select>
+            </label>
+            <label>
+              Text file (JSON, CSV or TXT, up to 5 MB)
+              <input
+                type="file"
+                accept=".json,.csv,.txt,application/json,text/csv,text/plain"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (
+                    file.size > 5 * 1024 * 1024 ||
+                    !/\.(json|csv|txt)$/i.test(file.name)
+                  ) {
+                    setError("Choose a JSON, CSV or TXT file up to 5 MB.");
+                    return;
+                  }
+                  setReading(true);
+                  try {
+                    setText(await file.text());
+                    setError("");
+                  } catch {
+                    setError("Could not read the selected file.");
+                  } finally {
+                    setReading(false);
+                  }
+                }}
+              />
+            </label>
+            <label>
+              Photos (up to 10 PNG, JPEG or WebP files, each up to 10 MB)
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                multiple
+                onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+              />
+            </label>
+            <label>
+              Import text
+              <textarea
+                required
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                rows={8}
+              />
+            </label>
+            <label>
+              Date format
+              <select
+                value={dateFormat}
+                onChange={(e) =>
+                  setDateFormat(e.target.value as ImportDraft["dateFormat"])
                 }
-              }}
-            />
-          </label>
-          <label>
-            Photos (up to 10 PNG, JPEG or WebP files, each up to 10 MB)
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              multiple
-              onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-            />
-          </label>
+              >
+                <option>ISO</option>
+                <option>YYYY-MM-DD</option>
+                <option>MM/DD/YYYY</option>
+                <option>DD/MM/YYYY</option>
+              </select>
+            </label>
+            <label>
+              Timezone
+              <input
+                required
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+              />
+            </label>
+          </div>
+          <h2>Match authors and photos</h2>
           <fieldset className={styles.mapping}>
             <legend>Link photos to updates</legend>
             <p>
@@ -2098,37 +2138,6 @@ function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
               Add photo link
             </button>
           </fieldset>
-          <label>
-            Import text
-            <textarea
-              required
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              rows={8}
-            />
-          </label>
-          <label>
-            Date format
-            <select
-              value={dateFormat}
-              onChange={(e) =>
-                setDateFormat(e.target.value as ImportDraft["dateFormat"])
-              }
-            >
-              <option>ISO</option>
-              <option>YYYY-MM-DD</option>
-              <option>MM/DD/YYYY</option>
-              <option>DD/MM/YYYY</option>
-            </select>
-          </label>
-          <label>
-            Timezone
-            <input
-              required
-              value={timezone}
-              onChange={(e) => setTimezone(e.target.value)}
-            />
-          </label>
           <fieldset className={styles.mapping}>
             <legend>Match authors to volunteers</legend>
             <p>
@@ -2367,62 +2376,83 @@ function Summary({ snapshot }: { snapshot: WorkspaceSnapshot }) {
         <p aria-live="polite">Loading report…</p>
       ) : report && s ? (
         <>
-          <p>Timezone: {report.timezone}</p>
-          <a href={`/api/product/reports.csv${query ? `?${query}` : ""}`}>
-            Download aggregate CSV
-          </a>
+          <div className={styles.sectionHeading}>
+            <p>Timezone: {report.timezone}</p>
+            <a href={`/api/product/reports.csv${query ? `?${query}` : ""}`}>
+              Download aggregate CSV
+            </a>
+          </div>
           <div className={styles.metrics}>
             <Card>
-              <h2>Approved minutes</h2>
-              <p>{s.approvedMinutes}</p>
-            </Card>
-            <Card>
               <h2>Approved hours</h2>
-              <p>{report.approvedHours}</p>
-            </Card>
-            <Card>
-              <h2>Approved contributions</h2>
-              <p>{s.approvedContributions}</p>
+              <p className={styles.metricValue}>{report.approvedHours}</p>
+              <p>Recorded time</p>
             </Card>
             <Card>
               <h2>Activities with approved contributions</h2>
-              <p>{s.activitiesWithApprovedContributions}</p>
+              <p className={styles.metricValue}>
+                {s.activitiesWithApprovedContributions}
+              </p>
+              <p>Activities in the ledger</p>
+            </Card>
+            <Card>
+              <h2>Open needs</h2>
+              <p className={styles.metricValue}>{report.openNeeds}</p>
+              <p>{report.resolvedNeeds} resolved</p>
             </Card>
             <Card>
               <h2>Pending contributions</h2>
-              <p>{s.pendingContributions}</p>
-              <p>
-                {s.pendingUnknownDuration} with unknown duration ·{" "}
-                {s.pendingUnresolvedVolunteer} with unresolved volunteer
-              </p>
-            </Card>
-            <Card>
-              <h2>Needs</h2>
-              <p>
-                {report.openNeeds} open · {report.resolvedNeeds} resolved
-              </p>
-            </Card>
-            <Card>
-              <h2>Average acknowledgment time</h2>
-              <p>
-                {report.averageAcknowledgmentMinutes === null
-                  ? "Unknown"
-                  : duration(report.averageAcknowledgmentMinutes)}
-              </p>
-            </Card>
-            <Card>
-              <h2>Average resolution time</h2>
-              <p>
-                {report.averageResolutionMinutes == null
-                  ? "Unknown"
-                  : duration(report.averageResolutionMinutes)}
-              </p>
-            </Card>
-            <Card>
-              <h2>Unknown dates excluded</h2>
-              <p>{report.excludedUnknownDate}</p>
+              <p className={styles.metricValue}>{s.pendingContributions}</p>
+              <p>Awaiting complete information</p>
             </Card>
           </div>
+          <Card>
+            <div className={styles.sectionHeading}>
+              <div>
+                <span className={styles.eyebrow}>Report details</span>
+                <h2>At a glance</h2>
+              </div>
+              <span>Approved ledger and needs</span>
+            </div>
+            <table className={styles.reportTable}>
+              <tbody>
+                <tr>
+                  <th scope="row">Approved minutes</th>
+                  <td>{s.approvedMinutes}</td>
+                </tr>
+                <tr>
+                  <th scope="row">Approved contributions</th>
+                  <td>{s.approvedContributions}</td>
+                </tr>
+                <tr>
+                  <th scope="row">Pending with unknown duration</th>
+                  <td>{s.pendingUnknownDuration}</td>
+                </tr>
+                <tr>
+                  <th scope="row">Pending with unresolved volunteer</th>
+                  <td>{s.pendingUnresolvedVolunteer}</td>
+                </tr>
+                <tr>
+                  <th scope="row">Needs</th>
+                  <td>
+                    {report.openNeeds} open · {report.resolvedNeeds} resolved
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Average acknowledgment time</th>
+                  <td>{duration(report.averageAcknowledgmentMinutes)}</td>
+                </tr>
+                <tr>
+                  <th scope="row">Average resolution time</th>
+                  <td>{duration(report.averageResolutionMinutes ?? null)}</td>
+                </tr>
+                <tr>
+                  <th scope="row">Unknown dates excluded</th>
+                  <td>{report.excludedUnknownDate}</td>
+                </tr>
+              </tbody>
+            </table>
+          </Card>
         </>
       ) : null}
     </>

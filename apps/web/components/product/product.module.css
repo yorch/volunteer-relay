@@ -489,3 +489,55 @@
   font-size: 0.75rem;
   overflow-wrap: anywhere;
 }
+.reportTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+  font-size: 0.9rem;
+}
+.reportTable th,
+.reportTable td {
+  text-align: left;
+  border-top: 1px solid #e7eee8;
+  padding: 0.7rem 0.3rem;
+}
+.reportTable th {
+  font-weight: 600;
+  color: #486355;
+}
+.reportTable td {
+  text-align: right;
+  font-weight: 700;
+  color: #203e30;
+}
+.volunteerForm {
+  max-width: 45rem;
+}
+.volunteerForm textarea {
+  min-height: 10rem;
+}
+.volunteerForm button {
+  justify-self: start;
+  min-width: 10rem;
+}
+@media (max-width: 760px) {
+  .volunteerForm button {
+    width: 100%;
+  }
+  .reportTable th {
+    width: 65%;
+  }
+}
+.importGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+.importGrid label:has(textarea) {
+  grid-column: 1 / -1;
+}
+@media (max-width: 760px) {
+  .importGrid {
+    grid-template-columns: 1fr;
+  }
+}
