@@ -84,6 +84,9 @@ services:
     networks: [private, egress, traefik]
     # Routing is declared here and nowhere else. The host Traefik already owns
     # 80/443, TLS and certificate state, so this stack publishes no ports.
+    # Compression is deliberately per-app rather than a host-global middleware:
+    # the manifest then states everything about how this app is served, and a
+    # change on the shared proxy cannot silently alter its responses.
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik"

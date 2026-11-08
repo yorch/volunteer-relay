@@ -4,6 +4,8 @@ This profile is a deployment starting point, not proof of production readiness. 
 
 ## Provision and start
 
+For a first deployment onto a host that already runs Traefik, follow the [first-deployment preflight](deployment-preflight.md) instead: it orders these steps, adds pass/fail criteria and covers rollback. The steps below are the reference procedure it sequences.
+
 1. Provision the host with Docker Engine and Compose v2, persistent encrypted storage, monitoring, backups and restricted administrative access. That host must already run Traefik with an external network named `traefik`, an entrypoint named `websecure` and a certificate resolver named `webcert`; this stack terminates no TLS and owns no certificate state. Set DNS for a domain you control to that host. Keep the environment file, Docker socket, volumes and backups private.
 2. Deploy the images the release workflow already published to GHCR for the reviewed commit: `ghcr.io/<owner>/volunteer-relay-web` and `ghcr.io/<owner>/volunteer-relay-worker`. The `publish` job builds both targets from `infra/Dockerfile` (Node 26.11.1, Bun 1.4.1) for linux/amd64 and linux/arm64, and runs only after every gate passes on `main` or a `v*` tag. It tags `latest` and the branch name on the default branch, `sha-<commit>` for every published commit, and `X.Y.Z` / `X.Y` for release tags.
 
