@@ -1,0 +1,127 @@
+.standalone {
+  max-width: 48rem;
+  margin: 4rem auto;
+  padding: 1rem;
+  font-family: sans-serif;
+}
+.card {
+  background: #fff;
+  border: 1px solid #c9d6cf;
+  border-radius: 1rem;
+  padding: 1.25rem;
+  margin: 1rem 0;
+  min-width: 0;
+}
+.card h2,
+.card h3 {
+  margin-top: 0;
+}
+.card form {
+  display: grid;
+  gap: 0.8rem;
+}
+.card label {
+  display: grid;
+  gap: 0.3rem;
+  font-weight: 600;
+}
+.card input:not([type="checkbox"]),
+.card textarea,
+.card select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #687d73;
+  border-radius: 0.4rem;
+  padding: 0.65rem;
+  font: inherit;
+  background: white;
+  color: #17382f;
+}
+.card button,
+.standalone button {
+  border: 1px solid #174f42;
+  border-radius: 0.5rem;
+  background: #174f42;
+  color: white;
+  padding: 0.7rem 1rem;
+  font: inherit;
+  cursor: pointer;
+}
+.card button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.card button:focus-visible,
+.card input:focus-visible,
+.card select:focus-visible,
+.card textarea:focus-visible {
+  outline: 3px solid #bb7900;
+  outline-offset: 2px;
+}
+.columns {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1fr) minmax(0, 2fr);
+  gap: 1rem;
+  align-items: start;
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 1rem;
+}
+.list {
+  padding: 0;
+  list-style: none;
+}
+.list li {
+  margin: 0.5rem 0;
+}
+.list button {
+  text-align: left;
+  width: 100%;
+}
+.list button[aria-pressed="true"] {
+  background: #d6e8dd;
+  color: #17382f;
+}
+.item {
+  border-top: 1px solid #c9d6cf;
+  padding: 1rem 0;
+  overflow-wrap: anywhere;
+}
+.item dl div {
+  display: flex;
+  gap: 0.5rem;
+}
+.item dt {
+  font-weight: 600;
+}
+.item dd {
+  margin: 0;
+}
+.source {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+.error,
+.notice {
+  padding: 0.8rem;
+  border-radius: 0.5rem;
+  background: #fbe6df;
+  color: #702d1c;
+}
+.notice {
+  background: #dcefe2;
+  color: #174f42;
+}
+@media (max-width: 760px) {
+  .columns {
+    grid-template-columns: 1fr;
+  }
+}
