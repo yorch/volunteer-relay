@@ -304,7 +304,7 @@ export function SignUpForm({
     <CommandForm
       title="Create an account"
       action="Create account"
-      success="Account created. Organization membership requires an invitation."
+      success="Account created. Check your email for a verification link — you can request a new one on the verification page."
       submit={(data) =>
         onSignUp({
           name: value(data, "name"),
