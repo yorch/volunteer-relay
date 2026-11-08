@@ -1,6 +1,6 @@
 # Milestone status
 
-Updated 2026-11-07. Coordinator A owns this file. B/P1-06 bounded authentication lifecycle/session-tenant slice is accepted at 76ef4f3 (ready source 2f4c098). E/P1-07 controlled auth UI is ready at 2f68da3 with independent review/browser checks in progress. R found no actionable issues in the server correction recheck. D/C/F are standby; full M1/M2 gates remain open. Live claims/progress are on the local board.
+Updated 2026-11-07. Coordinator A owns this file. B/P1-06 bounded authentication lifecycle/session-tenant slice is accepted at 76ef4f3 (ready source 2f4c098). E/P1-07 controlled auth UI is accepted at 2e2d4c0 (ready source 2f68da3). R found no actionable issues in either final review. D/C/F are standby; full M1/M2 gates remain open. Live claims/progress are on the local board.
 
 | Milestone | Status                                           | Evidence / remaining gate                                                                                                                                                       |
 | --------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -19,7 +19,7 @@ Integration now includes auth/tenant and source/outbox schema/repositories, migr
 
 ## Ownership
 
-A (current coordinator) completed P0-01 through P0-03. B/P1-01 and source/outbox P1-02, D/P2-01 and E/P2-00/P2-02 slices are reviewed/integrated. B/P1-06 is accepted; E/P1-07 is under review; other future tasks are unclaimed. Owners claim isolated worktrees and report status through A. No parallel database resets or shared contract edits.
+A (current coordinator) completed P0-01 through P0-03. B/P1-01 and source/outbox P1-02, D/P2-01 and E/P2-00/P2-02 slices are reviewed/integrated. B/P1-06 is accepted; E/P1-07 is accepted; other future tasks are unclaimed. Owners claim isolated worktrees and report status through A. No parallel database resets or shared contract edits.
 
 ## Validation evidence
 
@@ -150,3 +150,9 @@ Root verify passed 13 files / 99 tests, Biome, strict types and web/worker build
 Accepted P1-06 source 2f4c098 as integration 76ef4f3 using A-owned clean rebase onto 8a309c3 followed by fast-forward only. Aggregate binary patches matched byte-for-byte; three focused Conventional Commits retained and B's submitted history untouched. R's initial three findings were required corrections: password reset and session revocation now share a supported transaction, unexpected authorization rejections resolve safely, and session renewal/selection headers reach per-call collectors. R recheck be472652 at the exact source found no actionable issues. A independently passed Node 26.11.1 root verify (99 tests), real serial PostgreSQL (85 tests), and combined integration verify (102 tests/builds). No migration, dependency, environment or canonical wire change; resources retained.
 
 The server slice supplies controlled mail callbacks, canonical role validation and verified-session/live membership resolution, listing/switching and reset/invitation helpers. Future HTTP adapters must forward responseHeaders even after later authorization denials. Public routes, actual SMTP, email-verification workflow, demo provisioning and core ledger/need workflows remain open. E's independently prepared controlled UI is still under review; no real production auth UI or M1/M2 completion is claimed.
+
+## Controlled authentication UI accepted — 2026-11-07
+
+Accepted P1-07 ready source 2f68da3 at integration 2e2d4c0. R report 6743b9b1 found no actionable issues after reviewing all six allowed additions. A independently passed Node 26.11.1 root verify (99 tests/builds), 28 controlled Playwright cases across all four configured viewports, and eight Chromium production 404/no-auth-fixture checks on A private port 3163. Narrow mobile screenshot inspected. A-owned clean rebase onto 610fee5 plus fast-forward preserved byte-identical aggregate changes and E's branch; combined verification passed 102 tests/builds. No migration, dependency, environment or canonical interface changes.
+
+Sign-in, reset request/confirmation, invitation acceptance and organization selection components now accept canonical injected callbacks. The simulated development preview saves no data, creates no sessions and returns 404 in production. Real server/HTTP callback mapping, public auth routing, email-verification workflow, actual mail and demo provisioning remain unimplemented. Full M1/M2 remain open. Both authorized tasks are accepted; all lanes wait for explicit further scope, with existing checkouts/resources preserved.
