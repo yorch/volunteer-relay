@@ -388,3 +388,74 @@
     cursor: pointer;
   }
 }
+.filterTabs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid #dfe9e1;
+  margin-top: 1rem;
+}
+.filterTabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  padding: 0.7rem;
+  color: #607568;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+.filterTabs button[aria-pressed="true"] {
+  color: #176c57;
+  border-color: #176c57;
+}
+.ledger {
+  background: #fff;
+  border: 1px solid #e0e9e3;
+  border-radius: 0.8rem;
+  overflow: hidden;
+}
+.ledgerRow {
+  padding: 0.8rem 1rem;
+  border-top: 1px solid #e8efea;
+}
+.ledgerRow:first-child {
+  border-top: 0;
+}
+.ledger .ledgerRow > p {
+  margin: 0 0 0.35rem;
+}
+.ledgerRow details {
+  font-size: 0.875rem;
+}
+.ledger .ledgerRow summary {
+  color: #176c57;
+  font-weight: 650;
+  cursor: pointer;
+}
+.ledgerRow form {
+  display: grid;
+  gap: 0.7rem;
+  max-width: 35rem;
+  padding: 0.8rem 0;
+}
+.ledgerRow label {
+  display: grid;
+  gap: 0.3rem;
+}
+.ledgerRow input,
+.ledgerRow select {
+  font: inherit;
+  padding: 0.6rem;
+  border: 1px solid #cddbd2;
+  border-radius: 0.45rem;
+}
+.ledgerRow button {
+  border: 0;
+  border-radius: 0.45rem;
+  background: #174f42;
+  color: white;
+  padding: 0.65rem;
+  font: inherit;
+  cursor: pointer;
+}

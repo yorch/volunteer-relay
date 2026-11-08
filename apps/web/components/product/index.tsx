@@ -46,6 +46,12 @@ type ResponseResult<T> =
 const key = () => crypto.randomUUID();
 const date = (value: string | null) =>
   value ? new Date(value).toLocaleString() : "Not set";
+const duration = (minutes: number | null) =>
+  minutes === null
+    ? "Unknown"
+    : minutes < 60
+      ? `${Math.round(minutes)} min`
+      : `${Math.floor(minutes / 60)} hr ${Math.round(minutes % 60)} min`;
 const fieldLabel = (value: string) =>
   value
     .replace(/([a-z])([A-Z])/g, "$1 $2")
@@ -583,23 +589,27 @@ function Volunteer({
         </form>
         {receipt && <p role="status">{receipt}</p>}
       </Card>
-      <h2>Your updates</h2>
-      {snapshot.sources.length ? (
-        <ul>
-          {snapshot.sources.map((s) => (
-            <li key={s.sourceId}>
-              Update {s.sourceId} · revision {s.revision} · {s.status}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p>No updates yet.</p>
-      )}
-      <h2>Your contributions</h2>
-      <ContributionList
-        contributions={snapshot.contributions}
-        members={snapshot.members}
-      />
+      <Card>
+        <h2>Your updates</h2>
+        {snapshot.sources.length ? (
+          <ul>
+            {snapshot.sources.map((s) => (
+              <li key={s.sourceId}>
+                Update {s.sourceId} · revision {s.revision} · {s.status}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>No updates yet.</p>
+        )}
+      </Card>
+      <Card>
+        <h2>Your contributions</h2>
+        <ContributionList
+          contributions={snapshot.contributions}
+          members={snapshot.members}
+        />
+      </Card>
     </>
   );
 }
@@ -641,6 +651,9 @@ function Inbox({
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<
+    "review" | "queued" | "failed"
+  >("review");
   const searchInput = useRef<HTMLInputElement>(null);
   const backButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -665,6 +678,33 @@ function Inbox({
     <>
       <h1>Source inbox</h1>
       <p>Review the original update alongside its proposed fields.</p>
+      <nav className={styles.filterTabs} aria-label="Update status">
+        {(["review", "queued", "failed"] as const).map((status) => (
+          <button
+            key={status}
+            type="button"
+            aria-pressed={statusFilter === status}
+            onClick={() => {
+              setStatusFilter(status);
+              setSelected(null);
+              setInspected(null);
+            }}
+          >
+            {status === "review"
+              ? "Awaiting review"
+              : status === "queued"
+                ? "Queued"
+                : "Failed"}{" "}
+            <span className={styles.count}>
+              {status === "review"
+                ? snapshot.queue.length
+                : status === "queued"
+                  ? queued.length
+                  : failed.length}
+            </span>
+          </button>
+        ))}
+      </nav>
       <details className={styles.utilityDisclosure}>
         <summary>Processing and reprocessing</summary>
         <Card>
@@ -734,14 +774,6 @@ function Inbox({
             <p>No updates awaiting processing.</p>
           )}
         </Card>
-        {inspectable && (
-          <PendingSource
-            key={`${inspectable.sourceId}-${inspectable.revision}`}
-            sourceId={inspectable.sourceId}
-            status={inspectable.status}
-            close={() => setInspected(null)}
-          />
-        )}
         <Card>
           <h2>Reprocess an update</h2>
           <p>
@@ -791,93 +823,132 @@ function Inbox({
           )}
         </Card>
       </details>
-      {snapshot.queue.length === 0 ? (
-        <p>No sources awaiting review.</p>
-      ) : (
-        <div
-          className={`${styles.columns} ${entry ? styles.hasSelection : ""}`}
-        >
-          <div className={styles.inboxList}>
-            <Card>
-              <h2>
-                Awaiting review{" "}
-                <span className={styles.count}>{snapshot.queue.length}</span>
-              </h2>
-              <label>
-                Search updates
-                <input
-                  type="search"
-                  ref={searchInput}
-                  value={search}
-                  onChange={(e) => {
-                    setSearch(e.target.value);
-                    setSelected(null);
-                  }}
-                  placeholder="Search source or text"
-                />
-              </label>
-              <button type="button" onClick={() => void refresh()}>
-                Refresh inbox
-              </button>
-              <ul className={styles.list}>
-                {snapshot.queue
-                  .filter((item) =>
-                    `${item.source.sourceId} ${item.source.text ?? ""}`
-                      .toLowerCase()
-                      .includes(search.toLowerCase()),
-                  )
-                  .map((item) => (
-                    <li key={item.proposal.runId}>
-                      <button
-                        type="button"
-                        aria-pressed={
-                          entry?.proposal.runId === item.proposal.runId
-                        }
-                        onClick={() => setSelected(item.proposal.runId)}
-                      >
-                        <strong>
-                          {item.source.text?.slice(0, 90) ||
-                            "Update without text"}
-                        </strong>
-                        <br />
-                        <small>
-                          Source {item.source.sourceId} · revision{" "}
-                          {item.source.revision}
-                        </small>
-                      </button>
-                    </li>
-                  ))}
-              </ul>
-            </Card>
-          </div>
-          {entry ? (
-            <div>
-              <button
-                type="button"
-                className={styles.backToInbox}
-                ref={backButton}
-                onClick={() => {
-                  setSelected(null);
-                  requestAnimationFrame(() => searchInput.current?.focus());
-                }}
-              >
-                Back to inbox
-              </button>
-              <ReviewEditor
-                key={`${entry.proposal.runId}-${entry.revision}`}
-                entry={entry}
-                members={snapshot.members}
-                mutate={mutate}
-                clear={() => setSelected(null)}
-              />
-            </div>
-          ) : (
-            <Card>
-              <p>Select a source to review.</p>
-            </Card>
-          )}
-        </div>
+      {inspectable && (
+        <PendingSource
+          key={`${inspectable.sourceId}-${inspectable.revision}`}
+          sourceId={inspectable.sourceId}
+          status={inspectable.status}
+          close={() => setInspected(null)}
+        />
       )}
+      {statusFilter !== "review" && (
+        <Card>
+          <h2>
+            {statusFilter === "queued"
+              ? "Queued updates"
+              : "Processing failures"}
+          </h2>
+          <p>
+            {statusFilter === "queued"
+              ? "These updates are waiting to be processed."
+              : "Inspect the evidence and retry processing from the processing menu."}
+          </p>
+          {(statusFilter === "queued" ? queued : failed).length ? (
+            <ul className={styles.list}>
+              {(statusFilter === "queued" ? queued : failed).map((source) => (
+                <li key={source.sourceId}>
+                  <button
+                    type="button"
+                    onClick={() => setInspected(source.sourceId)}
+                  >
+                    Source {source.sourceId} · revision {source.revision}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>Nothing here yet.</p>
+          )}
+        </Card>
+      )}
+      {statusFilter === "review" &&
+        (snapshot.queue.length === 0 ? (
+          <p>No sources awaiting review.</p>
+        ) : (
+          <div
+            className={`${styles.columns} ${entry ? styles.hasSelection : ""}`}
+          >
+            <div className={styles.inboxList}>
+              <Card>
+                <h2>
+                  Awaiting review{" "}
+                  <span className={styles.count}>{snapshot.queue.length}</span>
+                </h2>
+                <label>
+                  Search updates
+                  <input
+                    type="search"
+                    ref={searchInput}
+                    value={search}
+                    onChange={(e) => {
+                      setSearch(e.target.value);
+                      setSelected(null);
+                    }}
+                    placeholder="Search source or text"
+                  />
+                </label>
+                <button type="button" onClick={() => void refresh()}>
+                  Refresh inbox
+                </button>
+                <ul className={styles.list}>
+                  {snapshot.queue
+                    .filter((item) =>
+                      `${item.source.sourceId} ${item.source.text ?? ""}`
+                        .toLowerCase()
+                        .includes(search.toLowerCase()),
+                    )
+                    .map((item) => (
+                      <li key={item.proposal.runId}>
+                        <button
+                          type="button"
+                          aria-pressed={
+                            entry?.proposal.runId === item.proposal.runId
+                          }
+                          onClick={() => setSelected(item.proposal.runId)}
+                        >
+                          <strong>
+                            {item.source.text?.slice(0, 90) ||
+                              "Update without text"}
+                          </strong>
+                          <br />
+                          <small>
+                            Source {item.source.sourceId} · revision{" "}
+                            {item.source.revision}
+                          </small>
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              </Card>
+            </div>
+            {entry ? (
+              <div>
+                <button
+                  type="button"
+                  className={styles.backToInbox}
+                  ref={backButton}
+                  onClick={() => {
+                    setSelected(null);
+                    requestAnimationFrame(() => searchInput.current?.focus());
+                  }}
+                >
+                  Back to inbox
+                </button>
+                <ReviewEditor
+                  key={`${entry.proposal.runId}-${entry.revision}`}
+                  entry={entry}
+                  members={snapshot.members}
+                  mutate={mutate}
+                  clear={() => setSelected(null)}
+                />
+              </div>
+            ) : (
+              <Card>
+                <p>Select a source to review.</p>
+              </Card>
+            )}
+          </div>
+        ))}
     </>
   );
 }
@@ -1337,14 +1408,16 @@ function Activities({
       </p>
       <h2>Contribution ledger</h2>
       {snapshot.contributions.length ? (
-        snapshot.contributions.map((c) => (
-          <Contribution
-            key={c.contributionId}
-            contribution={c}
-            members={snapshot.members}
-            mutate={mutate}
-          />
-        ))
+        <div className={styles.ledger}>
+          {snapshot.contributions.map((c) => (
+            <Contribution
+              key={c.contributionId}
+              contribution={c}
+              members={snapshot.members}
+              mutate={mutate}
+            />
+          ))}
+        </div>
       ) : (
         <p>No contributions yet.</p>
       )}
@@ -1422,7 +1495,7 @@ function Contribution({
     await mutate(productEndpoints.contribution, body, "Contribution updated.");
   }
   return (
-    <Card>
+    <div className={styles.ledgerRow}>
       <p>
         <strong>
           {members.find((m) => m.membershipId === c.membershipId)?.name ??
@@ -1437,6 +1510,9 @@ function Contribution({
       <details>
         <summary>Details and correction</summary>
         <p>Activity {c.activityId}</p>
+        {c.origin.kind === "source" && (
+          <a href="/workspace/inbox">Open source inbox</a>
+        )}
         <p>
           {c.origin.kind === "source"
             ? `Source ${c.origin.sourceId} · revision ${c.origin.sourceRevision}`
@@ -1469,7 +1545,7 @@ function Contribution({
           </form>
         )}
       </details>
-    </Card>
+    </div>
   );
 }
 function Needs({
@@ -2286,7 +2362,7 @@ function Summary({ snapshot }: { snapshot: WorkspaceSnapshot }) {
               <p>
                 {report.averageAcknowledgmentMinutes === null
                   ? "Unknown"
-                  : `${report.averageAcknowledgmentMinutes} minutes`}
+                  : duration(report.averageAcknowledgmentMinutes)}
               </p>
             </Card>
             <Card>
@@ -2294,7 +2370,7 @@ function Summary({ snapshot }: { snapshot: WorkspaceSnapshot }) {
               <p>
                 {report.averageResolutionMinutes == null
                   ? "Unknown"
-                  : `${report.averageResolutionMinutes} minutes`}
+                  : duration(report.averageResolutionMinutes)}
               </p>
             </Card>
             <Card>

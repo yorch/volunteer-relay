@@ -441,7 +441,7 @@ test("report filters and CSV use the same query", async ({ page }) => {
     page.getByRole("link", { name: "Download aggregate CSV" }),
   ).toHaveAttribute("href", `/api/product/reports.csv${expected}`);
   await expect(page.getByText("Unknown", { exact: true })).toBeVisible();
-  await expect(page.getByText("30 minutes", { exact: true })).toBeVisible();
+  await expect(page.getByText("30 min", { exact: true })).toBeVisible();
 });
 
 test("import preview blocks errors and requires acknowledgment for duplicates", async ({

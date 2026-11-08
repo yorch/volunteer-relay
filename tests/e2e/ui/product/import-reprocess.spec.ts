@@ -124,3 +124,38 @@ test("text and mapped photo are previewed and confirmed as multipart", async ({
   }
   expect(bodies[1]).toContain('"idempotencyKey"');
 });
+
+test("status filters show only the selected processing queue", async ({
+  page,
+}) => {
+  await page.route("**/api/product/workspace", (route) =>
+    route.fulfill({
+      json: {
+        ok: true,
+        value: {
+          ...snapshot,
+          sources: [
+            { sourceId: "queued-one", revision: 1, status: "queued" },
+            { sourceId: "failed-one", revision: 2, status: "failed" },
+          ],
+        },
+      },
+    }),
+  );
+  await page.goto("/workspace/inbox");
+  const tabs = page.getByRole("navigation", { name: "Update status" });
+  await tabs.getByRole("button", { name: "Queued" }).click();
+  await expect(
+    page.getByRole("button", { name: "Source queued-one · revision 1" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Source failed-one · revision 2" }),
+  ).toHaveCount(0);
+  await tabs.getByRole("button", { name: "Failed" }).click();
+  await expect(
+    page.getByRole("button", { name: "Source failed-one · revision 2" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Source queued-one · revision 1" }),
+  ).toHaveCount(0);
+});
