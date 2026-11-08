@@ -3,113 +3,72 @@
   "scenarioId": "video-hackathon-tidepath-2026-11",
   "targetMode": "local",
   "baseUrl": "http://127.0.0.1:3300",
-  "appCommit": "ede1a71dfc7ec069f5c2cbd4a1249e6eca4893ef",
-  "capturedAt": "2026-11-08T17:50:33.356Z",
+  "appCommit": "c71d69670a88924a431bf4aa154e891f563656cb",
+  "capturedAt": "2026-11-08T18:15:19.040Z",
   "scenes": [
     {
       "sceneId": "S02",
       "file": "captures/S02.mp4",
-      "durationSeconds": 22.766667,
+      "durationSeconds": 27.866667,
       "width": 1920,
       "height": 1080,
       "fps": 30,
       "origin": "local",
       "baseUrl": "http://127.0.0.1:3300",
-      "appCommit": "ede1a71dfc7ec069f5c2cbd4a1249e6eca4893ef",
+      "appCommit": "c71d69670a88924a431bf4aa154e891f563656cb",
       "scenarioId": "video-hackathon-tidepath-2026-11",
       "checkpointId": "baseline",
       "role": "coordinator",
-      "recordedAt": "2026-11-08T17:47:27.121Z",
+      "recordedAt": "2026-11-08T18:12:20.663Z",
       "markers": [
         {
           "label": "checkpoint:baseline",
-          "atSeconds": 1.931
+          "atSeconds": 1.199
         },
         {
           "label": "inbox-loading",
-          "atSeconds": 1.942
+          "atSeconds": 1.212
         },
         {
           "label": "queue-verified",
-          "atSeconds": 1.942
+          "atSeconds": 1.212
         },
         {
           "label": "hold-complete",
-          "atSeconds": 19.502
+          "atSeconds": 24.115
         }
       ]
     },
     {
       "sceneId": "S03",
       "file": "captures/S03.mp4",
-      "durationSeconds": 23.366667,
+      "durationSeconds": 23.4,
       "width": 1920,
       "height": 1080,
       "fps": 30,
       "origin": "local",
       "baseUrl": "http://127.0.0.1:3300",
-      "appCommit": "ede1a71dfc7ec069f5c2cbd4a1249e6eca4893ef",
+      "appCommit": "c71d69670a88924a431bf4aa154e891f563656cb",
       "scenarioId": "video-hackathon-tidepath-2026-11",
       "checkpointId": "baseline",
       "role": "coordinator",
-      "recordedAt": "2026-11-08T17:47:56.499Z",
+      "recordedAt": "2026-11-08T18:12:49.523Z",
       "markers": [
         {
           "label": "checkpoint:baseline",
-          "atSeconds": 1.376
+          "atSeconds": 1.145
         },
         {
           "label": "inbox-ready",
-          "atSeconds": 1.376
+          "atSeconds": 1.146
         },
         {
           "label": "review-opened",
-          "atSeconds": 1.488
+          "atSeconds": 1.251
         },
         {
           "label": "proposal-verified",
-          "atSeconds": 1.517
-        },
-        {
-          "label": "hold-complete",
-          "atSeconds": 23.503
-        }
-      ]
-    },
-    {
-      "sceneId": "S04",
-      "file": "captures/S04.mp4",
-      "durationSeconds": 27.2,
-      "width": 1920,
-      "height": 1080,
-      "fps": 30,
-      "origin": "local",
-      "baseUrl": "http://127.0.0.1:3300",
-      "appCommit": "ede1a71dfc7ec069f5c2cbd4a1249e6eca4893ef",
-      "scenarioId": "video-hackathon-tidepath-2026-11",
-      "checkpointId": "baseline",
-      "role": "coordinator",
-      "recordedAt": "2026-11-08T17:48:30.506Z",
-      "markers": [
-        {
-          "label": "checkpoint:baseline",
-          "atSeconds": 1.398
-        },
-        {
-          "label": "proposal-open",
-          "atSeconds": 1.492
-        },
-        {
-          "label": "accepted",
-          "atSeconds": 1.649
-        },
-        {
-          "label": "ledger-visible",
-          "atSeconds": 2.375
-        },
-        {
-          "label": "checkpoint:after-s04",
-          "atSeconds": 2.493
+          "atSeconds": 1.266
         },
         {
           "label": "hold-complete",
@@ -118,39 +77,80 @@
       ]
     },
     {
-      "sceneId": "S05",
-      "file": "captures/S05.mp4",
-      "durationSeconds": 21.366667,
+      "sceneId": "S04",
+      "file": "captures/S04.mp4",
+      "durationSeconds": 28.933333,
       "width": 1920,
       "height": 1080,
       "fps": 30,
       "origin": "local",
       "baseUrl": "http://127.0.0.1:3300",
-      "appCommit": "ede1a71dfc7ec069f5c2cbd4a1249e6eca4893ef",
+      "appCommit": "c71d69670a88924a431bf4aa154e891f563656cb",
+      "scenarioId": "video-hackathon-tidepath-2026-11",
+      "checkpointId": "baseline",
+      "role": "coordinator",
+      "recordedAt": "2026-11-08T18:13:17.493Z",
+      "markers": [
+        {
+          "label": "checkpoint:baseline",
+          "atSeconds": 1.121
+        },
+        {
+          "label": "proposal-open",
+          "atSeconds": 1.205
+        },
+        {
+          "label": "accepted",
+          "atSeconds": 1.315
+        },
+        {
+          "label": "ledger-visible",
+          "atSeconds": 1.831
+        },
+        {
+          "label": "checkpoint:after-s04",
+          "atSeconds": 1.889
+        },
+        {
+          "label": "hold-complete",
+          "atSeconds": 25.228
+        }
+      ]
+    },
+    {
+      "sceneId": "S05",
+      "file": "captures/S05.mp4",
+      "durationSeconds": 21.333333,
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "origin": "local",
+      "baseUrl": "http://127.0.0.1:3300",
+      "appCommit": "c71d69670a88924a431bf4aa154e891f563656cb",
       "scenarioId": "video-hackathon-tidepath-2026-11",
       "checkpointId": "after-s04",
       "role": "coordinator",
-      "recordedAt": "2026-11-08T17:49:01.693Z",
+      "recordedAt": "2026-11-08T18:13:49.847Z",
       "markers": [
         {
           "label": "checkpoint:after-s04",
-          "atSeconds": 1.275
+          "atSeconds": 1.449
         },
         {
           "label": "duplicate-open",
-          "atSeconds": 1.374
+          "atSeconds": 1.589
         },
         {
           "label": "reason-entered",
-          "atSeconds": 1.394
+          "atSeconds": 1.612
         },
         {
           "label": "rejected",
-          "atSeconds": 1.509
+          "atSeconds": 1.835
         },
         {
           "label": "checkpoint:after-s05",
-          "atSeconds": 1.602
+          "atSeconds": 1.934
         },
         {
           "label": "hold-complete",
@@ -161,78 +161,78 @@
     {
       "sceneId": "S06",
       "file": "captures/S06.mp4",
-      "durationSeconds": 23.4,
+      "durationSeconds": 26.333333,
       "width": 1920,
       "height": 1080,
       "fps": 30,
       "origin": "local",
       "baseUrl": "http://127.0.0.1:3300",
-      "appCommit": "ede1a71dfc7ec069f5c2cbd4a1249e6eca4893ef",
+      "appCommit": "c71d69670a88924a431bf4aa154e891f563656cb",
       "scenarioId": "video-hackathon-tidepath-2026-11",
       "checkpointId": "after-s05",
       "role": "owner",
-      "recordedAt": "2026-11-08T17:49:30.782Z",
+      "recordedAt": "2026-11-08T18:14:15.930Z",
       "markers": [
         {
           "label": "checkpoint:after-s05",
-          "atSeconds": 1.645
+          "atSeconds": 1.346
         },
         {
           "label": "needs-board",
-          "atSeconds": 1.657
+          "atSeconds": 1.355
         },
         {
           "label": "assignment-filled",
-          "atSeconds": 1.77
+          "atSeconds": 1.445
         },
         {
           "label": "assigned",
-          "atSeconds": 2.004
+          "atSeconds": 1.571
         },
         {
           "label": "acknowledged",
-          "atSeconds": 2.274
+          "atSeconds": 1.718
         },
         {
           "label": "checkpoint:after-s06",
-          "atSeconds": 2.439
+          "atSeconds": 1.798
         },
         {
           "label": "hold-complete",
-          "atSeconds": 23.501
+          "atSeconds": 26.392
         }
       ]
     },
     {
       "sceneId": "S07",
       "file": "captures/S07.mp4",
-      "durationSeconds": 23.366667,
+      "durationSeconds": 26.666667,
       "width": 1920,
       "height": 1080,
       "fps": 30,
       "origin": "local",
       "baseUrl": "http://127.0.0.1:3300",
-      "appCommit": "ede1a71dfc7ec069f5c2cbd4a1249e6eca4893ef",
+      "appCommit": "c71d69670a88924a431bf4aa154e891f563656cb",
       "scenarioId": "video-hackathon-tidepath-2026-11",
       "checkpointId": "after-s06",
       "role": "coordinator",
-      "recordedAt": "2026-11-08T17:50:02.036Z",
+      "recordedAt": "2026-11-08T18:14:46.492Z",
       "markers": [
         {
           "label": "checkpoint:after-s06",
-          "atSeconds": 2.787
+          "atSeconds": 1.266
         },
         {
           "label": "report-filtered",
-          "atSeconds": 2.972
+          "atSeconds": 1.312
         },
         {
           "label": "pending-visible",
-          "atSeconds": 2.985
+          "atSeconds": 1.316
         },
         {
           "label": "hold-complete",
-          "atSeconds": 23.501
+          "atSeconds": 26.761
         }
       ]
     }

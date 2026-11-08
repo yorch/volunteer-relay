@@ -26,8 +26,7 @@ a real chat provider.
 ## S02 — Introduce the product
 
 This is the problem behind challenge five: coordinators rebuild their week from
-chats, texts and photos — forty volunteers, roughly four hours a week,
-reconstructed by hand. Volunteer Relay turns those updates into traceable
+chats, texts and photos — forty volunteers, four hours a week, by hand. Volunteer Relay turns those updates into traceable
 records, and needs someone owns. Here is the coordinator's inbox, with review
 work waiting.
 
@@ -68,8 +67,8 @@ after are the same.
 An urgent need should never wait on a buried message. Staff assign an owner, set
 an acknowledgment deadline, and later record the outcome. If acknowledgment
 stalls, the worker escalates at the deadline. Delivery is not acknowledgment, and
-the board shows what still needs attention. An acknowledgment is a person taking
-responsibility, not a provider receipt.
+the board shows what still needs attention. Acknowledgment is a person, not a
+delivery receipt.
 
 On screen: assign the urgent transport need, then acknowledge it. Escalation is
 implemented in the worker and is narrated but not captured: no clock is changed
@@ -80,8 +79,8 @@ and no elapsed deadline is simulated.
 At the end of the week the report comes from the same records the team used to do
 its work. Approved hours, contributions, open needs and pending items are counted
 consistently, and unknown time stays unknown rather than becoming zero. Every
-decision is kept in an audit history with its source, so the report and the work
-share one source of truth.
+decision is kept in an audit history with its source, so report and work share
+one source.
 
 On screen: the filtered weekly report.
 
@@ -89,8 +88,7 @@ On screen: the filtered weekly report.
 
 Volunteer Relay. Every hour counted, every need connected. Built for nonprofit
 teams, with fictional demo data and an open-source implementation. The repository
-holds the code, the plan and the recording notes, including the fixtures used
-here.
+holds the code, the plan and the recording notes.
 
 On screen: product name, tagline, repository URL, MIT license, and the
 synthetic-data / AI-narration disclosure. The URL holds long enough to read.

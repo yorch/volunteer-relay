@@ -11,10 +11,10 @@ workspace; nothing is copied from an implementation claim.
 | Application scenario (hosted)          | **blocked**                | `https://volunteer-relay.brnby.com/api/health` and `/api/ready` return 200 (`runtime: 26.11.1`), but no recording-account credentials exist here, so nothing was provisioned or recorded hosted. The deployment exposes no build id or commit → the deployed release is **unknown**.                                                                                                                                                                      |
 | Application scenario (local rehearsal) | **ready**                  | Disposable PostgreSQL `relay_video_recording` (Compose project `relay-video`, port 55480), migrations, synthetic demo seed. Authored baseline verified from the app: **180 approved minutes, 3 contributions, 7 awaiting review, 10 sources, 4 open needs, 1 resolved, 1 pending unknown duration** — matches `fixtures/expected-results.json`; `fixtures/demo/expected-start.json` is the manual oracle behind it.                                       |
 | Captures                               | **ready-with-limitations** | Six product scenes captured at 1920×1080 from the local rehearsal target at app commit `ede1a71` (`main`, post-merge): S02 22.77 s, S03 23.37 s, S04 27.20 s, S05 21.37 s, S06 23.40 s, S07 23.37 s, all H.264 yuv420p 30 fps. Every take asserted the starting and resulting checkpoint; S04 → 300 approved minutes / 5 contributions / 3 activities; S05 → unchanged; S06 → urgent need acknowledged. Limitation: local origin only, no hosted footage. |
-| Narration                              | **blocked**                | No `ELEVENLABS_API_KEY`/voice. `video:voice --dry-run` validates the 377-word draft (350–390 target) and estimates 2 352 characters; nothing was billed. A local scratch voice (`say`, labelled `scratch-local-voice`) provided real audio for timing and the proof only. It is not final narration.                                                                                                                                                      |
-| Captions                               | **ready-with-limitations** | 68 phrase-level cues, max two lines, inside the programme, SRT exported. Limitation: derived by proportional phrase timing from the scratch audio (`proportional-phrase`), not provider character alignment. Provider alignment parsing itself is unit-tested.                                                                                                                                                                                            |
-| Composition                            | **ready**                  | Frame-based sequences from the generated timeline: 162.30 s, 4 869 frames at 30 fps, integer boundaries, contiguous, under the 180 s limit. Product scenes use genuine captures with labelled origin; graphics are designed and labelled.                                                                                                                                                                                                                 |
-| Final render                           | **ready-with-limitations** | The pipeline is wired end to end and the proof renders. The full programme is not rendered because final narration does not exist; `bun run video:render` is the one command waiting on it.                                                                                                                                                                                                                                                               |
+| Narration                              | **ready**                  | ElevenLabs `eleven_multilingual_v2`, one voice, 363-word draft (350–390 target), 8 scenes, per-scene character alignment retained. `video:voice` requests only cache misses.                                                                                                                                                                                                                                                                              |
+| Captions                               | **ready**                  | 68+ phrase-level cues derived from provider character alignment (no proportional fallback), max two lines, exported as SRT.                                                                                                                                                                                                                                                                                                                               |
+| Composition                            | **ready**                  | Frame-based sequences from the generated timeline: 176.20 s, 5 286 frames at 30 fps, integer boundaries, contiguous, 3.8 s under the 180 s limit.                                                                                                                                                                                                                                                                                                         |
+| Final render                           | **ready-with-limitations** | The gate passes: real narration, durations match the timeline, captions cover every scene, all footage is from one local origin. The full render is not run automatically; `bun run video:render` is one command.                                                                                                                                                                                                                                         |
 
 ## Proof render
 
@@ -22,7 +22,7 @@ workspace; nothing is copied from an implementation claim.
 burned-in captions).
 
 - 1920×1080, 30.00 fps, H.264 (yuv420p, tv range, bt709), AAC 48 kHz stereo.
-- Loudness: **−16.9 LUFS integrated**, **−5.6 dBTP** true peak (targets −16 LUFS,
+- Loudness: **−16.4 LUFS integrated**, **−4.2 dBTP** true peak (targets −16 LUFS,
   ≤ −1 dBTP).
 - Size 1.6 MiB; rendered with Remotion 4.0.541 using the cached Playwright Chrome
   Headless Shell.
@@ -77,6 +77,11 @@ this revision fixes them:
   after the browser closes (so a finalising recording cannot race the sweep).
 - A malformed `video/.env.local` is now an error instead of silently discarding
   target/tenant settings.
+- Capture holds are narration-aware: the take runs until the measured narration
+  plus tail fits, so real narration cannot outrun its footage.
+- The render path normalises narration per scene to −16 LUFS (duration-weighted
+  measurement) and inserts a true-peak limiter when the gain would clip; the proof
+  measures −16.4 LUFS / −4.2 dBTP.
 - `video:provision` fills blank placeholders in place (including the isolation
   identity), replaces the last duplicate assignment, preserves existing values and
   fails when a required role stays unverified.

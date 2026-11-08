@@ -5,6 +5,7 @@ import { paths, videoRoot } from "../src/lib/env.ts";
 import { parseSceneManifest } from "../src/lib/schema.ts";
 import { parseTimeline } from "../src/lib/timeline.ts";
 import { readCaptureManifest, readNarrationManifest } from "./lib/assets.ts";
+import { mixNarration } from "./lib/audio-mix.ts";
 import { resolveBrowserExecutable } from "./lib/browser.ts";
 import { buildRenderProps } from "./lib/props-build.ts";
 
@@ -28,13 +29,19 @@ function main(): void {
   const timeline = parseTimeline(
     JSON.parse(readFileSync(paths.timeline, "utf8")),
   );
+  const narration = readNarrationManifest();
   const props = buildRenderProps({
     manifest,
     timeline,
     captures: readCaptureManifest(),
-    narration: readNarrationManifest(),
+    narration,
     mode: "full",
   });
+  const mix = narration ? mixNarration(narration) : null;
+  if (mix) {
+    props.narrationFiles = mix.files;
+    props.assets.narration = true;
+  }
   const propsPath = `${paths.generated}/preview-props.json`;
   writeJson(propsPath, props);
   log(

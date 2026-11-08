@@ -117,6 +117,10 @@ bun run video:capture                 # all product scenes, in order
 bun run video:capture -- --scene S04  # one scene from its declared checkpoint
 ```
 
+Holds are narration-aware: after narration exists, a take runs until the measured
+narration plus its tail fits, so the timeline's footage-length guard passes
+without looping anything.
+
 Each take: fresh 1920×1080 context, per-role storage state, readiness marker,
 checkpoint assertion (`fixtures/expected-results.json`), scripted staff action,
 post-action checkpoint assertion, hold to the scene minimum, then close. The WebM
@@ -159,6 +163,10 @@ bun run video:validate
 Frame rules: 30 fps, integer boundaries, scene = `max(minSeconds, narration +
 0.6s tail)` rounded up, capped per scene; the programme is rejected above 180 s.
 Captions are stored per scene and rebased for the proof excerpt.
+
+Rendering normalises narration per scene to −16 LUFS and adds a true-peak limiter
+when the gain would exceed −1 dBTP, so no manual gain staging is needed; the
+measured result is reported by `video:validate`.
 
 `video:render` (full, not `--draft`/`--proof`) refuses to start unless the audio on
 disk is final (not scratch), matches the timeline's measured durations, every

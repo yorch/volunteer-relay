@@ -28,7 +28,7 @@
       "id": "S02",
       "title": "Introduce the product",
       "kind": "product",
-      "narration": "This is the problem behind challenge five: coordinators rebuild their week from chats, texts and photos — forty volunteers, roughly four hours a week, reconstructed by hand. Volunteer Relay turns those updates into traceable records, and needs someone owns. Here is the coordinator's inbox, with review work waiting.",
+      "narration": "This is the problem behind challenge five: coordinators rebuild their week from chats, texts and photos — forty volunteers, four hours a week, by hand. Volunteer Relay turns those updates into traceable records, and needs someone owns. Here is the coordinator's inbox, with review work waiting.",
       "onScreenDisclosure": "Synthetic demo data",
       "capture": {
         "checkpointId": "baseline",
@@ -152,7 +152,7 @@
       "id": "S06",
       "title": "Ownership and acknowledgment",
       "kind": "product",
-      "narration": "An urgent need should never wait on a buried message. Staff assign an owner, set an acknowledgment deadline, and later record the outcome. If acknowledgment stalls, the worker escalates at the deadline. Delivery is not acknowledgment, and the board shows what still needs attention. An acknowledgment is a person taking responsibility, not a provider receipt.",
+      "narration": "An urgent need should never wait on a buried message. Staff assign an owner, set an acknowledgment deadline, and later record the outcome. If acknowledgment stalls, the worker escalates at the deadline. Delivery is not acknowledgment, and the board shows what still needs attention. Acknowledgment is a person, not a delivery receipt.",
       "onScreenDisclosure": "Synthetic demo data",
       "capture": {
         "checkpointId": "after-s05",
@@ -183,7 +183,7 @@
       "id": "S07",
       "title": "Report with evidence",
       "kind": "product",
-      "narration": "At the end of the week the report comes from the same records the team used to do its work. Approved hours, contributions, open needs and pending items are counted consistently, and unknown time stays unknown rather than becoming zero. Every decision is kept in an audit history with its source, so the report and the work share one source of truth.",
+      "narration": "At the end of the week the report comes from the same records the team used to do its work. Approved hours, contributions, open needs and pending items are counted consistently, and unknown time stays unknown rather than becoming zero. Every decision is kept in an audit history with its source, so report and work share one source.",
       "onScreenDisclosure": "Synthetic demo data",
       "capture": {
         "checkpointId": "after-s06",
@@ -214,7 +214,7 @@
       "id": "S08",
       "title": "Close",
       "kind": "graphic",
-      "narration": "Volunteer Relay. Every hour counted, every need connected. Built for nonprofit teams, with fictional demo data and an open-source implementation. The repository holds the code, the plan and the recording notes, including the fixtures used here.",
+      "narration": "Volunteer Relay. Every hour counted, every need connected. Built for nonprofit teams, with fictional demo data and an open-source implementation. The repository holds the code, the plan and the recording notes.",
       "onScreenDisclosure": "Fictional demo data · MIT licensed · AI narration",
       "capture": null,
       "overlays": [],

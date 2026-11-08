@@ -21,6 +21,7 @@ import {
   captureMezzaninePath,
   captureRawPath,
   readCaptureManifest,
+  readNarrationManifest,
   writeCaptureManifest,
 } from "./lib/assets.ts";
 import { loadEverything } from "./lib/script.ts";
@@ -84,6 +85,7 @@ async function captureScene(
   env: Record<string, string | undefined>,
 ): Promise<CaptureAsset> {
   const target = resolveTarget(env);
+  const narration = readNarrationManifest();
   const scenario = loadScenario(paths.scenario);
   const expected = loadExpectedResults(paths.expectedResults);
   const action = sceneActions[scene.id];
@@ -142,8 +144,17 @@ async function captureScene(
       mark(`checkpoint:${action.establishes}`);
     }
 
+    // Hold long enough for the scene's *measured* narration, not just its
+    // editorial floor: the timeline refuses footage shorter than its scene.
+    const narrationSeconds =
+      narration?.scenes.find((asset) => asset.sceneId === scene.id)
+        ?.durationSeconds ?? null;
+    const plannedSeconds = Math.max(
+      scene.minSeconds,
+      narrationSeconds === null ? 0 : narrationSeconds + 0.6,
+    );
     const elapsed = (performance.now() - started) / 1000;
-    const hold = Math.max(0, scene.minSeconds + HOLD_BUFFER_SECONDS - elapsed);
+    const hold = Math.max(0, plannedSeconds + HOLD_BUFFER_SECONDS - elapsed);
     if (hold > 0) await page.waitForTimeout(hold * 1000);
     mark("hold-complete");
 

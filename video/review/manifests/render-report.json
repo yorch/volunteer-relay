@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "mode": "proof",
-  "narrationSource": "scratch-local-voice",
+  "narrationSource": "elevenlabs",
   "captureOrigin": "local",
   "manifestScenes": 8,
   "output": "/Users/yorch/code/volunteer-relay/video/output/proof.mp4",
-  "bytes": 1725237,
+  "bytes": 1703070,
   "measured": {
     "path": "/Users/yorch/code/volunteer-relay/video/output/proof.mp4",
-    "durationSeconds": 18,
+    "durationSeconds": 18.005,
     "width": 1920,
     "height": 1080,
     "fps": 30,
@@ -17,8 +17,8 @@
     "hasAudio": true
   },
   "loudness": {
-    "integratedLufs": -16.9,
-    "truePeakDb": -5.6
+    "integratedLufs": -16.4,
+    "truePeakDb": -4.2
   },
-  "renderedAt": "2026-11-08T17:53:44.021Z"
+  "renderedAt": "2026-11-08T18:18:48.178Z"
 }

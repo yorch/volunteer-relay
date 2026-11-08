@@ -3,389 +3,384 @@
   "scenes": [
     {
       "sceneId": "S01",
-      "derived": "proportional-phrase",
+      "derived": "alignment",
       "cues": [
         {
           "startSeconds": 0,
-          "endSeconds": 2.3591401393442624,
+          "endSeconds": 2.067,
           "text": "A volunteer spends an hour mentoring a"
         },
         {
-          "startSeconds": 2.3591401393442624,
-          "endSeconds": 2.731635950819672,
+          "startSeconds": 2.125,
+          "endSeconds": 2.844,
           "text": "child."
         },
         {
-          "startSeconds": 2.731635950819672,
-          "endSeconds": 5.214941360655738,
+          "startSeconds": 3.541,
+          "endSeconds": 5.735,
           "text": "Before she leaves, she learns the family"
         },
         {
-          "startSeconds": 5.214941360655738,
-          "endSeconds": 7.884494676229508,
+          "startSeconds": 5.793,
+          "endSeconds": 8.603,
           "text": "needs diapers tonight, so she posts a brief"
         },
         {
-          "startSeconds": 7.884494676229508,
-          "endSeconds": 8.319073122950819,
+          "startSeconds": 8.673,
+          "endSeconds": 9.311,
           "text": "update."
         },
         {
-          "startSeconds": 8.319073122950819,
-          "endSeconds": 10.740295897540983,
+          "startSeconds": 10.124,
+          "endSeconds": 12.411,
           "text": "By morning it is buried under dozens of"
         },
         {
-          "startSeconds": 10.740295897540983,
-          "endSeconds": 11.299039614754099,
+          "startSeconds": 12.469,
+          "endSeconds": 13.282,
           "text": "messages."
         },
         {
-          "startSeconds": 11.299039614754099,
-          "endSeconds": 13.161518672131148,
+          "startSeconds": 14.234,
+          "endSeconds": 16.115,
           "text": "The hour may never be counted."
         },
         {
-          "startSeconds": 13.161518672131148,
-          "endSeconds": 15.148163,
+          "startSeconds": 16.625,
+          "endSeconds": 18.669,
           "text": "The family may still be waiting."
         }
       ]
     },
     {
       "sceneId": "S02",
-      "derived": "proportional-phrase",
+      "derived": "alignment",
       "cues": [
         {
           "startSeconds": 0,
-          "endSeconds": 2.67514867961165,
+          "endSeconds": 2.473,
           "text": "This is the problem behind challenge five:"
         },
         {
-          "startSeconds": 2.67514867961165,
-          "endSeconds": 5.41399137540453,
+          "startSeconds": 2.856,
+          "endSeconds": 5.492,
           "text": "coordinators rebuild their week from chats,"
         },
         {
-          "startSeconds": 5.41399137540453,
-          "endSeconds": 8.21652808737864,
-          "text": "texts and photos — forty volunteers, roughly"
+          "startSeconds": 5.608,
+          "endSeconds": 9.056,
+          "text": "texts and photos — forty volunteers, four"
         },
         {
-          "startSeconds": 8.21652808737864,
-          "endSeconds": 10.82798275080906,
-          "text": "four hours a week, reconstructed by hand."
+          "startSeconds": 9.102,
+          "endSeconds": 11.018,
+          "text": "hours a week, by hand."
         },
         {
-          "startSeconds": 10.82798275080906,
-          "endSeconds": 13.375743398058251,
+          "startSeconds": 11.831,
+          "endSeconds": 14.454,
           "text": "Volunteer Relay turns those updates into"
         },
         {
-          "startSeconds": 13.375743398058251,
-          "endSeconds": 16.0508920776699,
+          "startSeconds": 14.512,
+          "endSeconds": 17.519,
           "text": "traceable records, and needs someone owns."
         },
         {
-          "startSeconds": 16.0508920776699,
-          "endSeconds": 18.85342878964401,
+          "startSeconds": 18.471,
+          "endSeconds": 20.991,
           "text": "Here is the coordinator's inbox, with review"
         },
         {
-          "startSeconds": 18.85342878964401,
-          "endSeconds": 19.681450999999996,
+          "startSeconds": 21.037,
+          "endSeconds": 22.013,
           "text": "work waiting."
         }
       ]
     },
     {
       "sceneId": "S03",
-      "derived": "proportional-phrase",
+      "derived": "alignment",
       "cues": [
         {
           "startSeconds": 0,
-          "endSeconds": 2.233363300724638,
+          "endSeconds": 2.368,
           "text": "Volunteers report in their own words."
         },
         {
-          "startSeconds": 2.233363300724638,
-          "endSeconds": 4.587448942028986,
+          "startSeconds": 3.065,
+          "endSeconds": 5.166,
           "text": "This update describes one shared garden"
         },
         {
-          "startSeconds": 4.587448942028986,
-          "endSeconds": 7.182979264492754,
+          "startSeconds": 5.201,
+          "endSeconds": 8.081,
           "text": "visit, two volunteers, and the time each of"
         },
         {
-          "startSeconds": 7.182979264492754,
-          "endSeconds": 7.786590967391305,
+          "startSeconds": 8.127,
+          "endSeconds": 8.928,
           "text": "them gave."
         },
         {
-          "startSeconds": 7.786590967391305,
-          "endSeconds": 9.838870757246378,
+          "startSeconds": 9.741,
+          "endSeconds": 11.912,
           "text": "Relay proposes an activity and two"
         },
         {
-          "startSeconds": 9.838870757246378,
-          "endSeconds": 12.192956398550725,
+          "startSeconds": 11.981,
+          "endSeconds": 14.71,
           "text": "contributions, and keeps every proposed"
         },
         {
-          "startSeconds": 12.192956398550725,
-          "endSeconds": 14.305597358695653,
+          "startSeconds": 14.756,
+          "endSeconds": 16.788,
           "text": "field tied to the original message."
         },
         {
-          "startSeconds": 14.305597358695653,
-          "endSeconds": 16.659683,
+          "startSeconds": 17.74,
+          "endSeconds": 20.619,
           "text": "Nothing is approved until staff decide."
         }
       ]
     },
     {
       "sceneId": "S04",
-      "derived": "proportional-phrase",
+      "derived": "alignment",
       "cues": [
         {
           "startSeconds": 0,
-          "endSeconds": 2.420695632996633,
+          "endSeconds": 2.45,
           "text": "One message holds a visit for two people."
         },
         {
-          "startSeconds": 2.420695632996633,
-          "endSeconds": 4.723308552188552,
+          "startSeconds": 3.262,
+          "endSeconds": 6.49,
           "text": "One shared hour means one visit and two"
         },
         {
-          "startSeconds": 4.723308552188552,
-          "endSeconds": 7.321128255892256,
+          "startSeconds": 6.583,
+          "endSeconds": 9.868,
           "text": "volunteer-hours, so approving it records two"
         },
         {
-          "startSeconds": 7.321128255892256,
-          "endSeconds": 9.623741175084175,
+          "startSeconds": 9.95,
+          "endSeconds": 12.132,
           "text": "separate contributions of sixty minutes"
         },
         {
-          "startSeconds": 9.623741175084175,
-          "endSeconds": 9.91894795959596,
+          "startSeconds": 12.202,
+          "endSeconds": 12.701,
           "text": "each."
         },
         {
-          "startSeconds": 9.91894795959596,
-          "endSeconds": 12.339643592592592,
+          "startSeconds": 13.514,
+          "endSeconds": 16.649,
           "text": "Staff can inspect the evidence first, and"
         },
         {
-          "startSeconds": 12.339643592592592,
-          "endSeconds": 14.937463296296297,
+          "startSeconds": 16.742,
+          "endSeconds": 20.143,
           "text": "anything missing or unresolved stays visible"
         },
         {
-          "startSeconds": 14.937463296296297,
-          "endSeconds": 16.41349721885522,
+          "startSeconds": 20.352,
+          "endSeconds": 21.629,
           "text": "instead of being guessed."
         },
         {
-          "startSeconds": 16.41349721885522,
-          "endSeconds": 17.535283,
+          "startSeconds": 21.908,
+          "endSeconds": 23.127,
           "text": "Nothing is guessed."
         }
       ]
     },
     {
       "sceneId": "S05",
-      "derived": "proportional-phrase",
+      "derived": "alignment",
       "cues": [
         {
           "startSeconds": 0,
-          "endSeconds": 2.331187731092437,
+          "endSeconds": 2.438,
           "text": "A later update describes the same visit."
         },
         {
-          "startSeconds": 2.331187731092437,
-          "endSeconds": 4.662375462184874,
+          "startSeconds": 3.39,
+          "endSeconds": 5.642,
           "text": "Counting every message would inflate the"
         },
         {
-          "startSeconds": 4.662375462184874,
-          "endSeconds": 6.760444420168067,
+          "startSeconds": 5.689,
+          "endSeconds": 8.533,
           "text": "totals, so Relay raises the possible"
         },
         {
-          "startSeconds": 6.760444420168067,
-          "endSeconds": 8.333996138655461,
+          "startSeconds": 8.58,
+          "endSeconds": 10.507,
           "text": "duplicate for staff review."
         },
         {
-          "startSeconds": 8.333996138655461,
-          "endSeconds": 10.606904176470588,
+          "startSeconds": 11.459,
+          "endSeconds": 13.653,
           "text": "Rejecting it leaves the approved ledger"
         },
         {
-          "startSeconds": 10.606904176470588,
-          "endSeconds": 13.054651294117647,
+          "startSeconds": 13.769,
+          "endSeconds": 16.707,
           "text": "unchanged, and the decision stays attached"
         },
         {
-          "startSeconds": 13.054651294117647,
-          "endSeconds": 13.870567,
+          "startSeconds": 16.788,
+          "endSeconds": 17.879,
           "text": "to its source."
         }
       ]
     },
     {
       "sceneId": "S06",
-      "derived": "proportional-phrase",
+      "derived": "alignment",
       "cues": [
         {
           "startSeconds": 0,
-          "endSeconds": 2.6420867314285714,
+          "endSeconds": 2.415,
           "text": "An urgent need should never wait on a buried"
         },
         {
-          "startSeconds": 2.6420867314285714,
-          "endSeconds": 3.1224661371428573,
+          "startSeconds": 2.461,
+          "endSeconds": 3.17,
           "text": "message."
         },
         {
-          "startSeconds": 3.1224661371428573,
-          "endSeconds": 5.764552868571428,
+          "startSeconds": 4.122,
+          "endSeconds": 6.769,
           "text": "Staff assign an owner, set an acknowledgment"
         },
         {
-          "startSeconds": 5.764552868571428,
-          "endSeconds": 8.10640247142857,
+          "startSeconds": 6.815,
+          "endSeconds": 9.3,
           "text": "deadline, and later record the outcome."
         },
         {
-          "startSeconds": 8.10640247142857,
-          "endSeconds": 10.268109797142856,
+          "startSeconds": 10.252,
+          "endSeconds": 12.562,
           "text": "If acknowledgment stalls, the worker"
         },
         {
-          "startSeconds": 10.268109797142856,
-          "endSeconds": 11.829342865714285,
+          "startSeconds": 12.655,
+          "endSeconds": 14.187,
           "text": "escalates at the deadline."
         },
         {
-          "startSeconds": 11.829342865714285,
-          "endSeconds": 14.171192468571427,
+          "startSeconds": 15.139,
+          "endSeconds": 17.786,
           "text": "Delivery is not acknowledgment, and the"
         },
         {
-          "startSeconds": 14.171192468571427,
-          "endSeconds": 16.51304207142857,
+          "startSeconds": 17.844,
+          "endSeconds": 19.911,
           "text": "board shows what still needs attention."
         },
         {
-          "startSeconds": 16.51304207142857,
-          "endSeconds": 18.674749397142854,
-          "text": "An acknowledgment is a person taking"
+          "startSeconds": 20.724,
+          "endSeconds": 23.44,
+          "text": "Acknowledgment is a person, not a delivery"
         },
         {
-          "startSeconds": 18.674749397142854,
-          "endSeconds": 21.016598999999996,
-          "text": "responsibility, not a provider receipt."
+          "startSeconds": 23.51,
+          "endSeconds": 24.288,
+          "text": "receipt."
         }
       ]
     },
     {
       "sceneId": "S07",
-      "derived": "proportional-phrase",
+      "derived": "alignment",
       "cues": [
         {
           "startSeconds": 0,
-          "endSeconds": 2.5127245647058825,
+          "endSeconds": 2.635,
           "text": "At the end of the week the report comes from"
         },
         {
-          "startSeconds": 2.5127245647058825,
-          "endSeconds": 4.797019623529412,
+          "startSeconds": 2.682,
+          "endSeconds": 5.19,
           "text": "the same records the team used to do its"
         },
         {
-          "startSeconds": 4.797019623529412,
-          "endSeconds": 5.082556505882353,
+          "startSeconds": 5.236,
+          "endSeconds": 5.712,
           "text": "work."
         },
         {
-          "startSeconds": 5.082556505882353,
-          "endSeconds": 7.423958941176471,
+          "startSeconds": 6.664,
+          "endSeconds": 10.019,
           "text": "Approved hours, contributions, open needs"
         },
         {
-          "startSeconds": 7.423958941176471,
-          "endSeconds": 9.879576129411765,
+          "startSeconds": 10.403,
+          "endSeconds": 12.98,
           "text": "and pending items are counted consistently,"
         },
         {
-          "startSeconds": 9.879576129411765,
-          "endSeconds": 12.278085941176471,
+          "startSeconds": 13.491,
+          "endSeconds": 16.625,
           "text": "and unknown time stays unknown rather than"
         },
         {
-          "startSeconds": 12.278085941176471,
-          "endSeconds": 13.077589211764707,
+          "startSeconds": 16.671,
+          "endSeconds": 17.809,
           "text": "becoming zero."
         },
         {
-          "startSeconds": 13.077589211764707,
-          "endSeconds": 15.476099023529413,
+          "startSeconds": 18.622,
+          "endSeconds": 21.06,
           "text": "Every decision is kept in an audit history"
         },
         {
-          "startSeconds": 15.476099023529413,
-          "endSeconds": 17.93171621176471,
-          "text": "with its source, so the report and the work"
+          "startSeconds": 21.106,
+          "endSeconds": 23.684,
+          "text": "with its source, so report and work share"
         },
         {
-          "startSeconds": 17.93171621176471,
-          "endSeconds": 19.416508,
-          "text": "share one source of truth."
+          "startSeconds": 23.754,
+          "endSeconds": 24.659,
+          "text": "one source."
         }
       ]
     },
     {
       "sceneId": "S08",
-      "derived": "proportional-phrase",
+      "derived": "alignment",
       "cues": [
         {
           "startSeconds": 0,
-          "endSeconds": 1.0094826218487394,
+          "endSeconds": 1.265,
           "text": "Volunteer Relay."
         },
         {
-          "startSeconds": 1.0094826218487394,
-          "endSeconds": 3.5962818403361343,
+          "startSeconds": 1.962,
+          "endSeconds": 5.41,
           "text": "Every hour counted, every need connected."
         },
         {
-          "startSeconds": 3.5962818403361343,
-          "endSeconds": 6.183081058823529,
+          "startSeconds": 6.223,
+          "endSeconds": 8.893,
           "text": "Built for nonprofit teams, with fictional"
         },
         {
-          "startSeconds": 6.183081058823529,
-          "endSeconds": 8.959158268907562,
+          "startSeconds": 9.009,
+          "endSeconds": 12.214,
           "text": "demo data and an open-source implementation."
         },
         {
-          "startSeconds": 8.959158268907562,
-          "endSeconds": 11.67214281512605,
+          "startSeconds": 13.026,
+          "endSeconds": 16.451,
           "text": "The repository holds the code, the plan and"
         },
         {
-          "startSeconds": 11.67214281512605,
-          "endSeconds": 14.385127361344537,
-          "text": "the recording notes, including the fixtures"
-        },
-        {
-          "startSeconds": 14.385127361344537,
-          "endSeconds": 15.016053999999999,
-          "text": "used here."
+          "startSeconds": 16.486,
+          "endSeconds": 17.74,
+          "text": "the recording notes."
         }
       ]
     }

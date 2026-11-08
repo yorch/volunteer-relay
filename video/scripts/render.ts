@@ -19,6 +19,7 @@ import {
   type Timeline,
 } from "../src/lib/timeline.ts";
 import { readCaptureManifest, readNarrationManifest } from "./lib/assets.ts";
+import { mixNarration } from "./lib/audio-mix.ts";
 import { resolveBrowserExecutable } from "./lib/browser.ts";
 import { buildRenderProps, readCueSets } from "./lib/props-build.ts";
 import { loadEverything } from "./lib/script.ts";
@@ -145,6 +146,14 @@ async function main(): Promise<void> {
     narration,
     mode,
   });
+  const mix = narration ? mixNarration(narration) : null;
+  if (mix) {
+    props.narrationFiles = mix.files;
+    props.assets.narration = true;
+    log(
+      `Narration mix: ${mix.gainRangeDb[0].toFixed(1)}…${mix.gainRangeDb[1].toFixed(1)} dB per scene${mix.limited ? " with limiter" : ""} (programme ${mix.programmeLufs?.toFixed(1) ?? "?"} LUFS)`,
+    );
+  }
   ensureDir(paths.generated);
   const propsPath = `${paths.generated}/render-props.json`;
   writeJson(propsPath, props);
