@@ -68,11 +68,18 @@ export function projectHeadless(
         task: r?.task ?? null,
         worktree: r?.cwd ?? null,
         harness: config
-          ? "Codex CLI (configured)"
+          ? `${config.lanes[lane]?.harness ?? "codex"} (configured); ${r ? `${r.harness ?? "codex"} recorded` : "no session recorded"}`
           : "Unknown (configuration unavailable)",
+        configuredHarness:
+          config?.lanes[lane]?.harness ?? (config ? "codex" : null),
+        observedHarness: r ? (r.harness ?? "codex") : null,
         configuredModel:
-          config?.lanes[lane]?.model ?? "CLI default (unspecified)",
-        observedModel: null,
+          config?.lanes[lane]?.harness === "pi"
+            ? config.lanes[lane]?.piModel
+              ? `${config.lanes[lane].piModel.provider}/${config.lanes[lane].piModel.id}`
+              : "Pi saved default (unspecified)"
+            : (config?.lanes[lane]?.model ?? "CLI default (unspecified)"),
+        observedModel: r?.observedModel ?? null,
         sessionId: r?.sessionId ?? null,
         pid: r?.pid ?? null,
         startedAt: r?.startedAt ?? null,

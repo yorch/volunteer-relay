@@ -188,114 +188,145 @@ it("builds explicit-session resume arguments with automatic approval review and 
   );
 });
 
-it("runs a controlled CLI, persists its exact session, resumes on nudge and drains safely", async () => {
-  const { mkdtemp, mkdir, writeFile, readFile, rm } = await import(
-    "node:fs/promises"
-  );
-  const { tmpdir } = await import("node:os");
-  const { join } = await import("node:path");
-  const { execFileSync } = await import("node:child_process");
-  const { serve } = await import("./supervisor.ts");
-  const root = await mkdtemp(join(tmpdir(), "relay-headless-test-"));
-  const old = process.env.RELAY_COORD_DIR;
-  process.env.RELAY_COORD_DIR = "";
-  const controller = new AbortController();
-  let running: Promise<void> | undefined;
-  try {
-    await mkdir(join(root, "docs/tasks"), { recursive: true });
-    await writeFile(join(root, "docs/STATUS.md"), "Synthetic only");
-    await writeFile(
-      join(root, ".gitignore"),
-      ".relay-coordination/\n.relay-local/\n",
+it.each(["codex", "pi"] as const)(
+  "runs controlled %s, persists its native identity, resumes exactly and drains",
+  async (harness) => {
+    const { mkdtemp, mkdir, writeFile, readFile, rm } = await import(
+      "node:fs/promises"
     );
-    const git = (...args: string[]) =>
-      execFileSync("git", args, { cwd: root, stdio: "pipe" });
-    git("init", "-q", "--initial-branch=main");
-    git("config", "user.name", "Synthetic");
-    git("config", "user.email", "synthetic@example.invalid");
-    git("add", ".");
-    git("commit", "-qm", "test: initialize headless fixture");
-    const binary = join(root, "fake-codex.mjs");
-    await writeFile(
-      binary,
-      `#!/usr/bin/env node
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { execFileSync } = await import("node:child_process");
+    const { serve } = await import("./supervisor.ts");
+    const root = await mkdtemp(join(tmpdir(), "relay-headless-test-"));
+    const old = process.env.RELAY_COORD_DIR;
+    process.env.RELAY_COORD_DIR = "";
+    const controller = new AbortController();
+    let running: Promise<void> | undefined;
+    try {
+      await mkdir(join(root, "docs/tasks"), { recursive: true });
+      await writeFile(join(root, "docs/STATUS.md"), "Synthetic only");
+      await writeFile(
+        join(root, ".gitignore"),
+        ".relay-coordination/\n.relay-local/\n",
+      );
+      const git = (...args: string[]) =>
+        execFileSync("git", args, { cwd: root, stdio: "pipe" });
+      git("init", "-q", "--initial-branch=main");
+      git("config", "user.name", "Synthetic");
+      git("config", "user.email", "synthetic@example.invalid");
+      git("add", ".");
+      git("commit", "-qm", "test: initialize headless fixture");
+      const binary = join(root, "fake-codex.mjs");
+      await writeFile(
+        binary,
+        `#!/usr/bin/env node
 import {writeFileSync,mkdirSync,readFileSync,existsSync} from 'node:fs';
 let input='';for await(const chunk of process.stdin)input+=chunk;
 if(!input.includes('dedicated headless lane A'))process.exit(2);
 const args=process.argv.slice(2);const out=args[args.indexOf('--output-last-message')+1];
 mkdirSync('.relay-local',{recursive:true});const file='.relay-local/args.json';const history=existsSync(file)?JSON.parse(readFileSync(file,'utf8')):[];history.push(args);writeFileSync(file,JSON.stringify(history));
 console.log(JSON.stringify({type:'thread.started',thread_id:'00000000-0000-4000-8000-000000000001'}));
+if (${JSON.stringify(harness)} === 'codex') {
 writeFileSync(out,JSON.stringify({state:'waiting',summary:'Controlled fixture completed'}));
 console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:5,output_tokens:2}}));
+} else {
+console.log(JSON.stringify({type:'session',id:'00000000-0000-4000-8000-000000000001',cwd:process.cwd()}));
+console.log(JSON.stringify({type:'message_end',message:{role:'assistant',stopReason:'stop',model:'synthetic',provider:'fixture',usage:{input:5,output:2},content:[{type:'text',text:JSON.stringify({state:'waiting',summary:'Controlled fixture completed'})}]}}));
+console.log(JSON.stringify({type:'agent_settled',aborted:false}));
+}
 `,
-      { mode: 0o700 },
-    );
-    const directory = join(root, ".relay-coordination/supervisor");
-    running = serve(
-      {
-        ...config,
-        root,
-        binary,
-        intervalSeconds: 1,
-        lanes: { A: { enabled: true } },
-      },
-      directory,
-      controller.signal,
-    );
-    const until = async (check: () => Promise<boolean>) => {
-      const deadline = Date.now() + 7000;
-      while (!(await check())) {
-        if (Date.now() > deadline)
-          throw new Error("Controlled supervisor transition timed out");
-        await new Promise((r) => setTimeout(r, 25));
-      }
-    };
-    const load = async () =>
-      JSON.parse(
-        await readFile(join(directory, "state.json"), "utf8"),
-      ) as State;
-    await until(async () => {
-      try {
-        return Object.values((await load()).records).some((r) => r.finishedAt);
-      } catch {
-        return false;
-      }
-    });
-    let first = Object.values((await load()).records)[0];
-    expect(first?.sessionId).toBe("00000000-0000-4000-8000-000000000001");
-    expect(first?.inputTokens).toBe(5);
-    await writeFile(
-      join(directory, "commands/00000000-0000-4000-8000-000000000002.json"),
-      JSON.stringify({
-        action: "nudge",
-        lane: "A",
-        at: new Date().toISOString(),
-        text: "Synthetic follow-up",
-      }),
-    );
-    await until(async () => {
-      first = Object.values((await load()).records)[0];
-      return (first?.runs.length ?? 0) === 2 && first?.status !== "running";
-    });
-    const args = JSON.parse(
-      await readFile(join(root, ".relay-local/args.json"), "utf8"),
-    );
-    expect(args[1].slice(-3)).toEqual([
-      "resume",
-      "00000000-0000-4000-8000-000000000001",
-      "-",
-    ]);
-    controller.abort();
-    await running;
-    expect((await load()).running).toBe(false);
-  } finally {
-    controller.abort();
-    if (running) await running;
-    if (old === undefined) delete process.env.RELAY_COORD_DIR;
-    else process.env.RELAY_COORD_DIR = old;
-    await rm(root, { recursive: true, force: true });
-  }
-}, 12000);
+        { mode: 0o700 },
+      );
+      const directory = join(root, ".relay-coordination/supervisor");
+      running = serve(
+        {
+          ...config,
+          root,
+          binary,
+          intervalSeconds: 1,
+          binaries: { pi: binary },
+          lanes: {
+            A: {
+              enabled: true,
+              ...(harness === "pi"
+                ? ({
+                    harness: "pi",
+                    piPermissions: "no-tools",
+                    sessionEpoch: "fixture",
+                  } as const)
+                : {}),
+            },
+          },
+        },
+        directory,
+        controller.signal,
+      );
+      const until = async (check: () => Promise<boolean>) => {
+        const deadline = Date.now() + 7000;
+        while (!(await check())) {
+          if (Date.now() > deadline)
+            throw new Error("Controlled supervisor transition timed out");
+          await new Promise((r) => setTimeout(r, 25));
+        }
+      };
+      const load = async () =>
+        JSON.parse(
+          await readFile(join(directory, "state.json"), "utf8"),
+        ) as State;
+      await until(async () => {
+        try {
+          return Object.values((await load()).records).some(
+            (r) => r.finishedAt,
+          );
+        } catch {
+          return false;
+        }
+      });
+      let first = Object.values((await load()).records)[0];
+      expect(first?.sessionId).toBe("00000000-0000-4000-8000-000000000001");
+      expect(first?.inputTokens).toBe(5);
+      await writeFile(
+        join(directory, "commands/00000000-0000-4000-8000-000000000002.json"),
+        JSON.stringify({
+          action: "nudge",
+          lane: "A",
+          at: new Date().toISOString(),
+          text: "Synthetic follow-up",
+        }),
+      );
+      await until(async () => {
+        first = Object.values((await load()).records)[0];
+        return (first?.runs.length ?? 0) === 2 && first?.status !== "running";
+      });
+      const args = JSON.parse(
+        await readFile(join(root, ".relay-local/args.json"), "utf8"),
+      );
+      expect(first?.harness).toBe(harness);
+      if (harness === "codex")
+        expect(args[1].slice(-3)).toEqual([
+          "resume",
+          "00000000-0000-4000-8000-000000000001",
+          "-",
+        ]);
+      else
+        expect(args[1].slice(-2)).toEqual([
+          "--session",
+          "00000000-0000-4000-8000-000000000001",
+        ]);
+      controller.abort();
+      await running;
+      expect((await load()).running).toBe(false);
+    } finally {
+      controller.abort();
+      if (running) await running;
+      if (old === undefined) delete process.env.RELAY_COORD_DIR;
+      else process.env.RELAY_COORD_DIR = old;
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+  12000,
+);
 
 it("schedules V only for pinned A requests, separately from R within existing limits", () => {
   const cfg: Config = {

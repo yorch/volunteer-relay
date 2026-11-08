@@ -13,6 +13,18 @@ import {
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { snapshot } from "./dashboard.ts";
+import {
+  assertSwitch,
+  consumeEvent,
+  type Harness,
+  type HarnessStream,
+  harnessCommand,
+  harnessKey,
+  harnessName,
+  type LaneHarness,
+  validateHarness,
+  validFinal,
+} from "./harness.ts";
 import { acquire } from "./watch.ts";
 
 export const lanes = ["A", "B", "C", "D", "E", "F", "R", "V"] as const;
@@ -22,13 +34,14 @@ export interface Config {
   version: 1;
   root: string;
   binary: string;
+  binaries?: Partial<Record<Harness, string>>;
   allowedTasks: string[];
   maxParallel: number;
   intervalSeconds: number;
   maxRunMinutes: number;
   maxRunsPerHour: number;
   confirmedStoppedAt: string;
-  lanes: Partial<Record<Lane, { enabled: boolean; model?: string }>>;
+  lanes: Partial<Record<Lane, LaneHarness & { enabled: boolean }>>;
 }
 export interface RecordState {
   key: string;
@@ -36,6 +49,9 @@ export interface RecordState {
   task: string | null;
   cwd: string;
   sessionId?: string;
+  harness?: Harness;
+  sessionEpoch?: string;
+  observedModel?: string;
   status: "running" | "idle" | "paused";
   reason: string;
   summary?: string;
@@ -134,6 +150,7 @@ export function validateConfig(value: Config) {
   }
   if (Object.keys(value.lanes).some((lane) => !lanes.includes(lane as Lane)))
     throw new Error("Unknown lane");
+  for (const lane of Object.values(value.lanes)) validateHarness(value, lane);
   return value;
 }
 export function plan(
@@ -195,6 +212,7 @@ export function plan(
       events.push(`assignment:${key}`);
       reason = "Continue only the assigned task until ready or blocked";
     }
+    key += harnessKey(config.lanes[lane]);
     const old = state.records[key];
     if (old?.status === "running" || old?.status === "paused") continue;
     if (
@@ -255,26 +273,13 @@ export function command(
   schema: string,
   output: string,
 ) {
-  const args = [
-    "exec",
-    "--approve-for-me",
-    "--add-dir",
-    config.root,
-    "--json",
-    "--output-schema",
+  return harnessCommand(
+    config,
+    config.lanes[record.lane] ?? {},
+    record,
     schema,
-    "--output-last-message",
     output,
-  ];
-  const model = config.lanes[record.lane]?.model;
-  if (model) args.push("--model", model);
-  if (record.sessionId) {
-    if (!/^[a-f0-9-]{36}$/i.test(record.sessionId))
-      throw new Error("Invalid stored explicit session ID");
-    args.push("resume", record.sessionId);
-  }
-  args.push("-");
-  return { binary: config.binary, args };
+  );
 }
 async function workdir(work: Work, board: Board, config: Config) {
   if (work.lane === "A") return config.root;
@@ -386,6 +391,14 @@ export async function serve(
     return saving;
   };
   try {
+    const latest = new Map<Lane, RecordState>();
+    for (const r of Object.values(state.records).sort((a, b) =>
+      (a.startedAt ?? "").localeCompare(b.startedAt ?? ""),
+    ))
+      latest.set(r.lane, r);
+    for (const [lane, prior] of latest)
+      if (config.lanes[lane]?.enabled)
+        assertSwitch(config.lanes[lane], prior, state.running);
     for (const record of Object.values(state.records)) {
       if (record.status !== "running" || !record.pid) continue;
       let alive = true;
@@ -529,6 +542,10 @@ export async function serve(
             outputTokens: 0,
           };
           record.cwd = cwd;
+          record.harness = harnessName(config.lanes[work.lane]);
+          const sessionEpoch = config.lanes[work.lane]?.sessionEpoch;
+          if (sessionEpoch) record.sessionEpoch = sessionEpoch;
+          else delete record.sessionEpoch;
           record.status = "running";
           record.reason = work.reason;
           record.startedAt = new Date().toISOString();
@@ -548,20 +565,40 @@ export async function serve(
             0o600,
           );
           const invocation = command(config, record, schema, output);
-          const child = spawn(invocation.binary, invocation.args, {
-            cwd,
-            env: {
-              ...process.env,
-              RELAY_COORD_DIR: dirname(directory),
-              RELAY_HEADLESS_LANE: work.lane,
-            },
-            stdio: ["pipe", "pipe", "pipe"],
-            detached: process.platform !== "win32",
-          });
+          if (invocation.harness === "pi")
+            await mkdir(join(directory, "pi-sessions"), {
+              recursive: true,
+              mode: 0o700,
+            });
+          // Native session files inherit a private mask; restore before yielding.
+          const previousMask = process.umask(0o077);
+          let child: ChildProcess;
+          try {
+            child = spawn(invocation.binary, invocation.args, {
+              cwd,
+              env: {
+                ...process.env,
+                RELAY_COORD_DIR: dirname(directory),
+                RELAY_HEADLESS_LANE: work.lane,
+              },
+              stdio: ["pipe", "pipe", "pipe"],
+              detached: process.platform !== "win32",
+            });
+          } finally {
+            process.umask(previousMask);
+          }
           if (child.pid !== undefined) record.pid = child.pid;
           children.set(work.key, child);
           const notes = state.notices[work.lane] ?? [];
           delete state.notices[work.lane];
+          const stream: HarnessStream = {
+            expectedCwd: cwd,
+            ...(record.sessionId ? { sessionId: record.sessionId } : {}),
+            inputTokens: 0,
+            outputTokens: 0,
+            settled: false,
+            invalid: false,
+          };
           let buffer = "";
           let timedOut = false;
           let logBytes = 0;
@@ -573,7 +610,7 @@ export async function serve(
               });
             }
           };
-          child.stdout.on("data", (chunk: Buffer) => {
+          child.stdout?.on("data", (chunk: Buffer) => {
             logChunk(chunk);
             buffer += chunk.toString();
             let end = buffer.indexOf("\n");
@@ -582,19 +619,14 @@ export async function serve(
               buffer = buffer.slice(end + 1);
               try {
                 const event = JSON.parse(line);
-                if (
-                  event.type === "thread.started" &&
-                  typeof event.thread_id === "string"
-                ) {
-                  record.sessionId = event.thread_id;
-                  void save();
-                }
-                if (event.type === "turn.completed") {
-                  record.inputTokens += Number(event.usage?.input_tokens ?? 0);
-                  record.outputTokens += Number(
-                    event.usage?.output_tokens ?? 0,
-                  );
-                }
+                const previousInput = stream.inputTokens,
+                  previousOutput = stream.outputTokens;
+                consumeEvent(invocation.harness, stream, event);
+                if (stream.sessionId) record.sessionId = stream.sessionId;
+                if (stream.observedModel)
+                  record.observedModel = stream.observedModel;
+                record.inputTokens += stream.inputTokens - previousInput;
+                record.outputTokens += stream.outputTokens - previousOutput;
               } catch {
                 /* non-event output is retained privately */
               }
@@ -602,7 +634,7 @@ export async function serve(
             }
             if (buffer.length > 4 * 1024 * 1024) buffer = "";
           });
-          child.stderr.on("data", (chunk: Buffer) => {
+          child.stderr?.on("data", (chunk: Buffer) => {
             logChunk(chunk);
           });
           let killTimer: ReturnType<typeof setTimeout> | undefined;
@@ -639,10 +671,16 @@ export async function serve(
             record.exitCode = code ?? 1;
             record.finishedAt = new Date().toISOString();
             delete record.pid;
-            const final = await read<{ state?: string; summary?: string }>(
-              output,
-              {},
-            );
+            const final: unknown =
+              invocation.harness === "pi"
+                ? stream.settled && !stream.invalid && stream.sessionId
+                  ? stream.final
+                  : undefined
+                : await read(output, {});
+            const valid =
+              validFinal(final) && !stream.invalid && !!stream.sessionId;
+            if (invocation.harness === "pi" && valid)
+              await atomic(output, final);
             const after = progress(await snapshot(config.root), cwd);
             record.noProgress = after === before ? record.noProgress + 1 : 0;
             record.progress = after;
@@ -650,17 +688,17 @@ export async function serve(
               ? "Time budget reached"
               : code !== 0
                 ? "CLI run failed; inspect private log and retry"
-                : !final.state
+                : !valid
                   ? "No valid final result; inspect before retry"
                   : final.state === "needs_operator"
                     ? "Operator input needed"
                     : record.noProgress >= 2
                       ? "Two runs without recorded progress; inspect before retry"
                       : null;
-            record.summary = final.summary?.slice(0, 2000) ?? "";
+            record.summary = valid ? final.summary : "";
             record.status = pause ? "paused" : "idle";
             record.reason =
-              pause ?? final.summary?.slice(0, 500) ?? "Turn complete";
+              pause ?? (valid ? final.summary.slice(0, 500) : "Turn complete");
             console.log(
               JSON.stringify({
                 lane: work.lane,
@@ -689,8 +727,13 @@ export async function serve(
           };
           child.on("error", () => done(1));
           child.on("close", done);
-          child.stdin.on("error", () => {});
-          child.stdin.end(prompt(work, config, notes));
+          child.stdin?.on("error", () => {});
+          child.stdin?.end(
+            prompt(work, config, notes) +
+              (invocation.harness === "pi"
+                ? "\nReturn ONLY a JSON object with state (working/waiting/ready/needs_operator) and summary (max 2000 characters); no markdown or extra keys."
+                : ""),
+          );
           console.log(
             JSON.stringify({
               lane: work.lane,

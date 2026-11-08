@@ -1,6 +1,6 @@
 # Dedicated headless operation
 
-This overrides first-wave launch defaults. One Node supervisor runs approved Codex CLI sessions with explicit native thread IDs; no --last, bypass flags or parallel writer for a lane. The operator confirmed previous B/E/D/R harnesses stopped before replacement. Preserve all existing worktrees, dirty work and private services. Do not launch another supervisor/harness or change its config, task allowlist or budgets from an agent except the standing operator directive permits A to prepare plan/gate task allowlist changes and approved role support; runtime budgets remain unchanged and reload uses an operator-channel draining restart.
+This overrides first-wave launch defaults. One Node supervisor runs approved harness CLI sessions (Codex default; restricted Pi support per HARNESSES.md) with explicit native thread IDs; no --last, bypass flags or parallel writer for a lane. The operator confirmed previous B/E/D/R harnesses stopped before replacement. Preserve all existing worktrees, dirty work and private services. Do not launch another supervisor/harness or change its config, task allowlist or budgets from an agent except the standing operator directive permits A to prepare plan/gate task allowlist changes and approved role support; runtime budgets remain unchanged and reload uses an operator-channel draining restart.
 
 ## Ownership and scope
 
@@ -48,3 +48,7 @@ The operator explicitly authorized P1-08 (A HTTP adapters), P1-09 (B verified-em
 ## V browser verification protocol
 
 V is enabled on demand by an exact pinned A request, never implementation ownership. Read docs/agents/prompts/V.md and a brief using docs/agents/qa/TEMPLATE.md. V uses a new isolated pinned checkout/port, optional private DB, synthetic actions, Playwright/Chrome and actual screenshot inspection at desktop/tablet/mobile widths. Report ranked reproducible findings, expected/observed, artifacts, SHAs and limits to A's request. Authors fix; A accepts with behavioral evidence, never screenshots alone. R code review remains separate. No children, unmanaged models or duplicate V sessions; R/V/authors/A share FOUR total slots. Fresh native contexts per request; no request means no V model run. Pilot accepted /dev/auth at exact 2e2d4c0; dashboard is baseline assessment until a redesign is separately authorized.
+
+## Harness identity
+
+Read HARNESSES.md before changing any lane harness. Codex/default legacy sessions remain unchanged. Per-lane harness selection, explicit harness-specific model fields and per-harness binary paths are validated. No active lane switches to Pi by default. Installed Pi lacks a native permission sandbox; initial Pi support is tool-free only, not an implementation-workload substitute. Switching requires an idle/drained lane and fresh explicit sessionEpoch, preserving prior native records; never resume IDs across harnesses. Configuration remains startup-only and budgets/four-slot cap are unchanged.

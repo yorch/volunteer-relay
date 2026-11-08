@@ -110,3 +110,27 @@ it("distinguishes absent supervisor state from unreadable or corrupt private sta
     await rm(root, { recursive: true, force: true });
   }
 });
+
+it("labels configured harness/model separately from legacy native observations", () => {
+  const changed: Config = {
+    ...config,
+    lanes: {
+      B: {
+        enabled: true,
+        harness: "pi",
+        piPermissions: "no-tools",
+        sessionEpoch: "new",
+        piModel: { provider: "synthetic", id: "fixture" },
+      },
+    },
+  };
+  const b = projectHeadless(changed, state, now, () => true).lanes.find(
+    (r) => r.lane === "B",
+  );
+  expect(b).toMatchObject({
+    configuredHarness: "pi",
+    observedHarness: "codex",
+    configuredModel: "synthetic/fixture",
+    observedModel: null,
+  });
+});
