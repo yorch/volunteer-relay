@@ -157,7 +157,7 @@
 .card input:not([type="checkbox"]),
 .card textarea,
 .card select {
-  border-color: #cddbd2;
+  border-color: #728c7c;
   border-radius: 0.45rem;
 }
 .card button {
@@ -225,7 +225,7 @@
 }
 .priority span,
 .empty {
-  color: #6d8074;
+  color: #526b5c;
   font-size: 0.875rem;
 }
 .count {
@@ -288,7 +288,7 @@
   color: #274c3c;
 }
 .list button small {
-  color: #687e70;
+  color: #526b5c;
   overflow-wrap: anywhere;
 }
 .list button[aria-pressed="true"] {
@@ -447,7 +447,7 @@
 .ledgerRow select {
   font: inherit;
   padding: 0.6rem;
-  border: 1px solid #cddbd2;
+  border: 1px solid #728c7c;
   border-radius: 0.45rem;
 }
 .ledgerRow button {
