@@ -294,12 +294,24 @@ export function evaluateSchedule(input: ScheduleInput): ScheduleResult {
     );
     return { c, entry, effective };
   });
-  // A revision prevents new implementation on its lane even if that revision is gated.
+  // Only an authorized correction of a ready task can hold competing work.
+  // Genuine corrections retain precedence while waiting on dependencies.
   for (const row of rows)
     if (
       row.entry.status === "eligible" &&
       row.c.kind === "implementation" &&
-      rows.some((r) => r.c.lane === row.c.lane && r.c.kind === "revision")
+      rows.some(
+        ({ c }) =>
+          c.lane === row.c.lane &&
+          c.kind === "revision" &&
+          c.authorized &&
+          c.phaseAllowed &&
+          c.ownershipValid &&
+          c.pathsDisjoint &&
+          c.acceptedBase &&
+          c.configLoaded &&
+          tasks.get(c.taskId)?.state === "ready",
+      )
     ) {
       row.entry.status = "blocked";
       row.entry.reason = "REVISION_PENDING";

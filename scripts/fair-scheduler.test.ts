@@ -164,6 +164,79 @@ describe("FAIR-V1 independent deterministic fixtures", () => {
     expect(evaluateSchedule(i).selected).toEqual([]);
   });
   it.each([
+    ["authorized", "UNAUTHORIZED"],
+    ["phaseAllowed", "PHASE_DISALLOWED"],
+    ["ownershipValid", "OWNERSHIP_INVALID"],
+    ["pathsDisjoint", "PATH_OVERLAP"],
+    ["acceptedBase", "BASE_UNACCEPTED"],
+    ["configLoaded", "CONFIG_NOT_LOADED"],
+  ] as const)(
+    "ignores a revision rejected by %s when selecting independent work",
+    (field, rejection) => {
+      const i = fixture(
+        [
+          candidate("old", "C", { kind: "revision", [field]: false }),
+          candidate("new", "C"),
+        ],
+        [task("old", { state: "ready", readyCommit: "frozen" }), task("new")],
+      );
+      expect(evaluateSchedule(i).selected).toEqual(["new"]);
+      expect(reason(i, "old")).toBe(rejection);
+      expect(reason(i, "new")).toBe("SELECTED");
+    },
+  );
+  it.each(["assigned", "working", "blocked", "accepted"] as const)(
+    "ignores a stale revision for a %s task",
+    (state) => {
+      const i = fixture(
+        [candidate("old", "C", { kind: "revision" }), candidate("new", "C")],
+        [
+          task("old", {
+            state,
+            readyCommit: "frozen",
+            acceptedCommit: state === "accepted" ? "integrated" : null,
+          }),
+          task("new"),
+        ],
+      );
+      expect(evaluateSchedule(i).selected).toEqual(["new"]);
+      expect(reason(i, "old")).toBe("REVISION_NOT_READY");
+    },
+  );
+  it("ignores a revision whose task no longer exists", () => {
+    const i = fixture(
+      [candidate("old", "C", { kind: "revision" }), candidate("new", "C")],
+      [task("new")],
+    );
+    expect(evaluateSchedule(i).selected).toEqual(["new"]);
+    expect(reason(i, "old")).toBe("TASK_MISSING");
+  });
+  it("retains genuine correction precedence while dependencies wait and holds stay enforced", () => {
+    const i = fixture(
+      [candidate("old", "C", { kind: "revision" }), candidate("new", "C")],
+      [
+        task("old", {
+          state: "ready",
+          readyCommit: "frozen",
+          metadata: metadata({
+            dependsOn: [
+              { taskId: "dependency", require: "accepted", commit: null },
+            ],
+          }),
+        }),
+        task("new"),
+        task("dependency"),
+      ],
+    );
+    expect(evaluateSchedule(i).selected).toEqual([]);
+    expect(reason(i, "old")).toBe("DEPENDENCY_WAITING");
+    expect(reason(i, "new")).toBe("REVISION_PENDING");
+    must(i.lanes[0]).held = true;
+    expect(evaluateSchedule(i).selected).toEqual([]);
+    expect(reason(i, "old")).toBe("LANE_HELD");
+    expect(reason(i, "new")).toBe("LANE_HELD");
+  });
+  it.each([
     "authorized",
     "phaseAllowed",
     "ownershipValid",
