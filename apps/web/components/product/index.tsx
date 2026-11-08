@@ -137,6 +137,10 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
   const [loading, setLoading] = useState(true);
   const [chooseOrganization, setChooseOrganization] = useState(false);
   const [error, setError] = useState("");
+  // Kept beside the message so the recovery link can match the reason: a
+  // signed-in user without usable membership must not be sent to /sign-in,
+  // which redirects them straight back here.
+  const [errorCode, setErrorCode] = useState("");
   const [notice, setNotice] = useState("");
   const attempts = useRef<Record<string, { signature: string; key: string }>>(
     {},
@@ -147,9 +151,11 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
     if (result.ok) {
       setSnapshot(result.value);
       setError("");
+      setErrorCode("");
     } else {
       setSnapshot(null);
       setError(errorMessage(result.error.code));
+      setErrorCode(result.error.code);
       if (result.error.code === "FORBIDDEN") {
         const choices = await loadOrganizations();
         if (
@@ -217,7 +223,11 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
       <main className={styles.standalone}>
         <h1>Workspace unavailable</h1>
         <p role="alert">{error}</p>
-        <a href="/sign-in">Sign in</a>{" "}
+        {errorCode === "FORBIDDEN" ? (
+          <a href="/account">Choose an organization or sign out</a>
+        ) : (
+          <a href="/sign-in">Sign in</a>
+        )}{" "}
         <button
           type="button"
           onClick={() => {
@@ -1944,7 +1954,9 @@ async function importRequest<T>(
     });
     const result = (await response.json()) as ResponseResult<T>;
     if (result && typeof result.ok === "boolean") return result;
-  } catch {}
+  } catch {
+    /* network or invalid response */
+  }
   return { ok: false, error: { code: "DEPENDENCY_UNAVAILABLE" } };
 }
 function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
