@@ -603,3 +603,52 @@ test("staff overview uses workspace and report data", async ({ page }) => {
   await expect(page.getByText("Deliver supplies")).toBeVisible();
   await expect(page.getByText("1 urgent need")).toBeVisible();
 });
+
+test("ledger inspects the contribution source and shows access denial", async ({
+  page,
+}) => {
+  await page.route("**/api/product/workspace", (route) =>
+    route.fulfill({
+      json: {
+        ok: true,
+        value: {
+          ...snapshot,
+          organization: { ...organization, role: "coordinator" },
+          contributions: [
+            {
+              ...snapshot.contributions[0],
+              origin: {
+                kind: "source",
+                sourceId: "source-original",
+                sourceRevision: 2,
+              },
+            },
+          ],
+        },
+      },
+    }),
+  );
+  await page.route("**/api/auth/organizations", (route) =>
+    route.fulfill({ status: 503, json: { ok: false } }),
+  );
+  let sourceRequest = "";
+  await page.route("**/api/product/source?*", (route) => {
+    sourceRequest = route.request().url();
+    return route.fulfill({
+      status: 403,
+      json: { ok: false, error: { code: "FORBIDDEN" } },
+    });
+  });
+  await page.goto("/workspace/activities");
+  await page.getByText("Details and correction").click();
+  await page
+    .getByRole("button", { name: "Inspect current source evidence" })
+    .click();
+  await expect(page.getByRole("alert")).toContainText("permission");
+  expect(new URL(sourceRequest).searchParams.get("sourceId")).toBe(
+    "source-original",
+  );
+  await expect(
+    page.getByText("Source source-original · revision 2"),
+  ).toBeVisible();
+});

@@ -90,7 +90,8 @@
   overflow-wrap: anywhere;
 }
 .item dl div {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(6rem, auto) minmax(0, 1fr);
   gap: 0.5rem;
 }
 .item dt {
@@ -458,4 +459,33 @@
   padding: 0.65rem;
   font: inherit;
   cursor: pointer;
+}
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.badge,
+.urgentBadge,
+.provisionalBadge {
+  border-radius: 2rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: capitalize;
+  background: #e8f1ea;
+  color: #365c47;
+}
+.urgentBadge {
+  background: #fae4dd;
+  color: #943d27;
+}
+.provisionalBadge {
+  background: #fff0cc;
+  color: #765000;
+}
+.technical {
+  color: #526b5c;
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
 }

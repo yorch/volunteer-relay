@@ -327,7 +327,17 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
         activePage === "home" ? "/workspace" : `/workspace/${activePage}`
       }
       navigation={nav}
-      account={<Organization />}
+      account={
+        <>
+          <span>
+            {snapshot.members.find(
+              (m) => m.membershipId === snapshot.organization.membershipId,
+            )?.name ?? "Account"}{" "}
+            · {role}
+          </span>
+          <Organization />
+        </>
+      }
     >
       {content}
     </StaffShell>
@@ -356,9 +366,11 @@ function Overview({ snapshot }: { snapshot: WorkspaceSnapshot }) {
       live = false;
     };
   }, []);
-  const openNeeds = snapshot.needs.filter((n) =>
-    ["new", "assigned", "acknowledged"].includes(n.status),
-  );
+  const openNeeds = snapshot.needs
+    .filter((n) => ["new", "assigned", "acknowledged"].includes(n.status))
+    .sort(
+      (a, b) => Number(b.urgency === "urgent") - Number(a.urgency === "urgent"),
+    );
   const failed = snapshot.sources.filter((s) => s.status === "failed").length;
   return (
     <>
@@ -1473,6 +1485,7 @@ function Contribution({
   members: WorkspaceSnapshot["members"];
   mutate: Mutate;
 }) {
+  const [showSource, setShowSource] = useState(false);
   async function transition(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -1511,7 +1524,18 @@ function Contribution({
         <summary>Details and correction</summary>
         <p>Activity {c.activityId}</p>
         {c.origin.kind === "source" && (
-          <a href="/workspace/inbox">Open source inbox</a>
+          <>
+            <button type="button" onClick={() => setShowSource(true)}>
+              Inspect current source evidence
+            </button>
+            {showSource && (
+              <PendingSource
+                sourceId={c.origin.sourceId}
+                status="current evidence"
+                close={() => setShowSource(false)}
+              />
+            )}
+          </>
         )}
         <p>
           {c.origin.kind === "source"
@@ -1636,6 +1660,11 @@ function Needs({
             </h2>
             {snapshot.needs
               .filter((n) => n.status === status)
+              .sort(
+                (a, b) =>
+                  Number(b.urgency === "urgent") -
+                  Number(a.urgency === "urgent"),
+              )
               .map((n) => (
                 <Need
                   key={`${n.needId}-${n.revision}`}
@@ -1717,10 +1746,18 @@ function Need({
   return (
     <Card>
       <h2>{n.summary}</h2>
-      <p>
-        {n.category} · {n.urgency} · {n.status}
-        {n.provisional ? " · Provisional" : ""} · revision {n.revision}
-      </p>
+      <div className={styles.badges}>
+        <span
+          className={n.urgency === "urgent" ? styles.urgentBadge : styles.badge}
+        >
+          {n.urgency}
+        </span>
+        {n.provisional && (
+          <span className={styles.provisionalBadge}>Provisional</span>
+        )}
+        <span className={styles.badge}>{n.status}</span>
+      </div>
+      <p>{n.category}</p>
       <p>
         Owner:{" "}
         {members.find((m) => m.membershipId === n.ownerMembershipId)?.name ??
@@ -1733,6 +1770,7 @@ function Need({
       </p>
       <details>
         <summary>Manage need</summary>
+        <p className={styles.technical}>Revision {n.revision}</p>
         <form onSubmit={transition}>
           <label>
             Action
