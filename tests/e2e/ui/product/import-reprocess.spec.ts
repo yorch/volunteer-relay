@@ -34,6 +34,7 @@ test("reprocessing retries unchanged revision with same key", async ({
       : route.fulfill({ json: { ok: true, value: { generation: 2 } } });
   });
   await page.goto("/workspace/inbox");
+  await page.getByText("Processing and reprocessing").click();
   await page
     .getByRole("button", { name: "Reprocess with current model and policy" })
     .click();
@@ -106,9 +107,9 @@ test("text and mapped photo are previewed and confirmed as multipart", async ({
     mimeType: "image/png",
     buffer: Buffer.from("synthetic"),
   });
-  await page
-    .getByLabel("Photo mapping", { exact: false })
-    .fill('{"1":["garden.png"]}');
+  await page.getByRole("button", { name: "Add photo link" }).click();
+  await page.getByLabel("Update ID").fill("1");
+  await page.getByLabel("Photo filenames", { exact: false }).fill("garden.png");
   await page.getByRole("button", { name: "Preview import" }).click();
   await expect(page.getByText("1 attachments", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Confirm import" }).click();

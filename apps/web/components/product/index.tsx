@@ -46,6 +46,11 @@ type ResponseResult<T> =
 const key = () => crypto.randomUUID();
 const date = (value: string | null) =>
   value ? new Date(value).toLocaleString() : "Not set";
+const fieldLabel = (value: string) =>
+  value
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .replace(/^./, (letter) => letter.toUpperCase());
 const instant = (value: FormDataEntryValue | null) =>
   value ? new Date(String(value)).toISOString() : null;
 async function request<T>(
@@ -419,8 +424,10 @@ function Overview({ snapshot }: { snapshot: WorkspaceSnapshot }) {
           {openNeeds.filter((n) => n.urgency === "urgent").length > 0 && (
             <p className={styles.priority}>
               <strong>
-                {openNeeds.filter((n) => n.urgency === "urgent").length} urgent
-                needs
+                {openNeeds.filter((n) => n.urgency === "urgent").length} urgent{" "}
+                {openNeeds.filter((n) => n.urgency === "urgent").length === 1
+                  ? "need"
+                  : "needs"}
               </strong>
               <br />
               <span>Check ownership and next steps on the needs board.</span>
@@ -537,6 +544,7 @@ function Volunteer({
   }
   return (
     <>
+      <span className={styles.eyebrow}>Your volunteer workspace</span>
       <h1>How did you help today?</h1>
       <p>Share an update with your team.</p>
       <Card>
@@ -552,6 +560,7 @@ function Volunteer({
               photoKey.current = null;
             }}
             rows={6}
+            placeholder="Tell your team what you did, when it happened, and how long you spent."
           />
           <label htmlFor="photo">
             Photo (optional; PNG, JPEG or WebP, up to 10 MB)
@@ -779,62 +788,78 @@ function Inbox({
       {snapshot.queue.length === 0 ? (
         <p>No sources awaiting review.</p>
       ) : (
-        <div className={styles.columns}>
-          <Card>
-            <h2>
-              Awaiting review{" "}
-              <span className={styles.count}>{snapshot.queue.length}</span>
-            </h2>
-            <label>
-              Search updates
-              <input
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search source or text"
-              />
-            </label>
-            <button type="button" onClick={() => void refresh()}>
-              Refresh inbox
-            </button>
-            <ul className={styles.list}>
-              {snapshot.queue
-                .filter((item) =>
-                  `${item.source.sourceId} ${item.source.text ?? ""}`
-                    .toLowerCase()
-                    .includes(search.toLowerCase()),
-                )
-                .map((item) => (
-                  <li key={item.proposal.runId}>
-                    <button
-                      type="button"
-                      aria-pressed={
-                        entry?.proposal.runId === item.proposal.runId
-                      }
-                      onClick={() => setSelected(item.proposal.runId)}
-                    >
-                      <strong>
-                        {item.source.text?.slice(0, 90) ||
-                          "Update without text"}
-                      </strong>
-                      <br />
-                      <small>
-                        Source {item.source.sourceId} · revision{" "}
-                        {item.source.revision}
-                      </small>
-                    </button>
-                  </li>
-                ))}
-            </ul>
-          </Card>
+        <div
+          className={`${styles.columns} ${entry ? styles.hasSelection : ""}`}
+        >
+          <div className={styles.inboxList}>
+            <Card>
+              <h2>
+                Awaiting review{" "}
+                <span className={styles.count}>{snapshot.queue.length}</span>
+              </h2>
+              <label>
+                Search updates
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setSelected(null);
+                  }}
+                  placeholder="Search source or text"
+                />
+              </label>
+              <button type="button" onClick={() => void refresh()}>
+                Refresh inbox
+              </button>
+              <ul className={styles.list}>
+                {snapshot.queue
+                  .filter((item) =>
+                    `${item.source.sourceId} ${item.source.text ?? ""}`
+                      .toLowerCase()
+                      .includes(search.toLowerCase()),
+                  )
+                  .map((item) => (
+                    <li key={item.proposal.runId}>
+                      <button
+                        type="button"
+                        aria-pressed={
+                          entry?.proposal.runId === item.proposal.runId
+                        }
+                        onClick={() => setSelected(item.proposal.runId)}
+                      >
+                        <strong>
+                          {item.source.text?.slice(0, 90) ||
+                            "Update without text"}
+                        </strong>
+                        <br />
+                        <small>
+                          Source {item.source.sourceId} · revision{" "}
+                          {item.source.revision}
+                        </small>
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            </Card>
+          </div>
           {entry ? (
-            <ReviewEditor
-              key={`${entry.proposal.runId}-${entry.revision}`}
-              entry={entry}
-              members={snapshot.members}
-              mutate={mutate}
-              clear={() => setSelected(null)}
-            />
+            <div>
+              <button
+                type="button"
+                className={styles.backToInbox}
+                onClick={() => setSelected(null)}
+              >
+                Back to inbox
+              </button>
+              <ReviewEditor
+                key={`${entry.proposal.runId}-${entry.revision}`}
+                entry={entry}
+                members={snapshot.members}
+                mutate={mutate}
+                clear={() => setSelected(null)}
+              />
+            </div>
           ) : (
             <Card>
               <p>Select a source to review.</p>
@@ -1028,7 +1053,7 @@ function ReviewEditor({
         {items.length ? (
           items.map((item, index) => (
             <div className={styles.item} key={item.key}>
-              <strong>{item.kind}</strong>
+              <strong>{fieldLabel(item.kind)}</strong>
               <dl>
                 {Object.entries(item)
                   .filter(
@@ -1036,7 +1061,7 @@ function ReviewEditor({
                   )
                   .map(([name, value]) => (
                     <div key={name}>
-                      <dt>{name}</dt>
+                      <dt>{fieldLabel(name)}</dt>
                       <dd>{value === null ? "Unknown" : String(value)}</dd>
                     </div>
                   ))}
@@ -1197,7 +1222,7 @@ function ReviewEditor({
               <ul>
                 {item.evidence.map((e) => (
                   <li key={JSON.stringify(e)}>
-                    {e.field}:{" "}
+                    {fieldLabel(e.field)}:{" "}
                     {e.kind === "text" ? `“${e.quote}”` : e.observation} (source
                     revision {e.sourceRevision})
                   </li>
@@ -1214,7 +1239,7 @@ function ReviewEditor({
             <ul>
               {entry.proposal.unresolved.map((u) => (
                 <li key={JSON.stringify(u)}>
-                  {u.field}: {u.reason}
+                  {fieldLabel(u.field)}: {u.reason}
                 </li>
               ))}
             </ul>
@@ -1706,8 +1731,12 @@ function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
   const [dateFormat, setDateFormat] =
     useState<ImportDraft["dateFormat"]>("ISO");
   const [timezone, setTimezone] = useState("UTC");
-  const [mappingText, setMappingText] = useState("{}");
-  const [photoMappingText, setPhotoMappingText] = useState("{}");
+  const [authorRows, setAuthorRows] = useState<
+    Array<{ rowId: string; author: string; member: string }>
+  >([]);
+  const [photoRows, setPhotoRows] = useState<
+    Array<{ rowId: string; id: string; filenames: string }>
+  >([]);
   const [files, setFiles] = useState<File[]>([]);
   const [reading, setReading] = useState(false);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
@@ -1726,49 +1755,27 @@ function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
   }
   async function previewImport(e: FormEvent) {
     e.preventDefault();
-    let authorMapping: Record<string, string | null>;
-    try {
-      const parsed: unknown = JSON.parse(mappingText);
-      if (
-        !parsed ||
-        typeof parsed !== "object" ||
-        Array.isArray(parsed) ||
-        Object.values(parsed).some(
-          (v) =>
-            v !== null &&
-            (typeof v !== "string" ||
-              !members.some((m) => m.membershipId === v)),
-        )
-      )
-        throw new Error();
-      authorMapping = parsed as Record<string, string | null>;
-    } catch {
-      setError(
-        "Author mapping must be a JSON object of author names to listed member IDs or null.",
-      );
-      return;
+    const authorMapping: Record<string, string | null> = {};
+    for (const row of authorRows) {
+      if (!row.author.trim()) {
+        setError("Enter a name for each author mapping.");
+        return;
+      }
+      authorMapping[row.author.trim()] = row.member || null;
     }
-    let photoMapping: Record<string, string[]>;
-    try {
-      const parsed: unknown = JSON.parse(photoMappingText);
-      if (
-        !parsed ||
-        typeof parsed !== "object" ||
-        Array.isArray(parsed) ||
-        Object.entries(parsed).some(
-          ([name, value]) =>
-            !name ||
-            !Array.isArray(value) ||
-            value.some((v) => typeof v !== "string" || !v),
-        )
-      )
-        throw new Error();
-      photoMapping = parsed as Record<string, string[]>;
-    } catch {
-      setError(
-        "Photo mapping must be a JSON object of external IDs to arrays of filenames.",
-      );
-      return;
+    const photoMapping: Record<string, string[]> = {};
+    for (const row of photoRows) {
+      const names = row.filenames
+        .split(",")
+        .map((name) => name.trim())
+        .filter(Boolean);
+      if (!row.id.trim() || !names.length) {
+        setError(
+          "Enter an update ID and at least one filename for each photo mapping.",
+        );
+        return;
+      }
+      photoMapping[row.id.trim()] = names;
     }
     if (
       files.length > 10 ||
@@ -1837,7 +1844,13 @@ function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
   }
   return (
     <>
+      <span className={styles.eyebrow}>Bring updates together</span>
       <h1>Import updates</h1>
+      <ol className={styles.steps}>
+        <li>Prepare your file</li>
+        <li>Preview and check</li>
+        <li>Confirm import</li>
+      </ol>
       <p>
         Preview rows and author mappings before submitting. Possible duplicates
         are preserved for review.
@@ -1893,13 +1906,64 @@ function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
               onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
             />
           </label>
-          <label>
-            Photo mapping (JSON: external ID to filename array; optional)
-            <textarea
-              value={photoMappingText}
-              onChange={(e) => setPhotoMappingText(e.target.value)}
-            />
-          </label>
+          <fieldset className={styles.mapping}>
+            <legend>Link photos to updates</legend>
+            <p>
+              Match an update ID from your file to the filenames you selected
+              above.
+            </p>
+            {photoRows.map((row, index) => (
+              <div className={styles.mappingRow} key={row.rowId}>
+                <label>
+                  Update ID
+                  <input
+                    value={row.id}
+                    onChange={(e) =>
+                      setPhotoRows((rows) =>
+                        rows.map((r, i) =>
+                          i === index ? { ...r, id: e.target.value } : r,
+                        ),
+                      )
+                    }
+                  />
+                </label>
+                <label>
+                  Photo filenames (comma separated)
+                  <input
+                    value={row.filenames}
+                    onChange={(e) =>
+                      setPhotoRows((rows) =>
+                        rows.map((r, i) =>
+                          i === index ? { ...r, filenames: e.target.value } : r,
+                        ),
+                      )
+                    }
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhotoRows((rows) => rows.filter((_, i) => i !== index));
+                    invalidate();
+                  }}
+                >
+                  Remove photo link
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                invalidate();
+                setPhotoRows((rows) => [
+                  ...rows,
+                  { rowId: key(), id: "", filenames: "" },
+                ]);
+              }}
+            >
+              Add photo link
+            </button>
+          </fieldset>
           <label>
             Import text
             <textarea
@@ -1931,19 +1995,71 @@ function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
               onChange={(e) => setTimezone(e.target.value)}
             />
           </label>
-          <label>
-            Author mapping (JSON: author name to member ID or null)
-            <textarea
-              value={mappingText}
-              onChange={(e) => setMappingText(e.target.value)}
-            />
-          </label>
-          <p>
-            Available member IDs:{" "}
-            {members.length
-              ? members.map((m) => `${m.name}: ${m.membershipId}`).join(", ")
-              : "None"}
-          </p>
+          <fieldset className={styles.mapping}>
+            <legend>Match authors to volunteers</legend>
+            <p>
+              Optionally connect names in the file to members of your team.
+              Leave a volunteer unknown when unsure.
+            </p>
+            {authorRows.map((row, index) => (
+              <div className={styles.mappingRow} key={row.rowId}>
+                <label>
+                  Author name
+                  <input
+                    value={row.author}
+                    onChange={(e) =>
+                      setAuthorRows((rows) =>
+                        rows.map((r, i) =>
+                          i === index ? { ...r, author: e.target.value } : r,
+                        ),
+                      )
+                    }
+                  />
+                </label>
+                <label>
+                  Volunteer
+                  <select
+                    value={row.member}
+                    onChange={(e) =>
+                      setAuthorRows((rows) =>
+                        rows.map((r, i) =>
+                          i === index ? { ...r, member: e.target.value } : r,
+                        ),
+                      )
+                    }
+                  >
+                    <option value="">Unknown</option>
+                    {members.map((m) => (
+                      <option key={m.membershipId} value={m.membershipId}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthorRows((rows) => rows.filter((_, i) => i !== index));
+                    invalidate();
+                  }}
+                >
+                  Remove author match
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                invalidate();
+                setAuthorRows((rows) => [
+                  ...rows,
+                  { rowId: key(), author: "", member: "" },
+                ]);
+              }}
+            >
+              Add author match
+            </button>
+          </fieldset>
           <p>Default fields: id, author, text, timestamp.</p>
           <button type="submit" disabled={pending || reading}>
             Preview import
@@ -2078,11 +2194,12 @@ function Summary({ snapshot }: { snapshot: WorkspaceSnapshot }) {
   const s = report?.ledger;
   return (
     <>
+      <span className={styles.eyebrow}>Reporting</span>
       <h1>Summary</h1>
       <p>Only approved contributions count toward recorded time.</p>
       <Card>
         <h2>Filter report</h2>
-        <form onSubmit={apply}>
+        <form className={styles.reportFilters} onSubmit={apply}>
           <label>
             From date
             <input type="date" name="from" />

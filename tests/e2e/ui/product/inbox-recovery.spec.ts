@@ -63,6 +63,7 @@ test("failure retry reuses its key and evidence photo uses authorized route", as
     });
   });
   await page.goto("/workspace/inbox");
+  await page.getByText("Processing and reprocessing").click();
   await expect(page.getByText("Source failed-1 · revision 2")).toBeVisible();
   await page.getByRole("button", { name: "Retry processing" }).click();
   await expect(
@@ -132,6 +133,7 @@ test("failed update evidence remains inspectable before retry without a proposal
       : route.fulfill({ json: { ok: true, value: {} } });
   });
   await page.goto("/workspace/inbox");
+  await page.getByText("Processing and reprocessing").click();
   await page.getByRole("button", { name: "Inspect evidence" }).click();
   await expect(page.getByText("Original volunteer update")).toBeVisible();
   await expect(

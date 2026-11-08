@@ -312,3 +312,79 @@
     grid-template-columns: 1fr;
   }
 }
+.steps {
+  display: flex;
+  gap: 0.75rem;
+  list-style: none;
+  padding: 0;
+  counter-reset: step;
+  flex-wrap: wrap;
+}
+.steps li {
+  counter-increment: step;
+  color: #526e5f;
+  font-size: 0.875rem;
+  font-weight: 650;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.steps li::before {
+  content: counter(step);
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  background: #e6f0e8;
+  color: #1c6850;
+}
+.card .reportFilters {
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  align-items: end;
+}
+.mapping {
+  border: 1px solid #e0e9e3;
+  border-radius: 0.6rem;
+  padding: 1rem;
+  min-width: 0;
+}
+.mapping legend {
+  font-weight: 700;
+  color: #294d3b;
+  padding: 0 0.3rem;
+}
+.card .mapping p {
+  color: #64776b;
+  font-size: 0.875rem;
+}
+.mappingRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 0.6rem;
+  align-items: end;
+  margin: 0.75rem 0;
+}
+@media (max-width: 760px) {
+  .mappingRow {
+    grid-template-columns: 1fr;
+  }
+}
+.backToInbox {
+  display: none;
+}
+@media (max-width: 760px) {
+  .hasSelection .inboxList {
+    display: none;
+  }
+  .backToInbox {
+    display: inline-block;
+    border: 0;
+    background: transparent;
+    color: #176c57;
+    padding: 0.5rem 0;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+}

@@ -185,11 +185,15 @@ test("staff reviews preserved source with optimistic revision", async ({
   await page
     .getByRole("button", { name: "Source source-1 · revision 2" })
     .click();
-  await expect(page.getByText("Helped for 90 minutes")).toBeVisible();
   await expect(
-    page.getByText("durationMinutes: “90 minutes”", { exact: false }),
+    page.locator("p").filter({ hasText: "Helped for 90 minutes" }),
   ).toBeVisible();
-  await expect(page.getByText("membershipId: Unknown volunteer")).toBeVisible();
+  await expect(
+    page.getByText("Duration minutes: “90 minutes”", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Membership id: Unknown volunteer"),
+  ).toBeVisible();
   await page.getByLabel("Review reason").fill("Confirmed with team");
   await page.getByRole("button", { name: "Accept proposal" }).click();
   await expect(page.getByRole("status")).toContainText("Proposal accepted");
@@ -326,7 +330,21 @@ test("removing a selected source never carries its reason to another", async ({
   await page
     .getByLabel("Review reason", { exact: false })
     .fill("Reason for one");
+  if (await page.getByRole("button", { name: "Back to inbox" }).isVisible())
+    await page.getByRole("button", { name: "Back to inbox" }).click();
+  await page.getByLabel("Search updates").fill("two");
+  await expect(
+    page.getByRole("button", { name: "Accept proposal" }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Select a source to review.")).toBeVisible();
+  await page.getByLabel("Search updates").clear();
+  await page.getByRole("button", { name: "Source one · revision 1" }).click();
+  await page
+    .getByLabel("Review reason", { exact: false })
+    .fill("Reason for one");
   queue = [entry("two")];
+  if (await page.getByRole("button", { name: "Back to inbox" }).isVisible())
+    await page.getByRole("button", { name: "Back to inbox" }).click();
   await page.getByRole("button", { name: "Refresh inbox" }).click();
   await expect(page.getByText("Select a source to review.")).toBeVisible();
   await expect(
@@ -544,4 +562,39 @@ test("photo retries reuse the submission key", async ({ page }) => {
   );
   expect(keys[0]).toBeTruthy();
   expect(keys[0]).toBe(keys[1]);
+});
+
+test("staff overview uses workspace and report data", async ({ page }) => {
+  await page.route("**/api/product/workspace", (route) =>
+    route.fulfill({
+      json: {
+        ok: true,
+        value: {
+          ...snapshot,
+          organization: { ...organization, role: "coordinator" },
+          needs: [
+            {
+              needId: "n1",
+              summary: "Deliver supplies",
+              status: "new",
+              urgency: "urgent",
+              provisional: true,
+              dueAt: null,
+            },
+          ],
+        },
+      },
+    }),
+  );
+  await page.route("**/api/auth/organizations", (route) =>
+    route.fulfill({ status: 503, json: { ok: false } }),
+  );
+  await page.route("**/api/product/reports", (route) =>
+    route.fulfill({ json: { ok: true, value: { approvedHours: 3 } } }),
+  );
+  await page.goto("/workspace");
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+  await expect(page.getByText("3 hrs")).toBeVisible();
+  await expect(page.getByText("Deliver supplies")).toBeVisible();
+  await expect(page.getByText("1 urgent need")).toBeVisible();
 });
