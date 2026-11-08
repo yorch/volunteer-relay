@@ -1,44 +1,22 @@
 # Single-host operations
 
-This profile is a deployment starting point, not proof of production readiness. It runs Caddy with automatic TLS, a private PostgreSQL 18 database, a one-shot migration and runtime grants, the standalone web server, and the worker. PostgreSQL and attachments have no published ports. Caddy is the only published service. The web and worker run as the image's unprivileged `node` user with read-only root filesystems; writable attachments and Caddy state are named volumes. The initialization container sets their ownership. The database volume and Caddy state must persist across upgrades. Do not use the development Compose file for production.
+This profile is a deployment starting point, not proof of production readiness. It runs a private PostgreSQL 18 database, a one-shot migration and runtime grants, the standalone web server, and the worker. It publishes **no ports**: public ingress and TLS belong to the Traefik instance already running on the host, which reaches `web` over an external `traefik` network. PostgreSQL and attachments have no published ports. The web and worker run as the image's unprivileged `node` user with read-only root filesystems; writable attachments are a named volume. The initialization container sets its ownership. The database volume and attachments must persist across upgrades. Do not use the development Compose file for production.
 
 ## Provision and start
 
-1. Provision a dedicated host with Docker Engine and Compose v2, persistent encrypted storage, monitoring, backups and restricted administrative access. Set DNS for a domain you control to this host and allow inbound TCP 80 and TCP/UDP 443. Caddy needs outbound ACME access. Keep the environment file, Docker socket, volumes and backups private.
+1. Provision the host with Docker Engine and Compose v2, persistent encrypted storage, monitoring, backups and restricted administrative access. That host must already run Traefik with an external network named `traefik`, an entrypoint named `websecure` and a certificate resolver named `webcert`; this stack terminates no TLS and owns no certificate state. Set DNS for a domain you control to that host. Keep the environment file, Docker socket, volumes and backups private.
 2. Build the `web` and `worker` targets of `infra/Dockerfile` from the same reviewed commit, publish to a trusted registry, and pin the resulting image digests. The build uses Node 26.11.1 and Bun 1.4.1. On restricted networks supply the required trusted proxy CA to networked build steps without disabling TLS verification. Do not include secrets in build arguments or images.
-3. Create two host-only environment files, owned by the operator and mode `0600`: the operator file `/etc/volunteer-relay/production.env` and the runtime file `/etc/volunteer-relay/runtime.env`. Use unique high-entropy credentials; the examples below are templates, not usable credentials. Compose reads the operator file; web and worker receive only the runtime file. Keep both out of source control. This profile assumes a dedicated PostgreSQL cluster: grants revoke default PUBLIC access to every connectable database. The bootstrap user owns and runs migrations; the separate runtime user must be a new, distinct role without owned objects or role memberships. The Postgres image only applies initial user/password/database variables to a new volume; changing the file alone does not rotate existing credentials.
+3. Create the two host-only environment files, owned by the operator and mode `0600`, from the committed templates:
 
-   ```dotenv
-   POSTGRES_USER=relay
-   POSTGRES_PASSWORD=REPLACE_WITH_URL_SAFE_RANDOM_PASSWORD
-   POSTGRES_DB=relay
-   MIGRATION_DATABASE_URL=postgres://relay:REPLACE_WITH_URL_SAFE_RANDOM_PASSWORD@postgres:5432/relay
-   RELAY_RUNTIME_USER=relay_app
-   RELAY_RUNTIME_PASSWORD=REPLACE_WITH_DIFFERENT_URL_SAFE_RANDOM_PASSWORD
-   RELAY_RUNTIME_ENV_FILE=/etc/volunteer-relay/runtime.env
-   APP_URL=https://relay.example.org
-   RELAY_DOMAIN=relay.example.org
-   RELAY_WEB_IMAGE=registry.example.org/relay-web@sha256:REPLACE
-   RELAY_WORKER_IMAGE=registry.example.org/relay-worker@sha256:REPLACE
+   ```sh
+   install -d -m 0700 /etc/volunteer-relay
+   install -m 0600 infra/production/production.env.sample /etc/volunteer-relay/production.env
+   install -m 0600 infra/production/runtime.env.sample /etc/volunteer-relay/runtime.env
    ```
 
-   In `/etc/volunteer-relay/runtime.env`:
+   Replace every `REPLACE_*` placeholder with unique high-entropy credentials; the templates are not usable credentials. Compose interpolates the operator file; web and worker receive only the runtime file. Keep both out of source control — `.gitignore` and `.dockerignore` exclude `*.env`. The runtime template leaves the secrets commented out on purpose: production refuses to start without `BETTER_AUTH_SECRET`, so a blind copy fails loudly instead of booting with a placeholder secret, and ledger export and redaction stay unavailable until `RETENTION_LEDGER_KEY` is set. `scripts/production-env.test.ts` keeps both templates in step with `compose.production.yaml` and the configuration schema. This profile assumes a dedicated PostgreSQL cluster: grants revoke default PUBLIC access to every connectable database. The bootstrap user owns and runs migrations; the separate runtime user must be a new, distinct role without owned objects or role memberships. The Postgres image only applies initial user/password/database variables to a new volume; changing the file alone does not rotate existing credentials.
 
-   ```dotenv
-   DATABASE_URL=postgres://relay_app:REPLACE_WITH_DIFFERENT_URL_SAFE_RANDOM_PASSWORD@postgres:5432/relay
-   BETTER_AUTH_SECRET=REPLACE_WITH_AT_LEAST_32_RANDOM_CHARACTERS
-   RETENTION_LEDGER_KEY=REPLACE_WITH_A_DIFFERENT_32_OR_MORE_CHARACTER_SECRET
-   NODE_ENV=production
-   DEMO_MODE=false
-   APP_URL=https://relay.example.org
-   ATTACHMENT_ROOT=/data/attachments
-   SMTP_HOST=mail.example.org
-   SMTP_PORT=465
-   SMTP_TLS=true
-   SMTP_USER=REPLACE
-   SMTP_PASSWORD=REPLACE
-   SMTP_FROM=relay@example.org
-   ```
+   The proxy contract is fixed by the host: external network `traefik`, entrypoint `websecure`, certificate resolver `webcert`. Create the network once on the host if it is missing (`docker network create traefik`). `TRAEFIK_NAME` defaults to `relay` and scopes the router, service and compression middleware names; set it only if another stack on the same host already claims `relay`, because two routers sharing a name make Traefik drop both. This stack publishes no ports, so the host proxy must own 80/443, the DNS record and the certificate state.
 
    Configure provider credentials and budget only when approved and tested; missing extraction provider configuration leaves extraction disabled. Telegram is replay-only by default. Never use demo mode or synthetic credentials for production. Application configuration is defined in `packages/config/src/index.ts`; configure outbound SMTP and any optional provider separately and validate their actual transport behavior before relying on delivery.
 4. From the checked-out release directory, set an explicit project name and absolute environment path:
@@ -51,7 +29,7 @@ This profile is a deployment starting point, not proof of production readiness. 
    docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RELAY_ENV_FILE" -f compose.production.yaml ps -a
    ```
 
-   The migration container and subsequent runtime-grants container must exit successfully before web and worker start. The latter grants runtime CRUD on existing public tables and sequences and default privileges for future objects created by the migration owner. It restricts the runtime role to the application database and does not grant schema ownership, superuser, database creation or role creation. Keep migration ownership consistent across upgrades and rerun the grants gate after migration; for extensions or other schemas review grants explicitly. Use URL encoding for special characters in both database URLs. Do not enable SQL statement logging for the role setup because it includes the runtime password. To rotate the runtime password, stop application services, update both files consistently, rerun the grants gate, then restart. Caddy waits for web health. Investigate failed migrations before restarting; do not bypass the gate. Check HTTPS certificate issuance, `/api/health`, sign-in and authorized workflows, worker logs, disk space and backup alerting. Health alone does not prove database connectivity, provider delivery or business workflow correctness. The web and worker have graceful stop periods; allow in-flight work to finish before maintenance.
+   The migration container and subsequent runtime-grants container must exit successfully before web and worker start. The latter grants runtime CRUD on existing public tables and sequences and default privileges for future objects created by the migration owner. It restricts the runtime role to the application database and does not grant schema ownership, superuser, database creation or role creation. Keep migration ownership consistent across upgrades and rerun the grants gate after migration; for extensions or other schemas review grants explicitly. Use URL encoding for special characters in both database URLs. Do not enable SQL statement logging for the role setup because it includes the runtime password. To rotate the runtime password, stop application services, update both files consistently, rerun the grants gate, then restart. The proxy does not gate on application health: it routes to `web` as soon as the container joins the `traefik` network, so confirm `/api/ready` yourself before treating a deployment as live. Investigate failed migrations before restarting; do not bypass the gate. Check HTTPS certificate issuance in the host proxy, `/api/health`, sign-in and authorized workflows, worker logs, disk space and backup alerting. Health alone does not prove database connectivity, provider delivery or business workflow correctness. The web and worker have graceful stop periods; allow in-flight work to finish before maintenance.
 
 ## Private attachment storage
 
@@ -143,13 +121,13 @@ For a consistent database/attachment pair, stop all writers and ingress, includi
 With `BLOB_STORE=s3` the bundled backup and restore scripts do not capture the bucket. In that mode take a bucket snapshot (or a bucket version checkpoint) inside the same quiesced window, keep the same checksum manifest discipline, suspend orphan reconciliation until the restore target is verified, and never restore a bucket into a prefix owned by another deployment. Rehearse that path before relying on it; the signed redaction ledger requirement below is unchanged.
 
 ```sh
-docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RELAY_ENV_FILE" -f compose.production.yaml stop caddy web worker
+docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RELAY_ENV_FILE" -f compose.production.yaml stop web worker
 COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" RELAY_ENV_FILE="$RELAY_ENV_FILE" infra/production/backup.sh /secure/backups/relay-2026-01-01
 # After confirming success, restart:
 docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RELAY_ENV_FILE" -f compose.production.yaml up -d
 ```
 
-The backup contains a PostgreSQL custom dump, a tar archive of attachments, a deployment-wide signed redaction ledger and SHA-256 checksums. The files are captured sequentially while writers are stopped. The worker requires `RETENTION_LEDGER_KEY` (at least 32 characters) for ledger export and redaction; back up this stable signing key separately in the secret manager. Do not store it in the backup directory or commit it. A backup-time ledger is a historical snapshot and may omit later redactions. Checksums detect accidental corruption; they do not authenticate the backup. Protect and verify the backup's origin separately. Caddy certificate state and the environment file are not in this backup; manage those separately. Caddy can reissue certificates subject to ACME limits.
+The backup contains a PostgreSQL custom dump, a tar archive of attachments, a deployment-wide signed redaction ledger and SHA-256 checksums. The files are captured sequentially while writers are stopped. The worker requires `RETENTION_LEDGER_KEY` (at least 32 characters) for ledger export and redaction; back up this stable signing key separately in the secret manager. Do not store it in the backup directory or commit it. A backup-time ledger is a historical snapshot and may omit later redactions. Checksums detect accidental corruption; they do not authenticate the backup. Protect and verify the backup's origin separately. Certificate state belongs to the host's Traefik (`acme.json`), not to this project: back it up and protect it as part of the host proxy. The environment file is also not in this backup; manage it separately.
 
 ## Restore and upgrade
 
@@ -177,8 +155,8 @@ docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RELAY_ENV_FIL
 set +C
 ```
 
-Validate row counts, representative authorization and attachment access in isolation before any cutover. Restore does not automatically start the application. Restore uses the bootstrap identity and omits ACLs; the script runs the runtime-grants gate and signed ledger replay on the isolated target. Apply any newer migrations and rerun the grants gate before starting web and worker, so the new cluster obtains its own runtime role and grants. Plan cutover, DNS, secrets and rollback with the operator; do not start Caddy with the production domain in a test project. For upgrades, take and verify a quiesced backup, review migrations and compatibility, deploy pinned matching images, and verify health and workflows. A failed migration blocks startup; rollback may require a tested restore rather than an older image against a newer schema. Never run concurrent migrations or destructive resets against shared data.
+Validate row counts, representative authorization and attachment access in isolation before any cutover. Restore does not automatically start the application. Restore uses the bootstrap identity and omits ACLs; the script runs the runtime-grants gate and signed ledger replay on the isolated target. Apply any newer migrations and rerun the grants gate before starting web and worker, so the new cluster obtains its own runtime role and grants. Plan cutover, DNS, secrets and rollback with the operator; do not point the production domain at a test project. For upgrades, take and verify a quiesced backup, review migrations and compatibility, deploy pinned matching images, and verify health and workflows. A failed migration blocks startup; rollback may require a tested restore rather than an older image against a newer schema. Never run concurrent migrations or destructive resets against shared data.
 
 ## Evidence and remaining gates
 
-A local synthetic rehearsal used two distinct Compose projects with PostgreSQL 18.1: a row and attachment survived backup and restore, and a second restore was refused for the nonempty target. A separate migrated PostgreSQL rehearsal confirmed runtime CRUD permissions on auth, source and processing tables, denial of table creation and denial of connection to the administrative database. Compose configuration and shell syntax were checked. An isolated production-style container rehearsal also exercised synthetic sign-up and email verification, operator provisioning, source intake, manual approval and reporting, and need acknowledgment. This does not verify a fresh public host, Caddy certificate issuance or renewal, real SMTP/Telegram/OpenAI providers, production network egress, monitoring, disaster recovery cutover or production load. Complete these gates with appropriate access before public operation; do not infer delivery or acknowledgment from provider acceptance.
+A local synthetic rehearsal used two distinct Compose projects with PostgreSQL 18.1: a row and attachment survived backup and restore, and a second restore was refused for the nonempty target. A separate migrated PostgreSQL rehearsal confirmed runtime CRUD permissions on auth, source and processing tables, denial of table creation and denial of connection to the administrative database. Compose configuration and shell syntax were checked. An isolated production-style container rehearsal also exercised synthetic sign-up and email verification, operator provisioning, source intake, manual approval and reporting, and need acknowledgment. This does not verify a fresh public host, host Traefik certificate issuance or renewal, real SMTP/Telegram/OpenAI providers, production network egress, monitoring, disaster recovery cutover or production load. Complete these gates with appropriate access before public operation; do not infer delivery or acknowledgment from provider acceptance.

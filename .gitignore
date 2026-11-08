@@ -6,6 +6,9 @@ coverage/
 .env
 .env.*
 !.env.example
+# Production env files (production.env, runtime.env) are secrets; the committed
+# *.env.sample templates are not.
+*.env
 .DS_Store
 .relay-coordination/
 .relay-local/
