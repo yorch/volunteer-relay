@@ -66,6 +66,7 @@ export function createFollowThroughHttp(
         "settings",
         "notification-read",
         "retry-source",
+        "reprocess-source",
         "notification-preferences",
         "telegram-link",
         "telegram-unlink",
@@ -89,6 +90,19 @@ export function createFollowThroughHttp(
       return parsed.success
         ? repo.updateSettings(context, parsed.data)
         : fail("VALIDATION");
+    }
+    if (path === "reprocess-source") {
+      if (
+        typeof input.sourceId !== "string" ||
+        !Number.isInteger(input.expectedRevision) ||
+        typeof input.idempotencyKey !== "string"
+      )
+        return fail("VALIDATION");
+      return createProcessingRepository(db).reprocessSource(context, {
+        sourceId: input.sourceId,
+        expectedRevision: Number(input.expectedRevision),
+        idempotencyKey: input.idempotencyKey,
+      });
     }
     if (path === "retry-source") {
       if (

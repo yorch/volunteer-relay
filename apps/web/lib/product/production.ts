@@ -26,6 +26,8 @@ import { createProductionAuth } from "../mail/production.ts";
 import { createProductExtensions, readPrivateBlob } from "./extensions.ts";
 import { createFollowThroughHttp } from "./follow-through.ts";
 import { createProductHandler, productFailure } from "./http.ts";
+import { createOperationsHttp } from "./operations.ts";
+import { createRetentionHttp } from "./retention.ts";
 
 let handler: ReturnType<typeof createProductHandler> | undefined;
 export async function productHandler(request: Request) {
@@ -66,9 +68,16 @@ export async function productHandler(request: Request) {
             .timezone,
       });
       const followHttp = createFollowThroughHttp(db, auth, sessions);
+      const operations = createOperationsHttp(db, env.ATTACHMENT_ROOT);
+      const retention = createRetentionHttp(
+        db,
+        process.env.RETENTION_LEDGER_KEY,
+      );
       handler = createProductHandler({
         extensions: async (context, path, request) =>
           (await followHttp(context, path, request)) ??
+          (await operations(context, path, request)) ??
+          (await retention(context, path, request)) ??
           extended(context, path, request),
         appUrl: env.APP_URL,
         timezone: async (context) =>

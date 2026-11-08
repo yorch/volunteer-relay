@@ -11,6 +11,10 @@ export function createTelegramPhotoLoader(options: {
   maxBytes: number;
   transform: (bytes: Uint8Array) => Promise<Uint8Array>;
   fetch?: typeof fetch;
+  withBlobLock?: (
+    key: string,
+    put: () => Promise<import("./index.ts").BlobWrite>,
+  ) => Promise<import("./index.ts").BlobWrite>;
 }) {
   const request = options.fetch ?? fetch;
   return async (
@@ -67,9 +71,15 @@ export function createTelegramPhotoLoader(options: {
     const raw = Buffer.concat(chunks);
     if (!detectedImageMime(raw)) throw new Error("Unsupported image");
     const pixels = await options.transform(raw);
-    const blob = await createPrivateFilesystemBlobStore(options.root, {
-      maxBytes: options.maxBytes,
-    }).put(pixels);
+    const digest = createHash("sha256").update(pixels).digest("hex");
+    const key = `${digest.slice(0, 2)}/${digest}`;
+    const put = () =>
+      createPrivateFilesystemBlobStore(options.root, {
+        maxBytes: options.maxBytes,
+      }).put(pixels);
+    const blob = options.withBlobLock
+      ? await options.withBlobLock(key, put)
+      : await put();
     return {
       ...blob,
       organizationId: context.organizationId,

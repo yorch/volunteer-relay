@@ -5,9 +5,10 @@ import {
   createFollowThroughRepository,
   createModelBudgetRepository,
   createProcessingRepository,
+  createRetentionRepository,
   sql,
 } from "@relay/db";
-import { readPrivateBlob } from "@relay/intake";
+import { erasePrivateBlob, readPrivateBlob } from "@relay/intake";
 import {
   createSmtpTransport,
   createTelegramTransport,
@@ -21,6 +22,7 @@ const { db, close } = createDatabase(env.DATABASE_URL);
 const processing = createProcessingRepository(db),
   follow = createFollowThroughRepository(db),
   budgets = createModelBudgetRepository(db);
+const retention = createRetentionRepository(db);
 let stopped = false,
   wake: (() => void) | undefined;
 for (const signal of ["SIGINT", "SIGTERM"] as const)
@@ -78,6 +80,12 @@ console.info(
 try {
   while (!stopped) {
     try {
+      for (const job of await retention.claimErasureJobs(5)) {
+        if (stopped) break;
+        await retention.runErasureJob(job, (key, sha) =>
+          erasePrivateBlob(env.ATTACHMENT_ROOT, key, sha),
+        );
+      }
       await follow.processPendingNotifications(50);
       await follow.escalateOverdue(50);
       for (const job of await follow.claimDeliveries(20)) {
@@ -102,9 +110,11 @@ try {
         );
       }
       if (configured) {
-        for (const { source, leaseToken } of await processing.pendingSources(
-          5,
-        )) {
+        for (const {
+          source,
+          leaseToken,
+          policy,
+        } of await processing.pendingSources(5)) {
           if (stopped) break;
           const time = new Date(),
             windowStart = new Date(
@@ -136,9 +146,6 @@ try {
           }
           let sent = false;
           try {
-            const settings = await follow.getSettingsInternal(
-              source.organizationId,
-            );
             const extraction = createExtractionService({
               maxAttempts: 1,
               provider: createOpenAIProvider({
@@ -181,7 +188,7 @@ try {
             const result = await extraction.extract(context, source, {
               model: env.OPENAI_MODEL ?? "",
               prompt: "volunteer-extraction-v1",
-              policy: settings.policyVersion,
+              policy: policy.policyVersion,
             });
             if (!result.ok) {
               if (!sent)
@@ -200,6 +207,7 @@ try {
               continue;
             }
             await processing.applyValidatedPolicy(source);
+            await follow.processPendingNotifications(50);
           } catch {
             if (!sent)
               await budgets.cancelModelBudget(reserved.value.reservationId);

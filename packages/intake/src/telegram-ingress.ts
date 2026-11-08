@@ -8,6 +8,12 @@ import type {
   TenantContext,
 } from "@relay/contracts";
 import { normalizeTelegramUpdate, type TelegramUpdate } from "./index.ts";
+export function verifyTelegramSecret(received: string, expected: string) {
+  if (!expected) return false;
+  const a = Buffer.from(received),
+    b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 export interface TelegramIngressDependencies {
   secret: string;
   links: {
@@ -58,9 +64,7 @@ export function createTelegramIngress(deps: TelegramIngressDependencies) {
     const received =
       request.headers.get("x-telegram-bot-api-secret-token") ?? "";
     if (!deps.secret) return error(503);
-    const a = Buffer.from(received),
-      b = Buffer.from(deps.secret);
-    if (a.length !== b.length || !timingSafeEqual(a, b)) return error(403);
+    if (!verifyTelegramSecret(received, deps.secret)) return error(403);
     if (request.method !== "POST") return error(405);
     let update: TelegramUpdate;
     try {

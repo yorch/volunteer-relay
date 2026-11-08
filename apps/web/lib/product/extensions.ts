@@ -21,6 +21,7 @@ import {
 } from "@relay/intake";
 import sharp from "sharp";
 import { type ProductProcessing, productFailure } from "./http.ts";
+import { prepareImportPhotos, readImportInput } from "./import-photos.ts";
 
 export { readPrivateBlob } from "@relay/intake";
 
@@ -96,7 +97,7 @@ export function createProductExtensions(options: {
           and (${q.membershipId ?? null}::text is null or c.membership_id=${q.membershipId ?? null})`);
       const r = result.rows[0] ?? {};
       const needs = await options.db.execute(
-        sql`select count(*) filter(where status not in ('resolved','cancelled'))::int as open, count(*) filter(where status='resolved')::int as resolved, avg(extract(epoch from (acknowledged_at-created_at))/60) filter(where acknowledged_at is not null) as ack from need where organization_id=${context.organizationId} and (${q.from ?? null}::date is null or (created_at AT TIME ZONE ${timezone})::date >= ${q.from ?? null}::date) and (${q.to ?? null}::date is null or (created_at AT TIME ZONE ${timezone})::date <= ${q.to ?? null}::date)`,
+        sql`select count(*) filter(where status not in ('resolved','cancelled'))::int as open, count(*) filter(where status='resolved')::int as resolved, avg(extract(epoch from (acknowledged_at-created_at))/60) filter(where acknowledged_at is not null) as ack,avg(extract(epoch from (resolved_at-created_at))/60) filter(where resolved_at is not null) as resolution from need where organization_id=${context.organizationId} and (${q.from ?? null}::date is null or (created_at AT TIME ZONE ${timezone})::date >= ${q.from ?? null}::date) and (${q.to ?? null}::date is null or (created_at AT TIME ZONE ${timezone})::date <= ${q.to ?? null}::date)`,
       );
       const unknown = await options.db.execute(
         sql`select count(*)::int as count from contribution c join activity a on a.organization_id=c.organization_id and a.id=c.activity_id where c.organization_id=${context.organizationId} and c.status='approved' and a.local_date is null and (${q.program ?? null}::text is null or a.kind=${q.program ?? null}) and (${q.membershipId ?? null}::text is null or c.membership_id=${q.membershipId ?? null})`,
@@ -117,6 +118,8 @@ export function createProductExtensions(options: {
         openNeeds: Number(n.open ?? 0),
         resolvedNeeds: Number(n.resolved ?? 0),
         averageAcknowledgmentMinutes: n.ack == null ? null : Number(n.ack),
+        averageResolutionMinutes:
+          n.resolution == null ? null : Number(n.resolution),
         excludedUnknownDate:
           q.from || q.to ? Number(unknown.rows[0]?.count ?? 0) : 0,
       };
@@ -132,6 +135,7 @@ export function createProductExtensions(options: {
           openNeeds: value.openNeeds,
           resolvedNeeds: value.resolvedNeeds,
           averageAcknowledgmentMinutes: value.averageAcknowledgmentMinutes,
+          averageResolutionMinutes: value.averageResolutionMinutes,
           excludedUnknownDate: value.excludedUnknownDate,
         };
         return new Response(
@@ -231,53 +235,69 @@ export function createProductExtensions(options: {
         } catch {
           return denied("VALIDATION");
         }
-        const blob = await createPrivateFilesystemBlobStore(options.root, {
-          maxBytes: options.maxBytes,
-        }).put(pixels);
-        const old = await options.processing.getSource(context, sourceId);
-        if (old.ok) {
-          if (
-            old.value.text !== text ||
-            old.value.attachments[0]?.sha256 !== blob.sha256
-          )
-            return denied("CONFLICT");
-          return options.sources.accept(context, old.value);
-        }
-        if (old.error.code !== "NOT_FOUND") return old;
-        return options.sources.accept(context, {
-          schemaVersion: 1,
-          organizationId: context.organizationId,
-          sourceId,
-          revision: 1,
-          channel: "web",
-          channelIdentity: context.actor.membershipId,
-          externalMessageId: sourceId,
-          idempotencyKey: key,
-          author: {
-            externalIdentity: context.actor.userId,
-            membershipId: context.actor.membershipId,
-          },
-          occurredAt: null,
-          receivedAt: new Date().toISOString(),
-          timezone: (await options.timezone?.(context.organizationId)) ?? "UTC",
-          text,
-          attachments: [
-            {
-              ...blob,
-              id: `photo:${blob.sha256}`,
-              organizationId: context.organizationId,
+        const actor = context.actor;
+        const digest = createHash("sha256").update(pixels).digest("hex");
+        const storageKey = `${digest.slice(0, 2)}/${digest}`;
+        return options.db.transaction(async (tx) => {
+          await tx.execute(
+            sql`select pg_advisory_xact_lock(hashtextextended(${`blob:${storageKey}`},0))`,
+          );
+          const tombstone = await tx.execute(
+            sql`select 1 from source_redaction where organization_id=${context.organizationId} and source_id=${sourceId}`,
+          );
+          if (tombstone.rows.length) return denied("NOT_FOUND");
+          const repository = createSourceRepository({
+            authorization: options.authorization,
+            store: createSourceStore(tx as unknown as Database),
+          });
+          const blob = await createPrivateFilesystemBlobStore(options.root, {
+            maxBytes: options.maxBytes,
+          }).put(pixels);
+          const old = await options.processing.getSource(context, sourceId);
+          if (old.ok) {
+            if (
+              old.value.text !== text ||
+              old.value.attachments[0]?.sha256 !== blob.sha256
+            )
+              return denied("CONFLICT");
+            return repository.accept(context, old.value);
+          }
+          if (old.error.code !== "NOT_FOUND") return old;
+          return repository.accept(context, {
+            schemaVersion: 1,
+            organizationId: context.organizationId,
+            sourceId,
+            revision: 1,
+            channel: "web",
+            channelIdentity: actor.membershipId,
+            externalMessageId: sourceId,
+            idempotencyKey: key,
+            author: {
+              externalIdentity: actor.userId,
+              membershipId: actor.membershipId,
             },
-          ],
-          replyToSourceId: null,
-          replacesRevision: null,
-          original: { mediaType: "text/plain", payload: text },
+            occurredAt: null,
+            receivedAt: new Date().toISOString(),
+            timezone:
+              (await options.timezone?.(context.organizationId)) ?? "UTC",
+            text,
+            attachments: [
+              {
+                ...blob,
+                id: `photo:${blob.sha256}`,
+                organizationId: context.organizationId,
+              },
+            ],
+            replyToSourceId: null,
+            replacesRevision: null,
+            original: { mediaType: "text/plain", payload: text },
+          });
         });
       }
       let input: Record<string, unknown>;
+      let files: Map<string, File>;
       try {
-        input = JSON.parse(
-          (await bodyBytes(request, 5 * 1024 * 1024)).toString("utf8"),
-        );
+        ({ input, files } = await readImportInput(request, options.maxBytes));
       } catch {
         return denied("VALIDATION");
       }
@@ -319,7 +339,7 @@ export function createProductExtensions(options: {
         | "YYYY-MM-DD"
         | "MM/DD/YYYY"
         | "DD/MM/YYYY";
-      const preview: ImportPreview =
+      let preview: ImportPreview =
         input.format === "whatsapp"
           ? parseWhatsAppTextExport(input.text, ctx, {
               dateOrder: format === "DD/MM/YYYY" ? "DMY" : "MDY",
@@ -338,6 +358,14 @@ export function createProductExtensions(options: {
                 dateFormat: format,
               },
             );
+      const prepared = await prepareImportPhotos(
+        preview,
+        input,
+        files,
+        context.organizationId,
+        options.maxBytes,
+      );
+      preview = prepared.preview;
       if (path === "import-preview") return { ok: true, value: preview };
       if (
         preview.errors.length ||
@@ -367,6 +395,16 @@ export function createProductExtensions(options: {
             store: createSourceStore(tx as unknown as Database),
           });
           const receipts: Receipt[] = [];
+          for (const blob of [...prepared.blobs].sort((a, b) =>
+            a.metadata.storageKey.localeCompare(b.metadata.storageKey),
+          )) {
+            await tx.execute(
+              sql`select pg_advisory_xact_lock(hashtextextended(${`blob:${blob.metadata.storageKey}`},0))`,
+            );
+            await createPrivateFilesystemBlobStore(options.root, {
+              maxBytes: options.maxBytes,
+            }).put(blob.content);
+          }
           for (const source of preview.sources) {
             const old = await options.processing.getSource(
               context,

@@ -1,5 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, open, realpath, rename, rm, stat } from "node:fs/promises";
+import {
+  mkdir,
+  open,
+  realpath,
+  rename,
+  rm,
+  stat,
+  statfs,
+} from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { type SourceEnvelope, sourceEnvelopeSchema } from "@relay/contracts";
 
@@ -735,6 +743,9 @@ export function createPrivateFilesystemBlobStore(
       const detected = signatures.find((entry) => entry.check(data));
       if (!detected) throw new Error("Unsupported image content");
       await mkdir(root, { recursive: true, mode: 0o700 });
+      const capacity = await statfs(root);
+      if (capacity.bavail * capacity.bsize < maxBytes * 2)
+        throw new Error("Attachment storage is full");
       const actualRoot = await realpath(root);
       if (actualRoot !== root)
         throw new Error("Attachment root must not be a symlink");
@@ -778,10 +789,11 @@ export function createPrivateFilesystemBlobStore(
     },
   };
 }
-export { readPrivateBlob } from "./private-reader.ts";
+export { erasePrivateBlob, readPrivateBlob } from "./private-reader.ts";
 
 export {
   createTelegramIngress,
   type TelegramIngressDependencies,
+  verifyTelegramSecret,
 } from "./telegram-ingress.ts";
 export { createTelegramPhotoLoader } from "./telegram-photo.ts";

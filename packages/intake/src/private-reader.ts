@@ -1,5 +1,6 @@
+import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { open, realpath } from "node:fs/promises";
+import { open, realpath, unlink } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 /** Read digest-keyed private bytes; no caller-controlled filesystem paths. */
 export async function readPrivateBlob(
@@ -24,4 +25,46 @@ export async function readPrivateBlob(
   } catch {
     return null;
   }
+}
+
+/** Called only while the durable erasure job holds the shared database key lock. */
+export async function erasePrivateBlob(
+  root: string,
+  key: string,
+  sha256: string,
+): Promise<void> {
+  if (
+    !/^[a-f0-9]{64}$/.test(sha256) ||
+    key !== `${sha256.slice(0, 2)}/${sha256}`
+  )
+    throw new Error("Invalid erasure identity");
+  const base = await realpath(root);
+  if (base !== resolve(root))
+    throw new Error("Attachment root must not be a symlink");
+  const file = resolve(base, key);
+  try {
+    if (!(await realpath(dirname(file))).startsWith(`${base}${sep}`))
+      throw new Error("Invalid erasure directory");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  let handle: Awaited<ReturnType<typeof open>>;
+  try {
+    handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size > 10485760)
+      throw new Error("Invalid erasure file");
+    const bytes = await handle.readFile();
+    if (createHash("sha256").update(bytes).digest("hex") !== sha256)
+      throw new Error("Erasure digest mismatch");
+  } finally {
+    await handle.close();
+  }
+  await unlink(file);
 }

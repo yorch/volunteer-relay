@@ -5,29 +5,45 @@ import {
   createDomainStore,
   createFollowThroughRepository,
   createSourceStore,
+  type Database,
   sql,
 } from "@relay/db";
 import { createNeedService, createSourceRepository } from "@relay/domain/core";
-import { createTelegramPhotoLoader } from "@relay/intake";
+import {
+  createTelegramIngress,
+  createTelegramPhotoLoader,
+  verifyTelegramSecret,
+} from "@relay/intake";
 import sharp from "sharp";
 import { createTenantAuthorization } from "../auth/index.ts";
-import { createTelegramIngress } from "./ingress.ts";
 
-let handler: ReturnType<typeof createTelegramIngress> | undefined;
+let opened: ReturnType<typeof createDatabase> | undefined;
 export async function telegramWebhook(request: Request) {
   try {
     const env = parseEnvironment(process.env);
-    if (env.TELEGRAM_TRANSPORT !== "webhook" || !env.TELEGRAM_BOT_TOKEN)
+    if (
+      env.TELEGRAM_TRANSPORT !== "webhook" ||
+      !env.TELEGRAM_BOT_TOKEN ||
+      !env.TELEGRAM_WEBHOOK_SECRET
+    )
       return new Response(null, { status: 503 });
-    if (!handler) {
-      const { db } = createDatabase(env.DATABASE_URL),
+    if (
+      !verifyTelegramSecret(
+        request.headers.get("x-telegram-bot-api-secret-token") ?? "",
+        env.TELEGRAM_WEBHOOK_SECRET,
+      )
+    )
+      return new Response(null, { status: 403 });
+    opened ??= createDatabase(env.DATABASE_URL);
+    return await opened.db.transaction(async (tx) => {
+      const db = tx as unknown as Database,
         authorization = createTenantAuthorization({ db });
       const links = createFollowThroughRepository(db),
         sources = createSourceRepository({
           authorization,
           store: createSourceStore(db),
         });
-      handler = createTelegramIngress({
+      const handler = createTelegramIngress({
         secret: env.TELEGRAM_WEBHOOK_SECRET ?? "",
         links,
         authorization,
@@ -48,9 +64,15 @@ export async function telegramWebhook(request: Request) {
             : { ok: true as const, value: null };
         },
         photo: createTelegramPhotoLoader({
-          botToken: env.TELEGRAM_BOT_TOKEN,
+          botToken: env.TELEGRAM_BOT_TOKEN ?? "",
           root: env.ATTACHMENT_ROOT,
           maxBytes: env.ATTACHMENT_MAX_BYTES,
+          withBlobLock: async (key, put) => {
+            await db.execute(
+              sql`select pg_advisory_xact_lock(hashtextextended(${`blob:${key}`},0))`,
+            );
+            return put();
+          },
           transform: async (bytes) =>
             sharp(Buffer.from(bytes), {
               limitInputPixels: 40000000,
@@ -67,8 +89,8 @@ export async function telegramWebhook(request: Request) {
               .toBuffer(),
         }),
       });
-    }
-    return await handler(request);
+      return handler(request);
+    });
   } catch {
     return Response.json(
       { ok: false, correlationId: randomUUID() },
