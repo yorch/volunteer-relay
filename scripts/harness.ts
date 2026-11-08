@@ -25,13 +25,12 @@ export interface FinalResult {
   summary: string;
 }
 export function validFinal(value: unknown): value is FinalResult {
-  if (!value || typeof value !== "object") return false;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
   return (
     Object.keys(v).every((k) => ["state", "summary"].includes(k)) &&
-    ["working", "waiting", "ready", "needs_operator"].includes(
-      String(v.state),
-    ) &&
+    typeof v.state === "string" &&
+    ["working", "waiting", "ready", "needs_operator"].includes(v.state) &&
     typeof v.summary === "string" &&
     v.summary.length <= 2000
   );

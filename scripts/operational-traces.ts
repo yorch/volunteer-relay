@@ -430,6 +430,67 @@ export async function createTraceStore(
   }
   return {
     list,
+    /**
+     * Startup recovery for the exclusive supervisor, after checking prior native
+     * children. The caller supplies its verified live run IDs; this store never
+     * infers process ownership from a timestamp or prunes a protected live run.
+     */
+    async reconcile(activeRunIds: string[]) {
+      if (
+        !Array.isArray(activeRunIds) ||
+        activeRunIds.some(
+          (id) => typeof id !== "string" || !traceIdPattern.test(id),
+        )
+      )
+        throw Error("Invalid active run IDs");
+      const active = new Set(activeRunIds);
+      const ids = new Set(
+        (await readdir(root)).flatMap((name) => {
+          const suffix = name.endsWith(".meta.json")
+            ? ".meta.json"
+            : name.endsWith(".meta.tmp")
+              ? ".meta.tmp"
+              : null;
+          const id = suffix ? name.slice(0, -suffix.length) : "";
+          return traceIdPattern.test(id) ? [id] : [];
+        }),
+      );
+      let reconciled = 0;
+      let incomplete = false;
+      for (const id of ids) {
+        if (active.has(id)) continue;
+        try {
+          let meta: TraceMeta;
+          let fromTemporary = false;
+          try {
+            meta = cleanMeta(JSON.parse(await read(id, "meta.json", 8192)));
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+            // A crash before the first atomic rename may leave only this file.
+            // read() rejects symlinks and oversized/nonregular files.
+            meta = cleanMeta(JSON.parse(await read(id, "meta.tmp", 8192)));
+            fromTemporary = true;
+          }
+          if (meta.runId !== id) throw Error("Mismatched run");
+          // unlink removes only this reserved leaf (including a stale symlink),
+          // never its target. A live writer's temporary file is protected above.
+          await unlink(path(id, "meta.tmp")).catch(
+            (error: NodeJS.ErrnoException) => {
+              if (error.code !== "ENOENT") throw error;
+            },
+          );
+          if (meta.status === "running" || fromTemporary) {
+            meta.status = "paused";
+            meta.finalState = null;
+            await atomic(meta);
+            reconciled++;
+          }
+        } catch {
+          incomplete = true;
+        }
+      }
+      return { reconciled, incomplete };
+    },
     async tail(id: string, after = 0, limit = 100) {
       if (
         !Number.isSafeInteger(after) ||

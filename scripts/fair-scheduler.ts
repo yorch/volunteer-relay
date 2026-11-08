@@ -28,7 +28,7 @@ export interface ScheduleCandidate {
   key: string;
   lane: string;
   taskId: string;
-  kind: "control" | "implementation" | "revision" | "review";
+  kind: "control" | "implementation" | "revision" | "resume" | "review";
   enqueuedAt: number;
   authorized: boolean;
   phaseAllowed: boolean;
@@ -41,7 +41,7 @@ export interface ScheduleCandidate {
 export interface ScheduleInput {
   version: 1;
   now: number;
-  maxParallel: 4;
+  maxParallel: number;
   coordinatorReserved: boolean;
   active: { key: string; lane: string }[];
   lanes: {
@@ -57,6 +57,8 @@ export interface ScheduleInput {
 }
 export interface ScheduleEntry {
   key: string;
+  lane: string;
+  taskId: string;
   status: "eligible" | "selected" | "blocked" | "capacity";
   reason: string;
   position: number | null;
@@ -91,7 +93,9 @@ function validate(value: unknown): asserts value is ScheduleInput {
   if (
     v.version !== 1 ||
     !count(v.now) ||
-    v.maxParallel !== 4 ||
+    !count(v.maxParallel) ||
+    v.maxParallel < 1 ||
+    v.maxParallel > 4 ||
     typeof v.coordinatorReserved !== "boolean"
   )
     return fail();
@@ -168,7 +172,9 @@ function validate(value: unknown): asserts value is ScheduleInput {
     if (
       !id(c.lane) ||
       !id(c.taskId) ||
-      !["control", "implementation", "revision", "review"].includes(c.kind) ||
+      !["control", "implementation", "revision", "resume", "review"].includes(
+        c.kind,
+      ) ||
       !count(c.enqueuedAt) ||
       ![
         c.authorized,
@@ -246,6 +252,8 @@ export function evaluateSchedule(input: ScheduleInput): ScheduleResult {
     ).length;
     const entry: ScheduleEntry = {
       key: c.key,
+      lane: c.lane,
+      taskId: c.taskId,
       status: "eligible",
       reason: "ELIGIBLE",
       position: null,
@@ -271,6 +279,8 @@ export function evaluateSchedule(input: ScheduleInput): ScheduleResult {
       !["assigned", "working"].includes(t.state)
     )
       reason = "TASK_FROZEN";
+    else if (c.kind === "resume" && t?.state !== "blocked")
+      reason = "RESUME_NOT_BLOCKED";
     else if (c.kind === "revision" && t?.state !== "ready")
       reason = "REVISION_NOT_READY";
     else if (
@@ -299,7 +309,7 @@ export function evaluateSchedule(input: ScheduleInput): ScheduleResult {
   for (const row of rows)
     if (
       row.entry.status === "eligible" &&
-      row.c.kind === "implementation" &&
+      ["implementation", "resume"].includes(row.c.kind) &&
       rows.some(
         ({ c }) =>
           c.lane === row.c.lane &&
@@ -337,7 +347,11 @@ export function evaluateSchedule(input: ScheduleInput): ScheduleResult {
       continue;
     }
     const reserve =
-      input.coordinatorReserved && !control && c.kind !== "control" ? 1 : 0;
+      input.coordinatorReserved &&
+      !control &&
+      !(c.kind === "control" && c.lane === "A")
+        ? 1
+        : 0;
     if (input.active.length + selected.length >= input.maxParallel - reserve) {
       entry.status = "capacity";
       entry.reason = reserve ? "COORDINATOR_RESERVED" : "CAPACITY";
@@ -345,7 +359,7 @@ export function evaluateSchedule(input: ScheduleInput): ScheduleResult {
     }
     selected.push(c.key);
     used.add(c.lane);
-    if (c.kind === "control") control = true;
+    if (c.kind === "control" && c.lane === "A") control = true;
     entry.status = "selected";
     entry.reason = "SELECTED";
   }

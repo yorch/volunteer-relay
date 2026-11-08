@@ -5,9 +5,24 @@ export interface LoadedScheduling {
   allowedTasks: string[];
   enabledLanes: Lane[];
   maxParallel: number;
+  maxRunsPerHour?: number;
+  maxRunMinutes?: number;
+  intervalSeconds?: number;
 }
 export const schedulingFingerprint = (config: Config) =>
-  createHash("sha256").update(JSON.stringify(config)).digest("hex");
+  createHash("sha256")
+    .update(
+      JSON.stringify(
+        { ...config, allowedTasks: [...new Set(config.allowedTasks)].sort() },
+        (_key, value: unknown) =>
+          value && typeof value === "object" && !Array.isArray(value)
+            ? Object.fromEntries(
+                Object.entries(value).sort(([a], [b]) => a.localeCompare(b)),
+              )
+            : value,
+      ),
+    )
+    .digest("hex");
 export function loadedScheduling(config: Config): LoadedScheduling {
   return {
     fingerprint: schedulingFingerprint(config),
@@ -16,6 +31,9 @@ export function loadedScheduling(config: Config): LoadedScheduling {
       .filter(([, v]) => v.enabled)
       .map(([lane]) => lane as Lane),
     maxParallel: config.maxParallel,
+    maxRunsPerHour: config.maxRunsPerHour,
+    maxRunMinutes: config.maxRunMinutes,
+    intervalSeconds: config.intervalSeconds,
   };
 }
 export interface SchedulingTask {
@@ -32,6 +50,11 @@ export function schedulingReason(
   const result = (code: string, label: string) => ({ code, label });
   if (task.state === "completed")
     return result("accepted", "Accepted task slice; not a process observation");
+  if (task.state === "review")
+    return result(
+      "coordinator-disposition",
+      "Submitted; coordinator review/integration disposition is pending",
+    );
   if (task.state === "blocked")
     return result(
       "dependency-blocked",
@@ -43,6 +66,34 @@ export function schedulingReason(
     now - Date.parse(state.checkedAt) > 45000
   )
     return result("unknown", "Scheduling observation unavailable or stale");
+  if (state.draining || !state.running)
+    return result("draining", "Supervisor is draining or stopped");
+  const queue = state.queue;
+  const entry = queue?.queue.find((entry) => entry.taskId === task.id);
+  if (
+    entry &&
+    queue &&
+    Date.parse(state.checkedAt) >= queue.evaluatedAt &&
+    now - queue.evaluatedAt < 45000
+  ) {
+    const labels: Record<string, string> = {
+      RATE_LIMITED: "Hourly run budget exhausted",
+      DEPENDENCY_WAITING: "Waiting for explicit task dependencies",
+      DEPENDENCY_CYCLE: "Dependency cycle requires coordinator correction",
+      DEPENDENCY_MISSING: "Missing dependency metadata",
+      REVISION_PENDING: "Required author correction takes precedence",
+      COORDINATOR_RESERVED: "Waiting for capacity reserved for coordination",
+      CAPACITY: "Waiting for model capacity",
+      LANE_SELECTED: "Another task in this lane was selected",
+      OWNERSHIP_INVALID: "Task needs a safe checkpoint or ownership correction",
+      REVIEW_PIN_INVALID: "Review SHA is not the current frozen submission",
+    };
+    if (labels[entry.reason])
+      return result(
+        entry.reason.toLowerCase().replaceAll("_", "-"),
+        labels[entry.reason] as string,
+      );
+  }
   const records = Object.values(state.records).filter(
     (r) => r.lane === task.owner,
   );

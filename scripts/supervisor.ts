@@ -2,6 +2,7 @@ import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import {
+  lstat,
   mkdir,
   readdir,
   readFile,
@@ -12,14 +13,15 @@ import {
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { evaluateSchedulingReload } from "./config-reload.ts";
+import { control, validState } from "./control-policy.ts";
 import { snapshot } from "./dashboard.ts";
+import type { ScheduleResult } from "./fair-scheduler.ts";
 import {
   assertSwitch,
   consumeEvent,
   type Harness,
   type HarnessStream,
   harnessCommand,
-  harnessKey,
   harnessName,
   type LaneHarness,
   validateHarness,
@@ -30,6 +32,7 @@ import {
   nativeTrace,
   type TraceInput,
 } from "./operational-traces.ts";
+import { evaluateOrchestration } from "./orchestration.ts";
 import { type LoadedScheduling, loadedScheduling } from "./scheduling.ts";
 import { evaluateTurnWait } from "./wait-policy.ts";
 import { acquire } from "./watch.ts";
@@ -73,6 +76,8 @@ export interface RecordState {
   progress?: string;
   noProgress: number;
   waitingForEvent?: boolean;
+  finalState?: "working" | "waiting" | "ready" | "needs_operator";
+  pauseKind?: "failure" | "operator" | "decision" | "no-progress";
   inputTokens: number;
   outputTokens: number;
 }
@@ -86,7 +91,16 @@ export interface State {
   commands: string[];
   records: Record<string, RecordState>;
   notices: Partial<Record<Lane, string[]>>;
+  attention?: {
+    oldestUnhandledAt: number | null;
+    planningSince: number | null;
+    backlog: number;
+    oldestReadyAt?: number | null;
+  };
+  noticeQueuedAt?: Partial<Record<Lane, string>>;
   scheduling?: LoadedScheduling;
+  queue?: ScheduleResult;
+  planning?: { event: string; taskIds: string[]; needed: boolean } | null;
   configReload?: {
     outcome: "applied" | "unchanged" | "invalid" | "deferred";
     errorCode: string | null;
@@ -108,6 +122,7 @@ const git = (root: string, args: string[]) =>
     cwd: root,
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
+    timeout: 10000,
   }).trim();
 async function read<T>(path: string, fallback: T): Promise<T> {
   try {
@@ -179,115 +194,9 @@ export function plan(
   config: Config,
   now = Date.now(),
 ): Work[] {
-  const active = board.tasks.filter(
-    (task) =>
-      task.live && !task.live.accepted && config.allowedTasks.includes(task.id),
-  );
-  const result: Work[] = [];
-  for (const lane of lanes) {
-    if (!config.lanes[lane]?.enabled || state.held.includes(lane)) continue;
-    let task: string | null = null;
-    let key = `${lane}:control`;
-    let reason = "";
-    const events = board.messages
-      .filter(
-        (m) =>
-          m.to === lane &&
-          m.from !== lane &&
-          ["question", "request", "answer", "handoff"].includes(m.kind),
-      )
-      .map((m) => `message:${m.id}`);
-    if (lane === "A") {
-      for (const t of active) {
-        if (t.live?.status?.state === "ready")
-          events.push(`ready:${t.id}:${t.live.status.commit}`);
-        if (t.live?.status?.state === "blocked")
-          events.push(`blocked:${t.id}:${t.live.status.at}`);
-      }
-      for (const r of Object.values(state.records))
-        if (r.lane !== "A" && r.status === "paused")
-          events.push(`failure:${r.key}:${r.finishedAt}:${r.reason}`);
-      reason =
-        "Handle questions, ready handoffs, lane failures and authorized assignments";
-    } else if (["R", "V"].includes(lane)) {
-      const request = board.unanswered.find(
-        (m) =>
-          m.from === "A" &&
-          m.to === lane &&
-          m.kind === "request" &&
-          m.task &&
-          config.allowedTasks.includes(m.task),
-      );
-      if (!request) continue;
-      task = request.task;
-      key = `${lane}:${request.id}`;
-      events.push(`review:${request.id}`);
-      reason =
-        "Finish the pinned review request and answer its original thread";
-    } else {
-      const assigned = active.find((t) => t.live?.assignment.owner === lane);
-      if (!assigned) continue;
-      task = assigned.id;
-      key = `${lane}:${task}:${assigned.live?.assignment.at}`;
-      events.push(`assignment:${key}`);
-      reason = "Continue only the assigned task until ready or blocked";
-    }
-    key += harnessKey(config.lanes[lane]);
-    const old = state.records[key];
-    if (old?.status === "running" || old?.status === "paused") continue;
-    if (
-      Object.values(state.records)
-        .filter((r) => r.lane === lane)
-        .flatMap((r) => r.runs)
-        .filter((t) => now - t < 3600000).length >= config.maxRunsPerHour
-    )
-      continue;
-    const fresh = events.filter((event) => !old?.seen.includes(event));
-    if (!old && !["A", "R", "V"].includes(lane)) {
-      const taskState = active.find((t) => t.id === task)?.live?.status?.state;
-      const pending = board.unanswered.some(
-        (m) => m.to === lane && m.from === "A" && m.task === task,
-      );
-      if (["ready", "blocked"].includes(taskState ?? "") && !pending) continue;
-    }
-    const outgoingQuestion = board.unanswered.some(
-      (m) => m.from === lane && ["question", "request"].includes(m.kind),
-    );
-    let unfinished = false;
-    if (lane === "A") {
-      unfinished =
-        board.unanswered.some((m) => m.to === "A" && m.from !== "A") ||
-        active.some(
-          (t) =>
-            t.live?.status?.state === "ready" &&
-            !board.unanswered.some((m) => m.from === "A" && m.task === t.id),
-        );
-    } else if (["R", "V"].includes(lane)) unfinished = true;
-    else {
-      const assigned = active.find((t) => t.id === task);
-      unfinished = !["ready", "blocked"].includes(
-        assigned?.live?.status?.state ?? "assigned",
-      );
-    }
-    // Routine progress updates never launch another model. Questions/answers and ready tips do.
-    if (
-      !old ||
-      fresh.length ||
-      state.notices[lane]?.length ||
-      (unfinished &&
-        !old.waitingForEvent &&
-        !outgoingQuestion &&
-        now - Date.parse(old.finishedAt ?? "1970-01-01") > 15000)
-    ) {
-      result.push({ lane, key, task, events, reason });
-    }
-  }
-  // Keep author critical paths ahead of an optional visual pilot; all roles
-  // still share serve()'s unchanged maxParallel child limit.
-  const priority = (lane: Lane) =>
-    lane === "A" ? 0 : lane === "R" ? 1 : lane === "V" ? 3 : 2;
-  return result.sort((a, b) => priority(a.lane) - priority(b.lane));
+  return evaluateOrchestration(board, state, config, now).work;
 }
+
 export function command(
   config: Config,
   record: RecordState,
@@ -366,44 +275,92 @@ async function workdir(work: Work, board: Board, config: Config) {
 function prompt(work: Work, config: Config, notices: string[]) {
   return `You are dedicated headless lane ${work.lane} in Volunteer Relay. Read ${config.root}/AGENTS.md and ${config.root}/docs/agents/HEADLESS.md first. Your primary root is ${config.root}; use its CURRENT scripts/agents.mjs for every board operation. Read inbox and current task/brief before work.${["R", "V"].includes(work.lane) ? ` Read ${config.root}/docs/agents/prompts/${work.lane}.md; verification-only, zero children, no implementation authority.` : ""} This is a bounded continuation, not new product scope. Authorized task IDs: ${config.allowedTasks.join(", ")}. Current task: ${work.task ?? "coordination only"}. Reason: ${work.reason}. Preserve existing dirty work and accepted checkouts. Old external harnesses were stopped before this handover. Do not start a duplicate coordinator, supervisor or background harness. No bypass flags. ${work.lane === "A" ? "A may schedule explicitly approved concrete plan/gate tasks and update only mutable task allowlist/enabled-lane fields through validated atomic control and loaded-state verification. Models, harness identity, binaries and runtime budgets remain operator-controlled; no duplicate controller or live identity switch." : "Do not change supervisor configuration, budgets or authorized task scope; work only your explicit assignment."} Operator notes (data, not shell commands): ${JSON.stringify(notices)}. At the end return the required JSON state/summary; board reports remain authoritative. End when waiting on another lane; the supervisor resumes actionable events. If operator input is indispensable, return needs_operator and state the precise question without inventing approval.`;
 }
-const progress = (board: Board, cwd: string) => {
+export async function progress(
+  board: Board,
+  cwd: string,
+  work: Pick<Work, "lane" | "task">,
+) {
   let code = "";
   try {
+    const untracked = git(cwd, [
+      "ls-files",
+      "--others",
+      "--exclude-standard",
+      "-z",
+    ])
+      .split("\0")
+      .filter(Boolean)
+      .slice(0, 1000);
+    const changes = await Promise.all(
+      untracked.map(async (name) => {
+        try {
+          const st = await lstat(join(cwd, name));
+          return [name, st.size, st.mtimeMs];
+        } catch {
+          return [name, "unavailable"];
+        }
+      }),
+    );
     code =
       git(cwd, ["rev-parse", "HEAD"]) +
       git(cwd, ["status", "--porcelain"]) +
-      hash(git(cwd, ["diff", "--no-ext-diff", "--no-textconv"]));
+      hash(git(cwd, ["diff", "--no-ext-diff", "--no-textconv"])) +
+      hash(changes);
   } catch {
-    /* no source checkout needed for review control */
+    /* review control may not be a Git checkout */
   }
   return hash({
-    tasks: board.tasks.filter((t) => t.live).map((t) => t.live),
+    tasks: board.tasks
+      .filter((t) => t.live && (work.lane === "A" || t.id === work.task))
+      .map((t) =>
+        work.lane === "A"
+          ? {
+              id: t.id,
+              assignment: t.live?.assignment,
+              accepted: t.live?.accepted,
+            }
+          : t.live,
+      ),
     messageIds: board.messages
-      .filter((m) => m.kind !== "update")
+      .filter(
+        (m) => m.from === work.lane && (!work.task || m.task === work.task),
+      )
       .map((m) => m.id),
     code,
   });
-};
+}
+
 export async function serve(
   initialConfig: Config,
   directory: string,
   signal: AbortSignal,
+  options: { readBoard?: typeof snapshot } = {},
 ) {
+  const readBoard = options.readBoard ?? snapshot;
   let config = validateConfig(initialConfig);
   const release = await acquire(directory);
   const statePath = join(directory, "state.json");
-  const state = await read<State>(statePath, {
-    version: 1,
-    running: false,
-    checkedAt: "",
-    pid: process.pid,
-    draining: false,
-    held: [],
-    commands: [],
-    records: {},
-    notices: {},
-  });
+  let state: State;
+  try {
+    state = await read<State>(statePath, {
+      version: 1,
+      running: false,
+      checkedAt: "",
+      pid: process.pid,
+      draining: false,
+      held: [],
+      commands: [],
+      records: {},
+      notices: {},
+    });
+    if (!validState(state))
+      throw new Error("Invalid supervisor state; inspect before starting");
+  } catch (error) {
+    await release();
+    throw error;
+  }
   const children = new Map<string, ChildProcess>();
+  const settling = new Map<string, Promise<void>>();
   let saving = Promise.resolve();
   const save = () => {
     state.checkedAt = new Date().toISOString();
@@ -424,7 +381,14 @@ export async function serve(
       if (config.lanes[lane]?.enabled)
         assertSwitch(config.lanes[lane], prior, state.running);
     for (const record of Object.values(state.records)) {
-      if (record.status !== "running" || !record.pid) continue;
+      if (record.status !== "running") continue;
+      if (!record.pid) {
+        record.status = "paused";
+        record.pauseKind = "failure";
+        record.reason =
+          "Prior run has no child identity; inspect and retry explicitly";
+        continue;
+      }
       let alive = true;
       try {
         process.kill(record.pid, 0);
@@ -439,6 +403,7 @@ export async function serve(
       record.reason =
         "Prior run interrupted; inspect worktree and retry explicitly";
     }
+    await traces.reconcile([]);
     state.scheduling = loadedScheduling(config);
     await atomic(join(directory, "desired.json"), {
       version: 1,
@@ -465,7 +430,7 @@ export async function serve(
       additionalProperties: false,
     });
     // Ignore old, already-serviced history on first startup. Pending tasks/reviews bootstrap separately.
-    const initial = await snapshot(config.root);
+    const initial = await readBoard(config.root);
     const historical = initial.messages.map((m) => `message:${m.id}`);
     await save();
     while (!state.draining || children.size) {
@@ -486,12 +451,11 @@ export async function serve(
           )
           .map(async (file) => ({
             file,
-            value: await read<{
-              action: string;
-              at?: string;
-              lane?: Lane;
-              text?: string;
-            }>(join(commandsDir, file), { action: "" }),
+            value: await read<unknown>(join(commandsDir, file), null)
+              .then(control)
+              .catch(
+                () => ({ action: "invalid" }) as ReturnType<typeof control>,
+              ),
           })),
       );
       pendingCommands.sort(
@@ -515,24 +479,42 @@ export async function serve(
         if (c.lane && lanes.includes(c.lane)) {
           if (c.action === "pause" && !state.held.includes(c.lane))
             state.held.push(c.lane);
-          if (["resume", "retry", "nudge"].includes(c.action))
+          if (c.action === "resume")
             state.held = state.held.filter((l) => l !== c.lane);
-          if (["retry", "resume", "nudge"].includes(c.action))
+          if (
+            ["retry", "resume"].includes(c.action) &&
+            !state.held.includes(c.lane)
+          ) {
             for (const r of Object.values(state.records).filter(
-              (r) => r.lane === c.lane,
+              (r) => r.lane === c.lane && r.status === "paused",
             )) {
-              if (r.status !== "running") {
+              if (
+                c.action === "retry" ||
+                r.pauseKind === "operator" ||
+                r.reason === "Operator hold"
+              ) {
                 r.status = "idle";
                 r.noProgress = 0;
+                delete r.pauseKind;
               }
             }
-          if (["nudge", "resume", "retry"].includes(c.action))
+          }
+          if (["nudge", "resume", "retry"].includes(c.action)) {
+            state.noticeQueuedAt ??= {};
+            state.noticeQueuedAt[c.lane] ??=
+              c.at && Number.isFinite(Date.parse(c.at))
+                ? c.at
+                : new Date().toISOString();
             state.notices[c.lane] = [
               ...(state.notices[c.lane] ?? []),
-              c.text ?? `Operator requested ${c.action}`,
-            ];
+              (c.text ?? `Operator requested ${c.action}`).slice(0, 32768),
+            ].slice(-100);
+          }
         }
         state.commands.push(file);
+        state.commands = state.commands.slice(-2000);
+        await save();
+        await unlink(join(commandsDir, file)).catch(() => {});
       }
       if (!state.draining) {
         let candidate: unknown = null;
@@ -555,7 +537,7 @@ export async function serve(
         };
         let board: Board;
         try {
-          board = await snapshot(config.root);
+          board = await readBoard(config.root);
         } catch {
           console.error(
             "Board temporarily unavailable; retrying without launching lanes",
@@ -566,7 +548,51 @@ export async function serve(
           );
           continue;
         }
-        for (const work of plan(board, state, config)) {
+        const evaluation = evaluateOrchestration(board, state, config);
+        state.queue = evaluation.queue;
+        state.planning = evaluation.planning;
+        const pendingTimes = board.unanswered
+          .filter((m) => m.to === "A")
+          .map((m) => Date.parse(m.at))
+          .filter(Number.isFinite);
+        if (state.noticeQueuedAt?.A)
+          pendingTimes.push(Date.parse(state.noticeQueuedAt.A));
+        const planningIdle =
+          !!evaluation.planning &&
+          !board.tasks.some((t) => t.live && !t.live.accepted) &&
+          !state.held.includes("A") &&
+          !!config.lanes.A?.enabled;
+        state.attention = {
+          oldestUnhandledAt: pendingTimes.length
+            ? Math.min(...pendingTimes)
+            : null,
+          planningSince: planningIdle
+            ? (state.attention?.planningSince ?? Date.now())
+            : null,
+          backlog: evaluation.planning?.taskIds.length ?? 0,
+          oldestReadyAt: board.tasks
+            .filter(
+              (t) =>
+                t.live && !t.live.accepted && t.live.status?.state === "ready",
+            )
+            .reduce<number | null>((oldest, t) => {
+              const readyAt = Date.parse(t.live?.status?.at ?? "");
+              if (!Number.isFinite(readyAt)) return oldest;
+              const progressAt = Math.max(
+                readyAt,
+                ...Object.values(state.records)
+                  .filter((r) => r.task === t.id)
+                  .flatMap((r) => [r.startedAt, r.finishedAt])
+                  .filter((v): v is string => !!v)
+                  .map(Date.parse)
+                  .filter(Number.isFinite),
+              );
+              return oldest === null
+                ? progressAt
+                : Math.min(oldest, progressAt);
+            }, null),
+        };
+        for (const work of evaluation.work) {
           if (children.size >= config.maxParallel) break;
           if (
             [...children.keys()].some(
@@ -577,19 +603,22 @@ export async function serve(
           let cwd: string;
           try {
             cwd = await workdir(work, board, config);
-          } catch (error) {
+          } catch {
             state.records[work.key] = {
+              ...state.records[work.key],
               key: work.key,
               lane: work.lane,
               task: work.task,
               cwd: config.root,
               status: "paused",
-              reason: `Setup failed: ${(error as Error).message}`,
-              seen: work.events,
-              runs: [],
+              pauseKind: "failure",
+              reason:
+                "Task checkout/setup validation failed; inspect ownership before retry",
+              seen: state.records[work.key]?.seen ?? work.events,
+              runs: state.records[work.key]?.runs ?? [],
               noProgress: 0,
-              inputTokens: 0,
-              outputTokens: 0,
+              inputTokens: state.records[work.key]?.inputTokens ?? 0,
+              outputTokens: state.records[work.key]?.outputTokens ?? 0,
               finishedAt: new Date().toISOString(),
             };
             await save();
@@ -609,6 +638,14 @@ export async function serve(
             inputTokens: 0,
             outputTokens: 0,
           };
+          if (old && old.cwd !== cwd) {
+            record.status = "paused";
+            record.pauseKind = "failure";
+            record.reason =
+              "Native session checkout changed; inspect before retry";
+            await save();
+            continue;
+          }
           record.cwd = cwd;
           record.harness = harnessName(config.lanes[work.lane]);
           const sessionEpoch = config.lanes[work.lane]?.sessionEpoch;
@@ -620,7 +657,7 @@ export async function serve(
           record.runs = record.runs.filter((t) => Date.now() - t < 3600000);
           record.runs.push(Date.now());
           record.seen = [...new Set([...record.seen, ...work.events])];
-          const before = progress(board, cwd);
+          const before = await progress(board, cwd, work);
           state.records[work.key] = record;
           const runId = `${Date.now()}-${randomUUID()}`;
           const logs = join(directory, "runs");
@@ -653,7 +690,18 @@ export async function serve(
             });
           };
           emitTrace({ kind: "started" });
-          const invocation = command(config, record, schema, output);
+          let invocation: ReturnType<typeof command>;
+          try {
+            invocation = command(config, record, schema, output);
+          } catch {
+            record.status = "paused";
+            record.pauseKind = "failure";
+            record.reason = "Native invocation configuration rejected";
+            record.finishedAt = new Date().toISOString();
+            await trace.finish("paused", null);
+            await save();
+            continue;
+          }
           if (invocation.harness === "pi")
             await mkdir(join(directory, "pi-sessions"), {
               recursive: true,
@@ -680,6 +728,7 @@ export async function serve(
           children.set(work.key, child);
           const notes = state.notices[work.lane] ?? [];
           delete state.notices[work.lane];
+          if (state.noticeQueuedAt) delete state.noticeQueuedAt[work.lane];
           const stream: HarnessStream = {
             expectedCwd: cwd,
             ...(record.sessionId ? { sessionId: record.sessionId } : {}),
@@ -689,16 +738,26 @@ export async function serve(
             invalid: false,
           };
           let buffer = "";
+          let droppingLine = false;
           let timedOut = false;
           let stderrOmitted = false,
             stdoutOmitted = false;
           child.stdout?.on("data", (chunk: Buffer) => {
-            buffer += chunk.toString();
+            let text = chunk.toString();
+            if (droppingLine) {
+              const newline = text.indexOf("\n");
+              if (newline < 0) return;
+              text = text.slice(newline + 1);
+              droppingLine = false;
+            }
+            buffer += text;
             let end = buffer.indexOf("\n");
             while (end >= 0) {
               const line = buffer.slice(0, end);
               buffer = buffer.slice(end + 1);
               try {
+                if (line.length > 4 * 1024 * 1024)
+                  throw new Error("Oversized native metadata");
                 const event = JSON.parse(line);
                 const previousInput = stream.inputTokens,
                   previousOutput = stream.outputTokens;
@@ -721,7 +780,11 @@ export async function serve(
               }
               end = buffer.indexOf("\n");
             }
-            if (buffer.length > 4 * 1024 * 1024) buffer = "";
+            if (buffer.length > 4 * 1024 * 1024) {
+              buffer = "";
+              droppingLine = true;
+              emitTrace({ kind: "omitted", channel: "stdout" });
+            }
           });
           child.stderr?.on("data", () => {
             if (!stderrOmitted) {
@@ -758,7 +821,6 @@ export async function serve(
           const finish = async (code: number | null) => {
             clearTimeout(timer);
             clearTimeout(killTimer);
-            children.delete(work.key);
             record.exitCode = code ?? 1;
             record.finishedAt = new Date().toISOString();
             delete record.pid;
@@ -772,8 +834,8 @@ export async function serve(
               validFinal(final) && !stream.invalid && !!stream.sessionId;
             if (invocation.harness === "pi" && valid)
               await atomic(output, final);
-            const completedBoard = await snapshot(config.root);
-            const after = progress(completedBoard, cwd);
+            const completedBoard = await readBoard(config.root);
+            const after = await progress(completedBoard, cwd, work);
             const explicitWait =
               completedBoard.unanswered.some(
                 (m) =>
@@ -820,6 +882,17 @@ export async function serve(
                         : wait.reason === "no-progress"
                           ? "Two runs without recorded progress; inspect before retry"
                           : null;
+            if (valid) record.finalState = final.state;
+            if (pause)
+              record.pauseKind =
+                wait.reason === "operator"
+                  ? final && valid && final.state === "needs_operator"
+                    ? "decision"
+                    : "operator"
+                  : wait.reason === "no-progress"
+                    ? "no-progress"
+                    : "failure";
+            else delete record.pauseKind;
             record.summary = valid ? final.summary : "";
             record.status = pause ? "paused" : "idle";
             record.reason =
@@ -847,12 +920,23 @@ export async function serve(
           const done = (code: number | null) => {
             if (finished) return;
             finished = true;
-            void finish(code).catch((error) => {
-              record.status = "paused";
-              record.reason = `Result handling failed: ${(error as Error).message}`;
-              children.delete(work.key);
-              void save();
-            });
+            const completion = finish(code)
+              .catch(async () => {
+                record.status = "paused";
+                record.pauseKind = "failure";
+                record.reason =
+                  "Result handling failed; inspect controlled result and storage before retry";
+                record.finishedAt = new Date().toISOString();
+                delete record.pid;
+                await trace.finish("paused", null).catch(() => {});
+                await save();
+              })
+              .finally(() => {
+                children.delete(work.key);
+                settling.delete(work.key);
+              });
+            settling.set(work.key, completion);
+            void completion.catch(() => {});
           };
           child.on("error", () => done(1));
           child.on("close", done);
@@ -893,11 +977,15 @@ export async function serve(
       await new Promise((resolve) => setTimeout(resolve, 1000));
     throw error;
   } finally {
+    await Promise.allSettled([...settling.values()]);
     state.running = false;
     state.draining = true;
-    await save();
-    await saving;
-    await release();
+    try {
+      await save();
+      await saving;
+    } finally {
+      await release();
+    }
   }
 }
 

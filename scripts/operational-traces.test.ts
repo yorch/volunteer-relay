@@ -2,6 +2,7 @@ import {
   mkdtemp,
   readdir,
   readFile,
+  rename,
   rm,
   stat,
   symlink,
@@ -153,5 +154,90 @@ it("rejects traversal/symlink reads and safely reports corrupted/oversize partia
   } finally {
     await rm(root, { recursive: true, force: true });
     await rm(foreign, { force: true });
+  }
+});
+
+it("reconciles abandoned running traces after restart so retention cannot strand new runs", async () => {
+  const root = await mkdtemp(join(tmpdir(), "relay-trace-recovery-"));
+  try {
+    const original = await createTraceStore(root, { maxRuns: 1 });
+    const writer = await original.begin({
+      runId: run(),
+      lane: "A",
+      task: null,
+      harness: "codex",
+    });
+    await writer.emit({ kind: "started" });
+    await writeFile(join(root, `${run()}.meta.tmp`), "partial-crash", {
+      mode: 0o600,
+    });
+    const recovered = await createTraceStore(root, { maxRuns: 1 });
+    expect(await recovered.reconcile([])).toEqual({
+      reconciled: 1,
+      incomplete: false,
+    });
+    const partial = await recovered.tail(run());
+    expect(partial.meta).toMatchObject({ status: "paused", finalState: null });
+    expect(partial.events.map((event) => event.kind)).toEqual(["started"]);
+    expect((await stat(join(root, `${run()}.meta.json`))).mode & 0o777).toBe(
+      0o600,
+    );
+    expect(await recovered.reconcile([])).toEqual({
+      reconciled: 0,
+      incomplete: false,
+    });
+    await recovered.begin({
+      runId: run(2),
+      lane: "A",
+      task: null,
+      harness: "codex",
+    });
+    expect((await recovered.list()).runs.map((meta) => meta.runId)).toEqual([
+      run(2),
+    ]);
+    await expect(recovered.reconcile(["../foreign"])).rejects.toThrow();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("protects active runs and recovers a private first-rename crash without following temporary symlinks", async () => {
+  const root = await mkdtemp(join(tmpdir(), "relay-trace-partial-recovery-"));
+  try {
+    const store = await createTraceStore(root);
+    for (const id of [run(), run(2), run(3)]) {
+      const writer = await store.begin({
+        runId: id,
+        lane: "A",
+        task: null,
+        harness: "codex",
+      });
+      await writer.emit({ kind: "started" });
+    }
+    const active = join(root, `${run()}.meta.tmp`);
+    await writeFile(active, "active-writer-temporary", { mode: 0o600 });
+    await rename(
+      join(root, `${run(2)}.meta.json`),
+      join(root, `${run(2)}.meta.tmp`),
+    );
+    const foreign = join(root, "foreign-file");
+    await writeFile(foreign, "PRIVATE_SENTINEL", { mode: 0o600 });
+    await symlink(foreign, join(root, `${run(3)}.meta.tmp`));
+    await symlink(foreign, join(root, `${run(4)}.meta.json`));
+    expect(await store.reconcile([run()])).toEqual({
+      reconciled: 2,
+      incomplete: true,
+    });
+    expect((await store.tail(run())).meta.status).toBe("running");
+    expect(await readFile(active, "utf8")).toBe("active-writer-temporary");
+    for (const id of [run(2), run(3)])
+      expect((await store.tail(id)).meta).toMatchObject({
+        status: "paused",
+        finalState: null,
+      });
+    expect(await readFile(foreign, "utf8")).toBe("PRIVATE_SENTINEL");
+    await expect(store.tail(run(4))).rejects.toThrow();
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });
