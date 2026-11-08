@@ -24,6 +24,13 @@ it("keeps task scope notes while distinguishing acceptance, review and blocked w
     accepted: null,
   };
   expect(parseTask("P1-01", markdown).state).toBe("todo");
+  expect(
+    parseTask("P1-01", markdown, {
+      ...live,
+      status: null,
+      claim: { branch: "synthetic", worktree: "/synthetic", at: "date" },
+    }).state,
+  ).toBe("assigned");
   expect(parseTask("P1-01", markdown, live).state).toBe("blocked");
   expect(
     parseTask("P1-01", markdown, {

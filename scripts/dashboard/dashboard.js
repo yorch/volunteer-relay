@@ -91,7 +91,7 @@ function render() {
   const headless = data.headless;
   $("headless-status").textContent = headless?.state ?? "not-started";
   $("headless-note").textContent = headless?.checkedAt
-    ? `Checked ${date(headless.checkedAt)} · Held lanes: ${headless.held.join(", ") || "none"}`
+    ? `Checked ${date(headless.checkedAt)} · Held lanes: ${headless.held.join(", ") || "none"} · Loaded config: ${headless.configState ?? "unknown"}`
     : "Not started. Dedicated sessions require an exclusive ownership handover.";
   const budgets = headless?.budgets;
   $("headless-budgets").textContent = budgets
@@ -181,7 +181,8 @@ function render() {
   $("tasks").replaceChildren(
     ...[
       ["To do", ["todo"]],
-      ["In progress", ["assigned", "working", "blocked"]],
+      ["Assigned", ["assigned"]],
+      ["In progress", ["working", "blocked"]],
       ["Review", ["review"]],
       ["Completed", ["completed"]],
     ].map(([name, states]) => {
@@ -196,6 +197,8 @@ function render() {
           el("span", labels[task.state], `pill ${task.state}`),
         );
         card.append(meta, el("h4", task.title), el("p", task.goal));
+        if (task.live && !task.live.accepted && task.scheduling)
+          card.append(el("p", task.scheduling.label, "note"));
         if (task.live?.status)
           card.append(
             detail(

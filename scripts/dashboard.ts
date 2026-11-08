@@ -5,6 +5,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readHeadless } from "./dashboard/headless.ts";
+import { schedulingFingerprint, schedulingReason } from "./scheduling.ts";
+import type { Config, State } from "./supervisor.ts";
 
 interface Message {
   id: string;
@@ -48,7 +50,7 @@ export function parseTask(id: string, markdown: string, live?: LiveTask) {
       ? "review"
       : live?.status?.state === "blocked"
         ? "blocked"
-        : live?.status?.state === "working" || live?.claim
+        : live?.status?.state === "working"
           ? "working"
           : live?.assignment
             ? "assigned"
@@ -71,6 +73,10 @@ export function parseTask(id: string, markdown: string, live?: LiveTask) {
     dependencies:
       markdown.match(/^(?:Prerequisites|Dependencies):\s*(.+)/m)?.[1] ??
       "See task card",
+    scheduling: {
+      code: "unknown",
+      label: "Scheduling observation unavailable",
+    },
     markdown,
     live: live ?? null,
   };
@@ -170,6 +176,16 @@ export async function snapshot(root: string) {
   });
   tasks.push(...plannedTasks(plan, new Set(tasks.map((task) => task.id))));
   tasks.sort((a, b) => a.id.localeCompare(b.id));
+  const [runtime, configured] = await Promise.all([
+    readFile(join(board.store, "supervisor/state.json"), "utf8")
+      .then((s) => JSON.parse(s) as State)
+      .catch(() => null),
+    readFile(join(board.store, "supervisor/config.json"), "utf8")
+      .then((s) => JSON.parse(s) as Config)
+      .catch(() => null),
+  ]);
+  for (const task of tasks)
+    task.scheduling = schedulingReason(task, runtime, configured);
   const headless = await headlessStatus(board.store);
   const worktrees = execFileSync("git", ["worktree", "list", "--porcelain"], {
     cwd: root,
@@ -197,7 +213,16 @@ export async function snapshot(root: string) {
   return {
     updatedAt: new Date().toISOString(),
     monitor: await monitorStatus(board.store),
-    headless: { ...headless, lanes: agents },
+    headless: {
+      ...headless,
+      configState:
+        !runtime?.scheduling || !configured
+          ? "unknown (runtime provenance unavailable)"
+          : runtime.scheduling.fingerprint === schedulingFingerprint(configured)
+            ? "current"
+            : "reload required (disk config differs from runtime)",
+      lanes: agents,
+    },
     tasks,
     messages: board.messages,
     unanswered: board.unanswered,

@@ -25,6 +25,7 @@ import {
   validateHarness,
   validFinal,
 } from "./harness.ts";
+import { type LoadedScheduling, loadedScheduling } from "./scheduling.ts";
 import { acquire } from "./watch.ts";
 
 export const lanes = ["A", "B", "C", "D", "E", "F", "R", "V"] as const;
@@ -76,6 +77,7 @@ export interface State {
   commands: string[];
   records: Record<string, RecordState>;
   notices: Partial<Record<Lane, string[]>>;
+  scheduling?: LoadedScheduling;
 }
 export interface Work {
   lane: Lane;
@@ -415,6 +417,7 @@ export async function serve(
       record.reason =
         "Prior run interrupted; inspect worktree and retry explicitly";
     }
+    state.scheduling = loadedScheduling(config);
     state.running = true;
     state.pid = process.pid;
     state.draining = false;
