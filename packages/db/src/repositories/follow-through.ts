@@ -459,31 +459,79 @@ export function createFollowThroughRepository(
         .transaction(async (tx) => {
           const time = now();
           const needs = await tx.execute(
-            sql`select n.organization_id,n.id,n.acknowledge_by,n.category,n.revision from need n where n.status='assigned' and n.acknowledge_by is not null and n.acknowledge_by<=${time} and not exists(select 1 from need_escalation e where e.organization_id=n.organization_id and e.need_id=n.id and e.deadline=n.acknowledge_by and e.assignment_revision=n.revision and e.level=1) order by n.acknowledge_by,n.id for update of n skip locked limit ${limit}`,
+            sql`select n.*,s.assignment_revision as state_revision,s.level as state_level,s.next_at as state_next_at from need n left join need_escalation_state s on (s.organization_id,s.need_id)=(n.organization_id,n.id) where n.status='assigned' and n.acknowledge_by is not null and ((s.assignment_revision is distinct from n.revision and n.acknowledge_by<=${time}) or (s.assignment_revision=n.revision and s.next_at<=${time})) order by n.acknowledge_by,n.id for update of n skip locked limit ${limit}`,
           );
           for (const n of needs.rows) {
             const org = n.organization_id as string;
             const needId = n.id as string;
-            const deadline = new Date(n.acknowledge_by as string);
-            const selected = await routedRecipients(
+            const originalRevision = n.revision as number;
+            const originalDeadline = new Date(n.acknowledge_by as string);
+            const configRows = await tx.execute(
+              sql`select * from organization_settings where organization_id=${org}`,
+            );
+            const config = mapSettings(configRows.rows[0]);
+            const continuation = n.state_revision === n.revision;
+            const level = continuation ? (n.state_level as number) + 1 : 1;
+            let revision = originalRevision;
+            let deadline = originalDeadline;
+            let ownerId = n.owner_membership_id as string;
+            let outcome: "reassigned" | "reminder" | "unroutable" =
+              level === 1 ? "unroutable" : "reminder";
+            const recipients = await routedRecipients(
               tx,
               org,
               n.category as string,
             );
-            for (const recipient of selected)
+            if (level === 1) {
+              const preferred = [
+                ...(config.fallbackMembershipId
+                  ? [config.fallbackMembershipId]
+                  : []),
+                ...recipients,
+              ];
+              const staff = await tx.execute(
+                sql`select id from member where organization_id=${org} and role in ('owner','coordinator') order by id for share`,
+              );
+              preferred.push(...staff.rows.map((r) => r.id as string));
+              for (const candidate of [...new Set(preferred)]) {
+                if (candidate === ownerId) continue;
+                const live = await tx.execute(
+                  sql`select id from member where organization_id=${org} and id=${candidate} and role in ('owner','coordinator') for share`,
+                );
+                if (!live.rows.length) continue;
+                deadline = new Date(time.getTime() + config.ackMinutes * 60000);
+                revision = await reassignForEscalation(
+                  tx,
+                  org,
+                  needId,
+                  originalRevision,
+                  candidate,
+                  deadline,
+                  time,
+                );
+                ownerId = candidate;
+                outcome = "reassigned";
+                break;
+              }
+            }
+            const targetIds = [...new Set([...recipients, ownerId])];
+            for (const recipient of targetIds)
               await createNotification(
                 tx,
                 org,
                 recipient,
                 needId,
                 "need-overdue",
-                `need:${needId}:revision:${n.revision}:deadline:${deadline.toISOString()}:level:1`,
+                `need:${needId}:revision:${revision}:deadline:${deadline.toISOString()}:level:${level}`,
                 time,
                 deadline,
-                n.revision as number,
+                revision,
               );
             await tx.execute(
-              sql`insert into need_escalation(organization_id,need_id,deadline,assignment_revision,level,created_at) values (${org},${needId},${deadline},${n.revision as number},1,${time}) on conflict do nothing`,
+              sql`insert into need_escalation(organization_id,need_id,deadline,assignment_revision,level,outcome,created_at) values (${org},${needId},${originalDeadline},${originalRevision},${level},${outcome},${time}) on conflict do nothing`,
+            );
+            await tx.execute(
+              sql`insert into need_escalation_state(organization_id,need_id,assignment_revision,level,next_at) values (${org},${needId},${revision},${level},${new Date(time.getTime() + config.ackMinutes * 60000)}) on conflict(organization_id,need_id) do update set assignment_revision=excluded.assignment_revision,level=excluded.level,next_at=excluded.next_at`,
             );
           }
           return needs.rows.length;
@@ -492,13 +540,35 @@ export function createFollowThroughRepository(
           throw new Error("Follow-through storage unavailable");
         });
     },
+    async listUnroutableEscalations(
+      context: TenantContext,
+    ): Promise<
+      Result<Array<{ needId: string; level: number; occurredAt: string }>>
+    > {
+      try {
+        if (!staff(await authorize(db, context)))
+          return err(context, "FORBIDDEN", "Staff authority required");
+        const rows = await db.execute(
+          sql`select e.need_id,e.level,e.created_at from need_escalation e join need n on n.organization_id=e.organization_id and n.id=e.need_id where e.organization_id=${context.organizationId} and e.outcome='unroutable' and n.status='assigned' and e.assignment_revision=n.revision order by e.created_at desc limit 100`,
+        );
+        return ok(
+          rows.rows.map((r) => ({
+            needId: r.need_id as string,
+            level: r.level as number,
+            occurredAt: new Date(r.created_at as string).toISOString(),
+          })),
+        );
+      } catch (e) {
+        return fixed(context, e);
+      }
+    },
     async claimDeliveries(limit: number): Promise<DeliveryClaim[]> {
       bounded(limit);
       return db
         .transaction(async (tx) => {
           const time = now();
           const rows = await tx.execute(
-            sql`with picked as (select j.organization_id,j.id from delivery_job j join member m on m.organization_id=j.organization_id and m.id=j.recipient_id join need n on n.organization_id=j.organization_id and n.id=j.need_id where j.attempts<3 and j.accepted_at is null and (j.lease_until is null or j.lease_until<=${time}) and (j.retry_after is null or j.retry_after<=${time}) and n.revision=j.need_revision and ((j.template='need-assigned' and ((n.status='assigned' and n.owner_membership_id=j.recipient_id) or (n.status='new' and n.urgency='urgent'))) or (j.template='need-overdue' and n.status='assigned' and n.acknowledge_by=j.need_deadline and n.acknowledge_by<=${time})) and m.role in ('owner','coordinator') and exists (select 1 from notification_preference p where p.organization_id=j.organization_id and p.membership_id=j.recipient_id and ((j.channel='email' and p.email) or (j.channel='telegram' and p.telegram))) order by j.created_at,j.id for update of j skip locked limit ${limit}), claimed as (update delivery_job j set attempts=j.attempts+1,lease_token=gen_random_uuid()::text,lease_until=${time}::timestamptz+interval '5 minutes' from picked p where (j.organization_id,j.id)=(p.organization_id,p.id) returning j.*) select * from claimed`,
+            sql`with picked as (select j.organization_id,j.id from delivery_job j join member m on m.organization_id=j.organization_id and m.id=j.recipient_id join need n on n.organization_id=j.organization_id and n.id=j.need_id where j.attempts<3 and j.accepted_at is null and (j.lease_until is null or j.lease_until<=${time}) and (j.retry_after is null or j.retry_after<=${time}) and n.revision=j.need_revision and ((j.template='need-assigned' and ((n.status='assigned' and n.owner_membership_id=j.recipient_id) or (n.status='new' and n.urgency='urgent'))) or (j.template='need-overdue' and n.status='assigned' and n.acknowledge_by=j.need_deadline)) and m.role in ('owner','coordinator') and exists (select 1 from notification_preference p where p.organization_id=j.organization_id and p.membership_id=j.recipient_id and ((j.channel='email' and p.email) or (j.channel='telegram' and p.telegram))) order by j.created_at,j.id for update of j skip locked limit ${limit}), claimed as (update delivery_job j set attempts=j.attempts+1,lease_token=gen_random_uuid()::text,lease_until=${time}::timestamptz+interval '5 minutes' from picked p where (j.organization_id,j.id)=(p.organization_id,p.id) returning j.*) select * from claimed`,
           );
           return rows.rows.map((r) => ({
             id: r.id as string,
@@ -520,7 +590,7 @@ export function createFollowThroughRepository(
       try {
         const time = now();
         const rows = await db.execute(
-          sql`select 1 from delivery_job j join member m on m.organization_id=j.organization_id and m.id=j.recipient_id join need n on n.organization_id=j.organization_id and n.id=j.need_id join notification_preference p on p.organization_id=j.organization_id and p.membership_id=j.recipient_id where j.organization_id=${job.organizationId} and j.id=${job.id} and j.recipient_id=${job.recipientId} and j.channel=${job.channel} and j.delivery_key=${job.deliveryKey} and j.template=${job.template} and j.app_path=${job.appPath} and j.lease_token=${job.leaseToken} and j.lease_until>${time} and j.accepted_at is null and m.role in ('owner','coordinator') and ((j.channel='email' and p.email) or (j.channel='telegram' and p.telegram)) and n.revision=j.need_revision and ((j.template='need-assigned' and ((n.status='assigned' and n.owner_membership_id=j.recipient_id) or (n.status='new' and n.urgency='urgent'))) or (j.template='need-overdue' and n.status='assigned' and n.acknowledge_by=j.need_deadline and n.acknowledge_by<=${time}))`,
+          sql`select 1 from delivery_job j join member m on m.organization_id=j.organization_id and m.id=j.recipient_id join need n on n.organization_id=j.organization_id and n.id=j.need_id join notification_preference p on p.organization_id=j.organization_id and p.membership_id=j.recipient_id where j.organization_id=${job.organizationId} and j.id=${job.id} and j.recipient_id=${job.recipientId} and j.channel=${job.channel} and j.delivery_key=${job.deliveryKey} and j.template=${job.template} and j.app_path=${job.appPath} and j.lease_token=${job.leaseToken} and j.lease_until>${time} and j.accepted_at is null and m.role in ('owner','coordinator') and ((j.channel='email' and p.email) or (j.channel='telegram' and p.telegram)) and n.revision=j.need_revision and ((j.template='need-assigned' and ((n.status='assigned' and n.owner_membership_id=j.recipient_id) or (n.status='new' and n.urgency='urgent'))) or (j.template='need-overdue' and n.status='assigned' and n.acknowledge_by=j.need_deadline))`,
         );
         return rows.rows.length > 0;
       } catch {
@@ -880,4 +950,48 @@ async function routedRecipients(
     live.push(...staff.rows.map((r) => r.id as string));
   }
   return live;
+}
+async function reassignForEscalation(
+  tx: Executor,
+  organizationId: string,
+  needId: string,
+  expectedRevision: number,
+  ownerId: string,
+  deadline: Date,
+  time: Date,
+): Promise<number> {
+  const rows = await tx.execute(
+    sql`select n.*,a.after from need n left join domain_audit_event a on a.organization_id=n.organization_id and a.aggregate_type='need' and a.aggregate_id=n.id and a.aggregate_revision=n.revision where n.organization_id=${organizationId} and n.id=${needId} and n.revision=${expectedRevision} and n.status='assigned' for update of n`,
+  );
+  const row = rows.rows[0];
+  if (!row?.after) throw new Error("Need history unavailable");
+  const revision = expectedRevision + 1;
+  const before = row.after as Record<string, unknown>;
+  const after = {
+    ...before,
+    revision,
+    ownerMembershipId: ownerId,
+    acknowledgeBy: deadline.toISOString(),
+    acknowledgedAt: null,
+    acknowledgedByMembershipId: null,
+    updatedAt: time.toISOString(),
+  };
+  const actor = { kind: "system", service: "scheduler" };
+  const correlationId = `escalation:${needId}`;
+  await tx.execute(
+    sql`insert into source_author(organization_id,membership_id,current_membership_id) values (${organizationId},${ownerId},${ownerId}) on conflict(organization_id,membership_id) do update set current_membership_id=excluded.current_membership_id`,
+  );
+  await tx.execute(
+    sql`update need set revision=${revision},owner_membership_id=${ownerId},acknowledge_by=${deadline},acknowledged_at=null,acknowledged_by_membership_id=null,updated_at=${time} where organization_id=${organizationId} and id=${needId} and revision=${expectedRevision}`,
+  );
+  await tx.execute(
+    sql`insert into domain_audit_event(organization_id,id,aggregate_type,aggregate_id,aggregate_revision,action,actor,correlation_id,reason,before,after,occurred_at) values (${organizationId},${`need:${needId}:${revision}`},'need',${needId},${revision},'escalated',${JSON.stringify(actor)}::jsonb,${correlationId},'Acknowledgment overdue',${JSON.stringify(before)}::jsonb,${JSON.stringify(after)}::jsonb,${time})`,
+  );
+  const eventId = `evt:${createHash("sha256")
+    .update(JSON.stringify([organizationId, "need.changed", needId, revision]))
+    .digest("hex")}`;
+  await tx.execute(
+    sql`insert into outbox_event(id,organization_id,type,aggregate_id,aggregate_revision,payload,actor,correlation_id,occurred_at) values (${eventId},${organizationId},'need.changed',${needId},${revision},${JSON.stringify({ needId, status: "assigned", provisional: row.provisional })}::jsonb,${JSON.stringify(actor)}::jsonb,${correlationId},${time})`,
+  );
+  return revision;
 }

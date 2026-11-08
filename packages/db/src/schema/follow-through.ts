@@ -191,9 +191,14 @@ export const needEscalation = pgTable(
     deadline: time("deadline").notNull(),
     assignmentRevision: integer("assignment_revision").notNull().default(0),
     level: integer("level").notNull(),
+    outcome: text("outcome").notNull().default("reminder"),
     createdAt: time("created_at").notNull(),
   },
   (t) => [
+    check(
+      "need_escalation_outcome_check",
+      sql`${t.outcome} in ('reassigned','reminder','unroutable')`,
+    ),
     primaryKey({
       columns: [
         t.organizationId,
@@ -203,5 +208,23 @@ export const needEscalation = pgTable(
         t.level,
       ],
     }),
+  ],
+);
+// Mutable cursor over immutable need_escalation history; assignment revision
+// distinguishes a new human assignment from the scheduler's reminder chain.
+export const needEscalationState = pgTable(
+  "need_escalation_state",
+  {
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    needId: text("need_id").notNull(),
+    assignmentRevision: integer("assignment_revision").notNull(),
+    level: integer("level").notNull(),
+    nextAt: time("next_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.organizationId, t.needId] }),
+    check("need_escalation_state_level_check", sql`${t.level}>0`),
   ],
 );

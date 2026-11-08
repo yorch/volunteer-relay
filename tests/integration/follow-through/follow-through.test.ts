@@ -154,7 +154,7 @@ it("persists deduplicated alerts, bounded deliveries and stops after acknowledgm
     "need-overdue",
   ]);
   const jobs = await repo.claimDeliveries(10);
-  expect(jobs).toHaveLength(2);
+  expect(jobs).toHaveLength(1);
   const first = jobs[0];
   if (!first) throw new Error("missing job");
   expect(
@@ -165,11 +165,11 @@ it("persists deduplicated alerts, bounded deliveries and stops after acknowledgm
   ).toBe(true);
   expect(
     (
-      await fixture.needs.transition(staff, {
+      await fixture.needs.transition(owner, {
         schemaVersion: 1,
         idempotencyKey: "ack",
         needId: created.value.needId,
-        expectedRevision: 2,
+        expectedRevision: 3,
         action: "acknowledge",
       })
     ).ok,
@@ -411,9 +411,9 @@ it("escalates a reassignment once even when its deadline is unchanged", async ()
         schemaVersion: 1,
         idempotencyKey: "b",
         needId: need.value.needId,
-        expectedRevision: 2,
+        expectedRevision: 3,
         action: "assign",
-        ownerMembershipId: "tidepath-rae",
+        ownerMembershipId: "tidepath-kai",
         acknowledgeBy: deadline,
       })
     ).ok,
@@ -425,7 +425,7 @@ it("escalates a reassignment once even when its deadline is unchanged", async ()
   );
   expect(rows.rows).toEqual([
     { assignment_revision: 2 },
-    { assignment_revision: 3 },
+    { assignment_revision: 4 },
   ]);
 });
 it("unlinks a consumed Telegram identity and denies later resolution", async () => {
@@ -450,5 +450,134 @@ it("unlinks a consumed Telegram identity and denies later resolution", async () 
   expect(await repo.resolveTelegramIdentity("telegram-user")).toMatchObject({
     ok: false,
     error: { code: "NOT_FOUND" },
+  });
+});
+it("reassigns once, persists reminder levels across worker restart, and stops on acknowledgment", async () => {
+  let repo = createFollowThroughRepository(fixture.db, { now: () => clock });
+  const kai = await context(
+    fixture.authorization,
+    "user-kai",
+    "tidepath",
+    "staff",
+  );
+  const owner = await context(
+    fixture.authorization,
+    "user-rae",
+    "tidepath",
+    "owner",
+  );
+  const created = await fixture.needs.create(kai, {
+    schemaVersion: 1,
+    idempotencyKey: "need",
+    category: "Transport",
+    urgency: "routine",
+    summary: "Driver",
+    provisional: false,
+    dueAt: null,
+    acknowledgeBy: null,
+    origin: staffOrigin,
+  });
+  if (!created.ok) throw new Error("missing need");
+  expect(
+    (
+      await fixture.needs.transition(kai, {
+        schemaVersion: 1,
+        idempotencyKey: "assign",
+        needId: created.value.needId,
+        expectedRevision: 1,
+        action: "assign",
+        ownerMembershipId: "tidepath-kai",
+        acknowledgeBy: "2026-11-08T11:00:00Z",
+      })
+    ).ok,
+  ).toBe(true);
+  expect(await repo.escalateOverdue(10)).toBe(1);
+  const first = await fixture.db.execute(
+    sql`select revision,owner_membership_id,acknowledge_by from need where id=${created.value.needId}`,
+  );
+  expect(first.rows[0]).toMatchObject({
+    revision: 3,
+    owner_membership_id: "tidepath-rae",
+  });
+  const audit = await fixture.db.execute(
+    sql`select actor,action from domain_audit_event where aggregate_type='need' and aggregate_revision=3`,
+  );
+  expect(audit.rows[0]).toMatchObject({
+    actor: { kind: "system", service: "scheduler" },
+    action: "escalated",
+  });
+  repo = createFollowThroughRepository(fixture.db, { now: () => clock });
+  expect(await repo.escalateOverdue(10)).toBe(0);
+  clock = new Date("2026-11-08T13:00:00Z");
+  expect(await repo.escalateOverdue(10)).toBe(1);
+  expect(await repo.escalateOverdue(10)).toBe(0);
+  const levels = await fixture.db.execute(
+    sql`select level,outcome from need_escalation order by level`,
+  );
+  expect(levels.rows).toEqual([
+    { level: 1, outcome: "reassigned" },
+    { level: 2, outcome: "reminder" },
+  ]);
+  expect(
+    (
+      await fixture.needs.transition(owner, {
+        schemaVersion: 1,
+        idempotencyKey: "ack",
+        needId: created.value.needId,
+        expectedRevision: 3,
+        action: "acknowledge",
+      })
+    ).ok,
+  ).toBe(true);
+  clock = new Date("2026-11-08T15:00:00Z");
+  expect(await repo.escalateOverdue(10)).toBe(0);
+});
+it("records an unroutable escalation when no different live staff member remains", async () => {
+  const repo = createFollowThroughRepository(fixture.db, { now: () => clock });
+  const kai = await context(
+    fixture.authorization,
+    "user-kai",
+    "tidepath",
+    "staff",
+  );
+  const created = await fixture.needs.create(kai, {
+    schemaVersion: 1,
+    idempotencyKey: "need",
+    category: "Transport",
+    urgency: "routine",
+    summary: "Driver",
+    provisional: false,
+    dueAt: null,
+    acknowledgeBy: null,
+    origin: staffOrigin,
+  });
+  if (!created.ok) throw new Error("missing need");
+  expect(
+    (
+      await fixture.needs.transition(kai, {
+        schemaVersion: 1,
+        idempotencyKey: "assign",
+        needId: created.value.needId,
+        expectedRevision: 1,
+        action: "assign",
+        ownerMembershipId: "tidepath-kai",
+        acknowledgeBy: "2026-11-08T11:00:00Z",
+      })
+    ).ok,
+  ).toBe(true);
+  await fixture.db
+    .delete(schema.member)
+    .where(sql`${schema.member.id}='tidepath-rae'`);
+  expect(await repo.escalateOverdue(10)).toBe(1);
+  expect(await repo.listUnroutableEscalations(kai)).toMatchObject({
+    ok: true,
+    value: [{ needId: created.value.needId, level: 1 }],
+  });
+  const rows = await fixture.db.execute(
+    sql`select revision,owner_membership_id from need where id=${created.value.needId}`,
+  );
+  expect(rows.rows[0]).toEqual({
+    revision: 2,
+    owner_membership_id: "tidepath-kai",
   });
 });
