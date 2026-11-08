@@ -348,3 +348,18 @@
     display: contents;
   }
 }
+
+/* Older browsers retain a native, operable desktop menu rather than hiding it. */
+@supports not selector(details::details-content) {
+  @media (min-width: 761px) {
+    .menuToggle {
+      display: flex;
+      align-items: center;
+      min-height: 44px;
+      padding: 0.6rem;
+      cursor: pointer;
+      color: #245b49;
+      font-weight: 700;
+    }
+  }
+}

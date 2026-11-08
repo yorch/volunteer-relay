@@ -16,7 +16,14 @@ test("baseline loads without page errors and reports the pinned server runtime",
   await page.goto("/");
   await expect(page.getByRole("main")).toBeVisible();
   await expect(
-    page.getByRole("heading", { level: 1, name: "Volunteer Relay" }),
+    page.getByRole("heading", {
+      level: 1,
+      name: /A little clarity\.\s*More care\./i,
+    }),
+  ).toBeVisible();
+  await expect(page).toHaveTitle("Volunteer Relay");
+  await expect(
+    page.getByRole("link", { name: "volunteer relay." }),
   ).toBeVisible();
   expect(
     await page.evaluate(
