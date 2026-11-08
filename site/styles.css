@@ -539,3 +539,34 @@ footer .wrap {
   justify-content: space-between;
   gap: 12px;
 }
+
+.show.wide {
+  grid-template-columns: 5fr 7fr;
+}
+.show.flip.wide {
+  grid-template-columns: 7fr 5fr;
+}
+.shot.crop {
+  position: relative;
+  max-height: 640px;
+}
+.shot.crop.tall {
+  max-height: 780px;
+}
+.shot.crop::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 48px;
+  background: linear-gradient(transparent, var(--surface));
+}
+@media (max-width: 860px) {
+  .show.wide,
+  .show.flip.wide {
+    grid-template-columns: 1fr;
+  }
+  .shot.crop,
+  .shot.crop.tall {
+    max-height: 480px;
+  }
+}
