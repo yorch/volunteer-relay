@@ -27,6 +27,7 @@ import styles from "./product.module.css";
 import { Retention } from "./retention";
 
 type Page =
+  | "home"
   | "volunteer"
   | "inbox"
   | "activities"
@@ -202,7 +203,7 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
   const activePage: Page =
     page === "home"
       ? staff
-        ? "inbox"
+        ? "home"
         : role === "volunteer"
           ? "volunteer"
           : "reports"
@@ -219,6 +220,7 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
             : staff;
   const nav = staff
     ? [
+        { href: "/workspace", label: "Overview" },
         { href: "/workspace/inbox", label: "Source inbox" },
         { href: "/workspace/activities", label: "Activities" },
         { href: "/workspace/needs", label: "Needs" },
@@ -261,6 +263,8 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
           <p>Your role does not have access to this page.</p>
           <a href="/workspace">Go to your workspace</a>
         </>
+      ) : activePage === "home" ? (
+        <Overview snapshot={snapshot} />
       ) : activePage === "volunteer" ? (
         <Volunteer snapshot={snapshot} mutate={mutate} refresh={refresh} />
       ) : activePage === "inbox" ? (
@@ -308,7 +312,9 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
     <StaffShell
       organization={snapshot.organization.name}
       mainId="workspace-main"
-      currentPath={`/workspace/${activePage}`}
+      currentPath={
+        activePage === "home" ? "/workspace" : `/workspace/${activePage}`
+      }
       navigation={nav}
       account={<Organization />}
     >
@@ -324,6 +330,134 @@ type Mutate = (
 ) => Promise<boolean>;
 function Card({ children }: { children: ReactNode }) {
   return <section className={styles.card}>{children}</section>;
+}
+function Overview({ snapshot }: { snapshot: WorkspaceSnapshot }) {
+  const [report, setReport] = useState<ProductReport | null>(null);
+  const [reportError, setReportError] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void request<ProductReport>("/api/product/reports").then((result) => {
+      if (!live) return;
+      if (result.ok) setReport(result.value);
+      else setReportError(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const openNeeds = snapshot.needs.filter((n) =>
+    ["new", "assigned", "acknowledged"].includes(n.status),
+  );
+  const failed = snapshot.sources.filter((s) => s.status === "failed").length;
+  return (
+    <>
+      <div className={styles.pageHeader}>
+        <div>
+          <span className={styles.eyebrow}>Your workspace</span>
+          <h1>Overview</h1>
+          <p>Here's what needs your attention today.</p>
+        </div>
+        <a className={styles.primaryLink} href="/workspace/inbox">
+          Review updates <span aria-hidden="true">→</span>
+        </a>
+      </div>
+      <div className={styles.metrics}>
+        <Card>
+          <span className={styles.eyebrow}>Awaiting review</span>
+          <p className={styles.metricValue}>{snapshot.queue.length}</p>
+          <p>Updates ready for a decision</p>
+          <a href="/workspace/inbox">Open inbox</a>
+        </Card>
+        <Card>
+          <span className={styles.eyebrow}>Open needs</span>
+          <p className={styles.metricValue}>{openNeeds.length}</p>
+          <p>Needs being tracked</p>
+          <a href="/workspace/needs">View needs</a>
+        </Card>
+        <Card>
+          <span className={styles.eyebrow}>Approved time</span>
+          <p className={styles.metricValue}>
+            {report ? `${report.approvedHours} hrs` : "—"}
+          </p>
+          <p>
+            {reportError
+              ? "Report unavailable"
+              : report
+                ? "From approved contributions"
+                : "Loading report…"}
+          </p>
+          <a href="/workspace/reports">View summary</a>
+        </Card>
+      </div>
+      <div className={styles.overviewGrid}>
+        <Card>
+          <div className={styles.sectionHeading}>
+            <div>
+              <span className={styles.eyebrow}>Up next</span>
+              <h2>Priorities</h2>
+            </div>
+            <a href="/workspace/inbox">View inbox</a>
+          </div>
+          {snapshot.queue.length > 0 && (
+            <p className={styles.priority}>
+              <strong>{snapshot.queue.length} updates awaiting review</strong>
+              <br />
+              <span>
+                Compare the proposed fields with the original evidence.
+              </span>
+            </p>
+          )}
+          {failed > 0 && (
+            <p className={styles.priority}>
+              <strong>
+                {failed} processing {failed === 1 ? "failure" : "failures"}
+              </strong>
+              <br />
+              <span>Inspect the original update and retry processing.</span>
+            </p>
+          )}
+          {openNeeds.filter((n) => n.urgency === "urgent").length > 0 && (
+            <p className={styles.priority}>
+              <strong>
+                {openNeeds.filter((n) => n.urgency === "urgent").length} urgent
+                needs
+              </strong>
+              <br />
+              <span>Check ownership and next steps on the needs board.</span>
+            </p>
+          )}
+          {!snapshot.queue.length &&
+            !failed &&
+            !openNeeds.some((n) => n.urgency === "urgent") && (
+              <p>No urgent work right now.</p>
+            )}
+        </Card>
+        <Card>
+          <div className={styles.sectionHeading}>
+            <div>
+              <span className={styles.eyebrow}>Keep things moving</span>
+              <h2>Open needs</h2>
+            </div>
+            <a href="/workspace/needs">View board</a>
+          </div>
+          {openNeeds.length ? (
+            openNeeds.slice(0, 4).map((n) => (
+              <p className={styles.priority} key={n.needId}>
+                <strong>{n.summary}</strong>
+                <br />
+                <span>
+                  {n.status} · {n.provisional ? "Provisional · " : ""}Due{" "}
+                  {date(n.dueAt)}
+                </span>
+              </p>
+            ))
+          ) : (
+            <p>No open needs.</p>
+          )}
+        </Card>
+      </div>
+    </>
+  );
 }
 function Volunteer({
   snapshot,
@@ -497,6 +631,7 @@ function Inbox({
   refresh: () => Promise<void>;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const [retrying, setRetrying] = useState<string | null>(null);
   const [inspected, setInspected] = useState<string | null>(null);
   const queued = snapshot.sources.filter(
@@ -515,149 +650,181 @@ function Inbox({
     <>
       <h1>Source inbox</h1>
       <p>Review the original update alongside its proposed fields.</p>
-      <Card>
-        <h2>Processing failures</h2>
-        {failed.length ? (
-          <>
-            <p>
-              Retry processing these updates. The original evidence is retained.
-            </p>
+      <details className={styles.utilityDisclosure}>
+        <summary>Processing and reprocessing</summary>
+        <Card>
+          <h2>Processing failures</h2>
+          {failed.length ? (
+            <>
+              <p>
+                Retry processing these updates. The original evidence is
+                retained.
+              </p>
+              <ul className={styles.list}>
+                {failed.map((source) => (
+                  <li key={source.sourceId}>
+                    Source {source.sourceId} · revision {source.revision} ·
+                    failed{" "}
+                    <button
+                      type="button"
+                      onClick={() => setInspected(source.sourceId)}
+                    >
+                      Inspect evidence
+                    </button>{" "}
+                    <button
+                      type="button"
+                      disabled={retrying !== null}
+                      onClick={async () => {
+                        setRetrying(source.sourceId);
+                        try {
+                          await mutate(
+                            "/api/product/retry-source",
+                            { sourceId: source.sourceId },
+                            "Processing retry requested.",
+                          );
+                        } finally {
+                          setRetrying(null);
+                        }
+                      }}
+                    >
+                      {retrying === source.sourceId
+                        ? "Requesting…"
+                        : "Retry processing"}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p>No processing failures.</p>
+          )}
+        </Card>
+        <Card>
+          <h2>Queued updates</h2>
+          {queued.length ? (
             <ul className={styles.list}>
-              {failed.map((source) => (
+              {queued.map((source) => (
                 <li key={source.sourceId}>
-                  Source {source.sourceId} · revision {source.revision} · failed{" "}
+                  Source {source.sourceId} · revision {source.revision} · queued{" "}
                   <button
                     type="button"
                     onClick={() => setInspected(source.sourceId)}
                   >
                     Inspect evidence
-                  </button>{" "}
-                  <button
-                    type="button"
-                    disabled={retrying !== null}
-                    onClick={async () => {
-                      setRetrying(source.sourceId);
-                      try {
-                        await mutate(
-                          "/api/product/retry-source",
-                          { sourceId: source.sourceId },
-                          "Processing retry requested.",
-                        );
-                      } finally {
-                        setRetrying(null);
-                      }
-                    }}
-                  >
-                    {retrying === source.sourceId
-                      ? "Requesting…"
-                      : "Retry processing"}
                   </button>
                 </li>
               ))}
             </ul>
-          </>
-        ) : (
-          <p>No processing failures.</p>
+          ) : (
+            <p>No updates awaiting processing.</p>
+          )}
+        </Card>
+        {inspectable && (
+          <PendingSource
+            key={`${inspectable.sourceId}-${inspectable.revision}`}
+            sourceId={inspectable.sourceId}
+            status={inspectable.status}
+            close={() => setInspected(null)}
+          />
         )}
-      </Card>
-      <Card>
-        <h2>Queued updates</h2>
-        {queued.length ? (
-          <ul className={styles.list}>
-            {queued.map((source) => (
-              <li key={source.sourceId}>
-                Source {source.sourceId} · revision {source.revision} · queued{" "}
-                <button
-                  type="button"
-                  onClick={() => setInspected(source.sourceId)}
-                >
-                  Inspect evidence
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p>No updates awaiting processing.</p>
-        )}
-      </Card>
-      {inspectable && (
-        <PendingSource
-          key={`${inspectable.sourceId}-${inspectable.revision}`}
-          sourceId={inspectable.sourceId}
-          status={inspectable.status}
-          close={() => setInspected(null)}
-        />
-      )}
-      <Card>
-        <h2>Reprocess an update</h2>
-        <p>
-          Run the current model and policy again. The original history stays
-          available; pending decisions based on an earlier run become stale.
-        </p>
-        {snapshot.sources.filter((source) =>
-          ["review", "accepted", "rejected"].includes(source.status),
-        ).length ? (
-          <ul className={styles.list}>
-            {snapshot.sources
-              .filter((source) =>
-                ["review", "accepted", "rejected"].includes(source.status),
-              )
-              .map((source) => (
-                <li key={source.sourceId}>
-                  Source {source.sourceId} · revision {source.revision} ·{" "}
-                  {source.status}{" "}
-                  <button
-                    type="button"
-                    disabled={retrying !== null}
-                    onClick={async () => {
-                      setRetrying(source.sourceId);
-                      try {
-                        await mutate(
-                          "/api/product/reprocess-source",
-                          {
-                            sourceId: source.sourceId,
-                            expectedRevision: source.revision,
-                          },
-                          "Reprocessing requested.",
-                        );
-                      } finally {
-                        setRetrying(null);
-                      }
-                    }}
-                  >
-                    {retrying === source.sourceId
-                      ? "Requesting…"
-                      : "Reprocess with current model and policy"}
-                  </button>
-                </li>
-              ))}
-          </ul>
-        ) : (
-          <p>No updates available to reprocess.</p>
-        )}
-      </Card>
+        <Card>
+          <h2>Reprocess an update</h2>
+          <p>
+            Run the current model and policy again. The original history stays
+            available; pending decisions based on an earlier run become stale.
+          </p>
+          {snapshot.sources.filter((source) =>
+            ["review", "accepted", "rejected"].includes(source.status),
+          ).length ? (
+            <ul className={styles.list}>
+              {snapshot.sources
+                .filter((source) =>
+                  ["review", "accepted", "rejected"].includes(source.status),
+                )
+                .map((source) => (
+                  <li key={source.sourceId}>
+                    Source {source.sourceId} · revision {source.revision} ·{" "}
+                    {source.status}{" "}
+                    <button
+                      type="button"
+                      disabled={retrying !== null}
+                      onClick={async () => {
+                        setRetrying(source.sourceId);
+                        try {
+                          await mutate(
+                            "/api/product/reprocess-source",
+                            {
+                              sourceId: source.sourceId,
+                              expectedRevision: source.revision,
+                            },
+                            "Reprocessing requested.",
+                          );
+                        } finally {
+                          setRetrying(null);
+                        }
+                      }}
+                    >
+                      {retrying === source.sourceId
+                        ? "Requesting…"
+                        : "Reprocess with current model and policy"}
+                    </button>
+                  </li>
+                ))}
+            </ul>
+          ) : (
+            <p>No updates available to reprocess.</p>
+          )}
+        </Card>
+      </details>
       {snapshot.queue.length === 0 ? (
         <p>No sources awaiting review.</p>
       ) : (
         <div className={styles.columns}>
           <Card>
-            <h2>Awaiting review</h2>
+            <h2>
+              Awaiting review{" "}
+              <span className={styles.count}>{snapshot.queue.length}</span>
+            </h2>
+            <label>
+              Search updates
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search source or text"
+              />
+            </label>
             <button type="button" onClick={() => void refresh()}>
               Refresh inbox
             </button>
             <ul className={styles.list}>
-              {snapshot.queue.map((item) => (
-                <li key={item.proposal.runId}>
-                  <button
-                    type="button"
-                    aria-pressed={entry?.proposal.runId === item.proposal.runId}
-                    onClick={() => setSelected(item.proposal.runId)}
-                  >
-                    Source {item.source.sourceId} · revision{" "}
-                    {item.source.revision}
-                  </button>
-                </li>
-              ))}
+              {snapshot.queue
+                .filter((item) =>
+                  `${item.source.sourceId} ${item.source.text ?? ""}`
+                    .toLowerCase()
+                    .includes(search.toLowerCase()),
+                )
+                .map((item) => (
+                  <li key={item.proposal.runId}>
+                    <button
+                      type="button"
+                      aria-pressed={
+                        entry?.proposal.runId === item.proposal.runId
+                      }
+                      onClick={() => setSelected(item.proposal.runId)}
+                    >
+                      <strong>
+                        {item.source.text?.slice(0, 90) ||
+                          "Update without text"}
+                      </strong>
+                      <br />
+                      <small>
+                        Source {item.source.sourceId} · revision{" "}
+                        {item.source.revision}
+                      </small>
+                    </button>
+                  </li>
+                ))}
             </ul>
           </Card>
           {entry ? (
@@ -818,266 +985,275 @@ function ReviewEditor({
     setPending(false);
   }
   return (
-    <Card>
-      <h2>Original update</h2>
-      <p className={styles.source}>
-        {entry.source.text || "No text provided."}
-      </p>
-      <p>
-        Channel: {entry.source.channel} · received{" "}
-        {date(entry.source.receivedAt)} · source revision{" "}
-        {entry.source.revision}
-      </p>
-      {entry.source.attachments?.length > 0 && (
-        <section>
-          <h3>Source attachments</h3>
-          <p>
-            Original evidence attached to source revision{" "}
-            {entry.source.revision}.
-          </p>
-          {entry.source.attachments.map((attachment) => (
-            <figure key={attachment.id}>
-              {/* The authenticated same-origin endpoint serves the original evidence without an image optimization proxy. */}
-              {/* biome-ignore lint/performance/noImgElement: authenticated original evidence must use the same-origin endpoint */}
-              <img
-                className={styles.attachment}
-                src={`/api/product/attachments/${encodeURIComponent(entry.source.sourceId)}/${encodeURIComponent(attachment.id)}`}
-                alt={`Source attachment ${attachment.id}, revision ${entry.source.revision}`}
-              />
-              <figcaption>
-                Source revision {entry.source.revision} · attachment{" "}
-                {attachment.id}
-              </figcaption>
-            </figure>
-          ))}
-        </section>
-      )}
-      <h3>Proposed fields</h3>
-      {items.length ? (
-        items.map((item, index) => (
-          <div className={styles.item} key={item.key}>
-            <strong>{item.kind}</strong>
-            <dl>
-              {Object.entries(item)
-                .filter(([name]) => !["kind", "key", "evidence"].includes(name))
-                .map(([name, value]) => (
-                  <div key={name}>
-                    <dt>{name}</dt>
-                    <dd>{value === null ? "Unknown" : String(value)}</dd>
-                  </div>
-                ))}
-            </dl>
-            {item.kind === "contribution" && (
-              <>
-                <label>
-                  Volunteer for {item.key}
-                  <select
-                    value={item.membershipId ?? ""}
-                    onChange={(e) =>
-                      update(index, { membershipId: e.target.value || null })
-                    }
-                  >
-                    <option value="">Unknown</option>
-                    {item.membershipId &&
-                      !members.some(
-                        (m) => m.membershipId === item.membershipId,
-                      ) && (
-                        <option value={item.membershipId}>
-                          Current member
-                        </option>
-                      )}
-                    {members.map((m) => (
-                      <option key={m.membershipId} value={m.membershipId}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Duration in minutes for {item.key}
-                  <input
-                    type="number"
-                    min="1"
-                    max="1440"
-                    value={item.durationMinutes ?? ""}
-                    onChange={(e) =>
-                      update(index, {
-                        durationMinutes: e.target.value
-                          ? Number(e.target.value)
-                          : null,
-                      })
-                    }
-                  />
-                </label>
-              </>
-            )}
-            {item.kind === "activity" && (
-              <div>
-                <p>
-                  Possible existing activities are suggestions; choose one only
-                  after confirming it is the same activity.
-                </p>
-                {candidateError ? (
-                  <p role="alert">{candidateError}</p>
-                ) : candidates === null ? (
-                  <p>Loading possible matches…</p>
-                ) : candidates.length === 0 ? (
-                  <p>No possible matches.</p>
-                ) : (
+    <div className={styles.reviewPanels}>
+      <Card>
+        <span className={styles.eyebrow}>Source evidence</span>
+        <h2>Original update</h2>
+        <p className={styles.source}>
+          {entry.source.text || "No text provided."}
+        </p>
+        <p>
+          Channel: {entry.source.channel} · received{" "}
+          {date(entry.source.receivedAt)} · source revision{" "}
+          {entry.source.revision}
+        </p>
+        {entry.source.attachments?.length > 0 && (
+          <section>
+            <h3>Source attachments</h3>
+            <p>
+              Original evidence attached to source revision{" "}
+              {entry.source.revision}.
+            </p>
+            {entry.source.attachments.map((attachment) => (
+              <figure key={attachment.id}>
+                {/* The authenticated same-origin endpoint serves the original evidence without an image optimization proxy. */}
+                {/* biome-ignore lint/performance/noImgElement: authenticated original evidence must use the same-origin endpoint */}
+                <img
+                  className={styles.attachment}
+                  src={`/api/product/attachments/${encodeURIComponent(entry.source.sourceId)}/${encodeURIComponent(attachment.id)}`}
+                  alt={`Source attachment ${attachment.id}, revision ${entry.source.revision}`}
+                />
+                <figcaption>
+                  Source revision {entry.source.revision} · attachment{" "}
+                  {attachment.id}
+                </figcaption>
+              </figure>
+            ))}
+          </section>
+        )}
+      </Card>
+      <Card>
+        <span className={styles.eyebrow}>Review and decide</span>
+        <h2>Proposed fields</h2>
+        {items.length ? (
+          items.map((item, index) => (
+            <div className={styles.item} key={item.key}>
+              <strong>{item.kind}</strong>
+              <dl>
+                {Object.entries(item)
+                  .filter(
+                    ([name]) => !["kind", "key", "evidence"].includes(name),
+                  )
+                  .map(([name, value]) => (
+                    <div key={name}>
+                      <dt>{name}</dt>
+                      <dd>{value === null ? "Unknown" : String(value)}</dd>
+                    </div>
+                  ))}
+              </dl>
+              {item.kind === "contribution" && (
+                <>
                   <label>
-                    Link existing activity for {item.key}
+                    Volunteer for {item.key}
                     <select
-                      value={links[item.key]?.activityId ?? ""}
-                      onChange={(e) => {
-                        const match = candidates.find(
-                          (c) => c.activityId === e.target.value,
-                        );
-                        setLinks((previous) => {
-                          const next = { ...previous };
-                          if (match)
-                            next[item.key] = {
-                              activityId: match.activityId,
-                              expectedRevision: match.revision,
-                            };
-                          else delete next[item.key];
-                          return next;
-                        });
-                      }}
+                      value={item.membershipId ?? ""}
+                      onChange={(e) =>
+                        update(index, { membershipId: e.target.value || null })
+                      }
                     >
-                      <option value="">Do not link</option>
-                      {candidates.map((c) => (
-                        <option key={c.activityId} value={c.activityId}>
-                          {c.activityId} · revision {c.revision} · {c.reason}
+                      <option value="">Unknown</option>
+                      {item.membershipId &&
+                        !members.some(
+                          (m) => m.membershipId === item.membershipId,
+                        ) && (
+                          <option value={item.membershipId}>
+                            Current member
+                          </option>
+                        )}
+                      {members.map((m) => (
+                        <option key={m.membershipId} value={m.membershipId}>
+                          {m.name}
                         </option>
                       ))}
                     </select>
                   </label>
-                )}
-              </div>
-            )}
-            {item.kind === "activity" && (
-              <label>
-                Date for {item.key}
-                <input
-                  type="date"
-                  value={item.localDate ?? ""}
-                  onChange={(e) =>
-                    update(index, {
-                      localDate: e.target.value || null,
-                      datePrecision: e.target.value ? "day" : "unknown",
-                    })
-                  }
-                />
-              </label>
-            )}
-            {item.kind === "correction" && (
-              <>
-                <p>
-                  This proposed correction identifies a target and revision.
-                  Check the original evidence before accepting; explain any
-                  staff changes in the review reason.
-                </p>
+                  <label>
+                    Duration in minutes for {item.key}
+                    <input
+                      type="number"
+                      min="1"
+                      max="1440"
+                      value={item.durationMinutes ?? ""}
+                      onChange={(e) =>
+                        update(index, {
+                          durationMinutes: e.target.value
+                            ? Number(e.target.value)
+                            : null,
+                        })
+                      }
+                    />
+                  </label>
+                </>
+              )}
+              {item.kind === "activity" && (
+                <div>
+                  <p>
+                    Possible existing activities are suggestions; choose one
+                    only after confirming it is the same activity.
+                  </p>
+                  {candidateError ? (
+                    <p role="alert">{candidateError}</p>
+                  ) : candidates === null ? (
+                    <p>Loading possible matches…</p>
+                  ) : candidates.length === 0 ? (
+                    <p>No possible matches.</p>
+                  ) : (
+                    <label>
+                      Link existing activity for {item.key}
+                      <select
+                        value={links[item.key]?.activityId ?? ""}
+                        onChange={(e) => {
+                          const match = candidates.find(
+                            (c) => c.activityId === e.target.value,
+                          );
+                          setLinks((previous) => {
+                            const next = { ...previous };
+                            if (match)
+                              next[item.key] = {
+                                activityId: match.activityId,
+                                expectedRevision: match.revision,
+                              };
+                            else delete next[item.key];
+                            return next;
+                          });
+                        }}
+                      >
+                        <option value="">Do not link</option>
+                        {candidates.map((c) => (
+                          <option key={c.activityId} value={c.activityId}>
+                            {c.activityId} · revision {c.revision} · {c.reason}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                </div>
+              )}
+              {item.kind === "activity" && (
                 <label>
-                  Target ID for {item.key}
+                  Date for {item.key}
                   <input
-                    value={item.targetId ?? ""}
-                    onChange={(e) =>
-                      update(index, { targetId: e.target.value || null })
-                    }
-                  />
-                </label>
-                <label>
-                  Target revision for {item.key}
-                  <input
-                    type="number"
-                    min="1"
-                    value={item.expectedRevision ?? ""}
+                    type="date"
+                    value={item.localDate ?? ""}
                     onChange={(e) =>
                       update(index, {
-                        expectedRevision: e.target.value
-                          ? Number(e.target.value)
-                          : null,
+                        localDate: e.target.value || null,
+                        datePrecision: e.target.value ? "day" : "unknown",
                       })
                     }
                   />
                 </label>
-                <label>
-                  Duration in minutes for {item.key}
-                  <input
-                    type="number"
-                    min="1"
-                    max="1440"
-                    value={item.durationMinutes ?? ""}
-                    onChange={(e) =>
-                      update(index, {
-                        durationMinutes: e.target.value
-                          ? Number(e.target.value)
-                          : null,
-                      })
-                    }
-                  />
-                </label>
-              </>
-            )}
-            <p>Original evidence:</p>
+              )}
+              {item.kind === "correction" && (
+                <>
+                  <p>
+                    This proposed correction identifies a target and revision.
+                    Check the original evidence before accepting; explain any
+                    staff changes in the review reason.
+                  </p>
+                  <label>
+                    Target ID for {item.key}
+                    <input
+                      value={item.targetId ?? ""}
+                      onChange={(e) =>
+                        update(index, { targetId: e.target.value || null })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Target revision for {item.key}
+                    <input
+                      type="number"
+                      min="1"
+                      value={item.expectedRevision ?? ""}
+                      onChange={(e) =>
+                        update(index, {
+                          expectedRevision: e.target.value
+                            ? Number(e.target.value)
+                            : null,
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Duration in minutes for {item.key}
+                    <input
+                      type="number"
+                      min="1"
+                      max="1440"
+                      value={item.durationMinutes ?? ""}
+                      onChange={(e) =>
+                        update(index, {
+                          durationMinutes: e.target.value
+                            ? Number(e.target.value)
+                            : null,
+                        })
+                      }
+                    />
+                  </label>
+                </>
+              )}
+              <p>Original evidence:</p>
+              <ul>
+                {item.evidence.map((e) => (
+                  <li key={JSON.stringify(e)}>
+                    {e.field}:{" "}
+                    {e.kind === "text" ? `“${e.quote}”` : e.observation} (source
+                    revision {e.sourceRevision})
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        ) : (
+          <p>No proposed fields.</p>
+        )}
+        {entry.proposal.unresolved.length > 0 && (
+          <>
+            <h3>Unresolved in original proposal</h3>
             <ul>
-              {item.evidence.map((e) => (
-                <li key={JSON.stringify(e)}>
-                  {e.field}:{" "}
-                  {e.kind === "text" ? `“${e.quote}”` : e.observation} (source
-                  revision {e.sourceRevision})
+              {entry.proposal.unresolved.map((u) => (
+                <li key={JSON.stringify(u)}>
+                  {u.field}: {u.reason}
                 </li>
               ))}
             </ul>
-          </div>
-        ))
-      ) : (
-        <p>No proposed fields.</p>
-      )}
-      {entry.proposal.unresolved.length > 0 && (
-        <>
-          <h3>Unresolved in original proposal</h3>
-          <ul>
-            {entry.proposal.unresolved.map((u) => (
-              <li key={JSON.stringify(u)}>
-                {u.field}: {u.reason}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-      <label htmlFor="review-reason">
-        Review reason {(changed || linked) && "(required for edits or links)"}
-      </label>
-      <textarea
-        id="review-reason"
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-      />
-      <p>
-        Incomplete contributions remain pending when accepted. Staff edits
-        retain the original evidence and require a reason.
-      </p>
-      <div className={styles.actions}>
-        <button
-          disabled={pending || ((changed || linked) && !reason.trim())}
-          type="button"
-          onClick={() => void decide("accept")}
-        >
-          Accept proposal
-        </button>
-        <button
-          disabled={pending || !reason.trim()}
-          type="button"
-          onClick={() => void decide("reject")}
-        >
-          Reject proposal
-        </button>
-      </div>
-      <p>
-        Rejecting a proposal does not automatically withdraw a provisional need.
-      </p>
-    </Card>
+          </>
+        )}
+        <label htmlFor="review-reason">
+          Review reason {(changed || linked) && "(required for edits or links)"}
+        </label>
+        <textarea
+          id="review-reason"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+        />
+        <p>
+          Incomplete contributions remain pending when accepted. Staff edits
+          retain the original evidence and require a reason.
+        </p>
+        <div className={styles.actions}>
+          <button
+            disabled={pending || ((changed || linked) && !reason.trim())}
+            type="button"
+            onClick={() => void decide("accept")}
+          >
+            Accept proposal
+          </button>
+          <button
+            disabled={pending || !reason.trim()}
+            type="button"
+            onClick={() => void decide("reject")}
+          >
+            Reject proposal
+          </button>
+        </div>
+        <p>
+          Rejecting a proposal does not automatically withdraw a provisional
+          need.
+        </p>
+      </Card>
+    </div>
   );
 }
 function Activities({
@@ -1123,43 +1299,6 @@ function Activities({
         Approved contributions form the reporting ledger. Unknown durations
         remain pending.
       </p>
-      <Card>
-        <h2>Record an activity</h2>
-        <form onSubmit={create}>
-          <label>
-            Activity type
-            <input name="kind" required maxLength={100} />
-          </label>
-          <label>
-            Date (leave blank if unknown)
-            <input name="date" type="date" />
-          </label>
-          <label>
-            Beneficiary reference (optional)
-            <input name="beneficiary" maxLength={200} />
-          </label>
-          <label>
-            Volunteer
-            <select name="member">
-              <option value="">Unknown</option>
-              {snapshot.members.map((m) => (
-                <option key={m.membershipId} value={m.membershipId}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Duration in minutes (leave blank if unknown)
-            <input name="minutes" type="number" min="1" max="1440" />
-          </label>
-          <label>
-            Reason for staff entry
-            <input name="reason" required maxLength={2000} />
-          </label>
-          <button type="submit">Record activity</button>
-        </form>
-      </Card>
       <h2>Contribution ledger</h2>
       {snapshot.contributions.length ? (
         snapshot.contributions.map((c) => (
@@ -1173,6 +1312,46 @@ function Activities({
       ) : (
         <p>No contributions yet.</p>
       )}
+      <details className={styles.utilityDisclosure}>
+        <summary>Record an activity</summary>
+        <Card>
+          <h2>Record an activity</h2>
+          <form onSubmit={create}>
+            <label>
+              Activity type
+              <input name="kind" required maxLength={100} />
+            </label>
+            <label>
+              Date (leave blank if unknown)
+              <input name="date" type="date" />
+            </label>
+            <label>
+              Beneficiary reference (optional)
+              <input name="beneficiary" maxLength={200} />
+            </label>
+            <label>
+              Volunteer
+              <select name="member">
+                <option value="">Unknown</option>
+                {snapshot.members.map((m) => (
+                  <option key={m.membershipId} value={m.membershipId}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Duration in minutes (leave blank if unknown)
+              <input name="minutes" type="number" min="1" max="1440" />
+            </label>
+            <label>
+              Reason for staff entry
+              <input name="reason" required maxLength={2000} />
+            </label>
+            <button type="submit">Record activity</button>
+          </form>
+        </Card>
+      </details>
     </>
   );
 }
@@ -1219,38 +1398,41 @@ function Contribution({
           : `${c.durationMinutes} minutes`}{" "}
         · {c.status} · revision {c.revision}
       </p>
-      <p>Activity {c.activityId}</p>
-      <p>
-        {c.origin.kind === "source"
-          ? `Source ${c.origin.sourceId} · revision ${c.origin.sourceRevision}`
-          : `Staff entry reason: ${c.origin.reason}`}
-      </p>
-      {(c.status === "pending" || c.status === "approved") && (
-        <form onSubmit={transition}>
-          <label>
-            Action
-            <select name="action">
-              <option value="correct">Correct duration</option>
-              {c.status === "pending" && (
-                <option value="approve">Approve</option>
-              )}
-            </select>
-          </label>
-          <label>
-            Corrected minutes
-            <input name="minutes" type="number" min="1" max="1440" />
-          </label>
-          <label>
-            Reason for correction
-            <input name="reason" maxLength={2000} />
-            <span>
-              Explain the correction using the source evidence or your staff
-              knowledge.
-            </span>
-          </label>
-          <button type="submit">Update contribution</button>
-        </form>
-      )}
+      <details>
+        <summary>Details and correction</summary>
+        <p>Activity {c.activityId}</p>
+        <p>
+          {c.origin.kind === "source"
+            ? `Source ${c.origin.sourceId} · revision ${c.origin.sourceRevision}`
+            : `Staff entry reason: ${c.origin.reason}`}
+        </p>
+        {(c.status === "pending" || c.status === "approved") && (
+          <form onSubmit={transition}>
+            <label>
+              Action
+              <select name="action">
+                <option value="correct">Correct duration</option>
+                {c.status === "pending" && (
+                  <option value="approve">Approve</option>
+                )}
+              </select>
+            </label>
+            <label>
+              Corrected minutes
+              <input name="minutes" type="number" min="1" max="1440" />
+            </label>
+            <label>
+              Reason for correction
+              <input name="reason" maxLength={2000} />
+              <span>
+                Explain the correction using the source evidence or your staff
+                knowledge.
+              </span>
+            </label>
+            <button type="submit">Update contribution</button>
+          </form>
+        )}
+      </details>
     </Card>
   );
 }
@@ -1288,54 +1470,95 @@ function Needs({
     <>
       <h1>Needs board</h1>
       <p>Track ownership, acknowledgment and resolution.</p>
-      <Card>
-        <h2>Create a need</h2>
-        <form onSubmit={create}>
-          <label>
-            Category
-            <input name="category" required maxLength={100} />
-          </label>
-          <label>
-            Summary
-            <textarea name="summary" required maxLength={2000} />
-          </label>
-          <label>
-            Urgency
-            <select name="urgency">
-              <option value="routine">Routine</option>
-              <option value="urgent">Urgent</option>
-            </select>
-          </label>
-          <label>
-            Due by
-            <input name="due" type="datetime-local" />
-          </label>
-          <label>
-            Acknowledge by
-            <input name="acknowledgeBy" type="datetime-local" />
-          </label>
-          <label>
-            <input name="provisional" type="checkbox" /> Provisional
-          </label>
-          <label>
-            Reason for staff entry
-            <input name="reason" required maxLength={2000} />
-          </label>
-          <button type="submit">Create need</button>
-        </form>
-      </Card>
-      {snapshot.needs.length ? (
-        snapshot.needs.map((n) => (
-          <Need
-            key={`${n.needId}-${n.revision}`}
-            need={n}
-            members={snapshot.members}
-            mutate={mutate}
-          />
-        ))
-      ) : (
-        <p>No needs yet.</p>
-      )}
+      <details className={styles.utilityDisclosure}>
+        <summary>Create a need</summary>
+        <Card>
+          <h2>Create a need</h2>
+          <form onSubmit={create}>
+            <label>
+              Category
+              <input name="category" required maxLength={100} />
+            </label>
+            <label>
+              Summary
+              <textarea name="summary" required maxLength={2000} />
+            </label>
+            <label>
+              Urgency
+              <select name="urgency">
+                <option value="routine">Routine</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </label>
+            <label>
+              Due by
+              <input name="due" type="datetime-local" />
+            </label>
+            <label>
+              Acknowledge by
+              <input name="acknowledgeBy" type="datetime-local" />
+            </label>
+            <label>
+              <input name="provisional" type="checkbox" /> Provisional
+            </label>
+            <label>
+              Reason for staff entry
+              <input name="reason" required maxLength={2000} />
+            </label>
+            <button type="submit">Create need</button>
+          </form>
+        </Card>
+      </details>
+      <div className={styles.board}>
+        {(["new", "assigned", "acknowledged"] as const).map((status) => (
+          <section className={styles.boardColumn} key={status}>
+            <h2>
+              {status === "new"
+                ? "New"
+                : status === "assigned"
+                  ? "Assigned"
+                  : "Acknowledged"}{" "}
+              <span className={styles.count}>
+                {snapshot.needs.filter((n) => n.status === status).length}
+              </span>
+            </h2>
+            {snapshot.needs
+              .filter((n) => n.status === status)
+              .map((n) => (
+                <Need
+                  key={`${n.needId}-${n.revision}`}
+                  need={n}
+                  members={snapshot.members}
+                  mutate={mutate}
+                />
+              ))}
+            {!snapshot.needs.some((n) => n.status === status) && (
+              <p className={styles.empty}>Nothing here yet.</p>
+            )}
+          </section>
+        ))}
+      </div>
+      <details className={styles.utilityDisclosure}>
+        <summary>
+          Completed needs (
+          {
+            snapshot.needs.filter(
+              (n) => n.status === "resolved" || n.status === "cancelled",
+            ).length
+          }
+          )
+        </summary>
+        {snapshot.needs
+          .filter((n) => n.status === "resolved" || n.status === "cancelled")
+          .map((n) => (
+            <Need
+              key={`${n.needId}-${n.revision}`}
+              need={n}
+              members={snapshot.members}
+              mutate={mutate}
+            />
+          ))}
+      </details>
     </>
   );
 }
@@ -1396,48 +1619,51 @@ function Need({
         Acknowledged: {date(n.acknowledgedAt)}
         {n.resolution && ` · Resolution: ${n.resolution}`}
       </p>
-      <form onSubmit={transition}>
-        <label>
-          Action
-          <select value={action} onChange={(e) => setAction(e.target.value)}>
-            {open && <option value="assign">Assign</option>}
-            {n.status === "assigned" && (
-              <option value="acknowledge">Acknowledge</option>
-            )}
-            {open && <option value="resolve">Resolve</option>}
-            {open && <option value="cancel">Cancel</option>}
-            {!open && <option value="reopen">Reopen</option>}
-          </select>
-        </label>
-        {action === "assign" && (
-          <>
-            <label>
-              Owner
-              <select name="owner" required defaultValue="">
-                <option value="" disabled>
-                  Select a member
-                </option>
-                {members.map((m) => (
-                  <option key={m.membershipId} value={m.membershipId}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Acknowledge by
-              <input name="acknowledgeBy" type="datetime-local" />
-            </label>
-          </>
-        )}
-        {["resolve", "cancel", "reopen"].includes(action) && (
+      <details>
+        <summary>Manage need</summary>
+        <form onSubmit={transition}>
           <label>
-            {action === "resolve" ? "Resolution" : "Reason"}
-            <textarea name="reason" required maxLength={2000} />
+            Action
+            <select value={action} onChange={(e) => setAction(e.target.value)}>
+              {open && <option value="assign">Assign</option>}
+              {n.status === "assigned" && (
+                <option value="acknowledge">Acknowledge</option>
+              )}
+              {open && <option value="resolve">Resolve</option>}
+              {open && <option value="cancel">Cancel</option>}
+              {!open && <option value="reopen">Reopen</option>}
+            </select>
           </label>
-        )}
-        <button type="submit">Update need</button>
-      </form>
+          {action === "assign" && (
+            <>
+              <label>
+                Owner
+                <select name="owner" required defaultValue="">
+                  <option value="" disabled>
+                    Select a member
+                  </option>
+                  {members.map((m) => (
+                    <option key={m.membershipId} value={m.membershipId}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Acknowledge by
+                <input name="acknowledgeBy" type="datetime-local" />
+              </label>
+            </>
+          )}
+          {["resolve", "cancel", "reopen"].includes(action) && (
+            <label>
+              {action === "resolve" ? "Resolution" : "Reason"}
+              <textarea name="reason" required maxLength={2000} />
+            </label>
+          )}
+          <button type="submit">Update need</button>
+        </form>
+      </details>
     </Card>
   );
 }
