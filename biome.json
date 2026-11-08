@@ -9,6 +9,7 @@
     "includes": [
       "**",
       "!**/.next",
+      "!**/.next-video",
       "!**/dist",
       "!**/next-env.d.ts",
       "!bun.lock",

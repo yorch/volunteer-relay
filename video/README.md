@@ -21,6 +21,7 @@ video/
   scripts/                        doctor, provision, prepare, auth, voice, capture,
                                   timeline, validate, preview, render
   docs/                           feature audit, runbook, readiness, licences, checklist
+  review/                         committed review copy of the proof, scene clips and manifests
   generated/                      ignored: narration, alignments, captures, captions, manifests
   output/                         ignored: proof, draft and final renders
   .auth/                          ignored: per-role Playwright storage state (0600)

@@ -1,0 +1,286 @@
+1
+00:00:00,000 --> 00:00:02,359
+A volunteer spends an hour mentoring a
+
+2
+00:00:02,359 --> 00:00:02,732
+child.
+
+3
+00:00:02,732 --> 00:00:05,215
+Before she leaves, she learns the family
+
+4
+00:00:05,215 --> 00:00:07,884
+needs diapers tonight, so she posts a
+brief
+
+5
+00:00:07,884 --> 00:00:08,319
+update.
+
+6
+00:00:08,319 --> 00:00:10,740
+By morning it is buried under dozens of
+
+7
+00:00:10,740 --> 00:00:11,299
+messages.
+
+8
+00:00:11,299 --> 00:00:13,162
+The hour may never be counted.
+
+9
+00:00:13,162 --> 00:00:15,148
+The family may still be waiting.
+
+10
+00:00:18,000 --> 00:00:20,675
+This is the problem behind challenge five:
+
+11
+00:00:20,675 --> 00:00:23,414
+coordinators rebuild their week from
+chats,
+
+12
+00:00:23,414 --> 00:00:26,217
+texts and photos — forty volunteers,
+roughly
+
+13
+00:00:26,217 --> 00:00:28,828
+four hours a week, reconstructed by hand.
+
+14
+00:00:28,828 --> 00:00:31,376
+Volunteer Relay turns those updates into
+
+15
+00:00:31,376 --> 00:00:34,051
+traceable records, and needs someone owns.
+
+16
+00:00:34,051 --> 00:00:36,853
+Here is the coordinator's inbox, with
+review
+
+17
+00:00:36,853 --> 00:00:37,681
+work waiting.
+
+18
+00:00:38,300 --> 00:00:40,533
+Volunteers report in their own words.
+
+19
+00:00:40,533 --> 00:00:42,887
+This update describes one shared garden
+
+20
+00:00:42,887 --> 00:00:45,483
+visit, two volunteers, and the time each
+of
+
+21
+00:00:45,483 --> 00:00:46,087
+them gave.
+
+22
+00:00:46,087 --> 00:00:48,139
+Relay proposes an activity and two
+
+23
+00:00:48,139 --> 00:00:50,493
+contributions, and keeps every proposed
+
+24
+00:00:50,493 --> 00:00:52,606
+field tied to the original message.
+
+25
+00:00:52,606 --> 00:00:54,960
+Nothing is approved until staff decide.
+
+26
+00:01:00,300 --> 00:01:02,721
+One message holds a visit for two people.
+
+27
+00:01:02,721 --> 00:01:05,023
+One shared hour means one visit and two
+
+28
+00:01:05,023 --> 00:01:07,621
+volunteer-hours, so approving it records
+two
+
+29
+00:01:07,621 --> 00:01:09,924
+separate contributions of sixty minutes
+
+30
+00:01:09,924 --> 00:01:10,219
+each.
+
+31
+00:01:10,219 --> 00:01:12,640
+Staff can inspect the evidence first, and
+
+32
+00:01:12,640 --> 00:01:15,237
+anything missing or unresolved stays
+visible
+
+33
+00:01:15,237 --> 00:01:16,713
+instead of being guessed.
+
+34
+00:01:16,713 --> 00:01:17,835
+Nothing is guessed.
+
+35
+00:01:22,300 --> 00:01:24,631
+A later update describes the same visit.
+
+36
+00:01:24,631 --> 00:01:26,962
+Counting every message would inflate the
+
+37
+00:01:26,962 --> 00:01:29,060
+totals, so Relay raises the possible
+
+38
+00:01:29,060 --> 00:01:30,634
+duplicate for staff review.
+
+39
+00:01:30,634 --> 00:01:32,907
+Rejecting it leaves the approved ledger
+
+40
+00:01:32,907 --> 00:01:35,355
+unchanged, and the decision stays attached
+
+41
+00:01:35,355 --> 00:01:36,171
+to its source.
+
+42
+00:01:42,300 --> 00:01:44,942
+An urgent need should never wait on a
+buried
+
+43
+00:01:44,942 --> 00:01:45,422
+message.
+
+44
+00:01:45,422 --> 00:01:48,065
+Staff assign an owner, set an
+acknowledgment
+
+45
+00:01:48,065 --> 00:01:50,406
+deadline, and later record the outcome.
+
+46
+00:01:50,406 --> 00:01:52,568
+If acknowledgment stalls, the worker
+
+47
+00:01:52,568 --> 00:01:54,129
+escalates at the deadline.
+
+48
+00:01:54,129 --> 00:01:56,471
+Delivery is not acknowledgment, and the
+
+49
+00:01:56,471 --> 00:01:58,813
+board shows what still needs attention.
+
+50
+00:01:58,813 --> 00:02:00,975
+An acknowledgment is a person taking
+
+51
+00:02:00,975 --> 00:02:03,317
+responsibility, not a provider receipt.
+
+52
+00:02:04,300 --> 00:02:06,813
+At the end of the week the report comes
+from
+
+53
+00:02:06,813 --> 00:02:09,097
+the same records the team used to do its
+
+54
+00:02:09,097 --> 00:02:09,383
+work.
+
+55
+00:02:09,383 --> 00:02:11,724
+Approved hours, contributions, open needs
+
+56
+00:02:11,724 --> 00:02:14,180
+and pending items are counted
+consistently,
+
+57
+00:02:14,180 --> 00:02:16,578
+and unknown time stays unknown rather than
+
+58
+00:02:16,578 --> 00:02:17,378
+becoming zero.
+
+59
+00:02:17,378 --> 00:02:19,776
+Every decision is kept in an audit history
+
+60
+00:02:19,776 --> 00:02:22,232
+with its source, so the report and the
+work
+
+61
+00:02:22,232 --> 00:02:23,717
+share one source of truth.
+
+62
+00:02:26,300 --> 00:02:27,309
+Volunteer Relay.
+
+63
+00:02:27,309 --> 00:02:29,896
+Every hour counted, every need connected.
+
+64
+00:02:29,896 --> 00:02:32,483
+Built for nonprofit teams, with fictional
+
+65
+00:02:32,483 --> 00:02:35,259
+demo data and an open-source
+implementation.
+
+66
+00:02:35,259 --> 00:02:37,972
+The repository holds the code, the plan
+and
+
+67
+00:02:37,972 --> 00:02:40,685
+the recording notes, including the
+fixtures
+
+68
+00:02:40,685 --> 00:02:41,316
+used here.

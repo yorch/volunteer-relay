@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "totalFrames": 4869,
+  "totalSeconds": 162.3,
+  "narrationSource": "scratch-local-voice",
+  "scenes": [
+    {
+      "id": "S01",
+      "kind": "graphic",
+      "startFrame": 0,
+      "durationInFrames": 540,
+      "startSeconds": 0,
+      "durationSeconds": 18,
+      "narrationSeconds": 15.148163,
+      "tailSeconds": 0.6,
+      "narrationSource": "scratch-local-voice",
+      "footageSeconds": null
+    },
+    {
+      "id": "S02",
+      "kind": "product",
+      "startFrame": 540,
+      "durationInFrames": 609,
+      "startSeconds": 18,
+      "durationSeconds": 20.3,
+      "narrationSeconds": 19.681451,
+      "tailSeconds": 0.6,
+      "narrationSource": "scratch-local-voice",
+      "footageSeconds": 22.766667
+    },
+    {
+      "id": "S03",
+      "kind": "product",
+      "startFrame": 1149,
+      "durationInFrames": 660,
+      "startSeconds": 38.3,
+      "durationSeconds": 22,
+      "narrationSeconds": 16.659683,
+      "tailSeconds": 0.6,
+      "narrationSource": "scratch-local-voice",
+      "footageSeconds": 23.366667
+    },
+    {
+      "id": "S04",
+      "kind": "product",
+      "startFrame": 1809,
+      "durationInFrames": 660,
+      "startSeconds": 60.3,
+      "durationSeconds": 22,
+      "narrationSeconds": 17.535283,
+      "tailSeconds": 0.6,
+      "narrationSource": "scratch-local-voice",
+      "footageSeconds": 27.2
+    },
+    {
+      "id": "S05",
+      "kind": "product",
+      "startFrame": 2469,
+      "durationInFrames": 600,
+      "startSeconds": 82.3,
+      "durationSeconds": 20,
+      "narrationSeconds": 13.870567,
+      "tailSeconds": 0.6,
+      "narrationSource": "scratch-local-voice",
+      "footageSeconds": 21.366667
+    },
+    {
+      "id": "S06",
+      "kind": "product",
+      "startFrame": 3069,
+      "durationInFrames": 660,
+      "startSeconds": 102.3,
+      "durationSeconds": 22,
+      "narrationSeconds": 21.016599,
+      "tailSeconds": 0.6,
+      "narrationSource": "scratch-local-voice",
+      "footageSeconds": 23.4
+    },
+    {
+      "id": "S07",
+      "kind": "product",
+      "startFrame": 3729,
+      "durationInFrames": 660,
+      "startSeconds": 124.3,
+      "durationSeconds": 22,
+      "narrationSeconds": 19.416508,
+      "tailSeconds": 0.6,
+      "narrationSource": "scratch-local-voice",
+      "footageSeconds": 23.366667
+    },
+    {
+      "id": "S08",
+      "kind": "graphic",
+      "startFrame": 4389,
+      "durationInFrames": 480,
+      "startSeconds": 146.3,
+      "durationSeconds": 16,
+      "narrationSeconds": 15.016054,
+      "tailSeconds": 0.6,
+      "narrationSource": "scratch-local-voice",
+      "footageSeconds": null
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "mode": "proof",
+  "narrationSource": "scratch-local-voice",
+  "captureOrigin": "local",
+  "manifestScenes": 8,
+  "output": "/Users/yorch/code/volunteer-relay/video/output/proof.mp4",
+  "bytes": 1725237,
+  "measured": {
+    "path": "/Users/yorch/code/volunteer-relay/video/output/proof.mp4",
+    "durationSeconds": 18,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "videoCodec": "h264",
+    "audioCodec": "aac",
+    "hasAudio": true
+  },
+  "loudness": {
+    "integratedLufs": -16.9,
+    "truePeakDb": -5.6
+  },
+  "renderedAt": "2026-11-08T17:53:44.021Z"
+}
