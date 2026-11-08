@@ -4,7 +4,12 @@ import {
   type TenantContext,
   updateOrganizationSettingsSchema,
 } from "@relay/contracts";
-import { createFollowThroughRepository, type Database, sql } from "@relay/db";
+import {
+  createFollowThroughRepository,
+  createProcessingRepository,
+  type Database,
+  sql,
+} from "@relay/db";
 import type { Auth, SessionResolver } from "../auth/index.ts";
 import { productFailure, readProductJson } from "./http.ts";
 export function createFollowThroughHttp(
@@ -60,6 +65,7 @@ export function createFollowThroughHttp(
       ![
         "settings",
         "notification-read",
+        "retry-source",
         "notification-preferences",
         "telegram-link",
         "telegram-unlink",
@@ -83,6 +89,17 @@ export function createFollowThroughHttp(
       return parsed.success
         ? repo.updateSettings(context, parsed.data)
         : fail("VALIDATION");
+    }
+    if (path === "retry-source") {
+      if (
+        typeof input.sourceId !== "string" ||
+        typeof input.idempotencyKey !== "string"
+      )
+        return fail("VALIDATION");
+      return createProcessingRepository(db).retrySource(context, {
+        sourceId: input.sourceId,
+        idempotencyKey: input.idempotencyKey,
+      });
     }
     if (path === "notification-read") {
       if (

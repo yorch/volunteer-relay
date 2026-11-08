@@ -13,6 +13,7 @@ import { createSourceStore, type Database, sql } from "@relay/db";
 import { canonicalDigest, createSourceRepository } from "@relay/domain/core";
 import {
   createPrivateFilesystemBlobStore,
+  detectedImageMime,
   type ImportPreview,
   parseCsvImport,
   parseJsonImport,
@@ -212,7 +213,9 @@ export function createProductExtensions(options: {
           .digest("hex");
         let pixels: Buffer;
         try {
-          pixels = await sharp(Buffer.from(await file.arrayBuffer()), {
+          const raw = Buffer.from(await file.arrayBuffer());
+          if (!detectedImageMime(raw)) return denied("VALIDATION");
+          pixels = await sharp(raw, {
             limitInputPixels: 40000000,
             failOn: "warning",
           })
