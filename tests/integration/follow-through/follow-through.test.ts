@@ -309,3 +309,146 @@ it("blocks stale delivery completions after the lease expires", async () => {
     }),
   ).toBe(true);
 });
+it("routes an unassigned urgent need and invalidates its delivery once assigned", async () => {
+  const repo = createFollowThroughRepository(fixture.db, { now: () => clock });
+  const kai = await context(
+    fixture.authorization,
+    "user-kai",
+    "tidepath",
+    "staff",
+  );
+  expect(
+    (
+      await repo.setNotificationPreferences(kai, {
+        email: true,
+        telegram: false,
+      })
+    ).ok,
+  ).toBe(true);
+  const need = await fixture.needs.create(kai, {
+    schemaVersion: 1,
+    idempotencyKey: "urgent",
+    category: "Transport",
+    urgency: "urgent",
+    summary: "Urgent driver",
+    provisional: false,
+    dueAt: null,
+    acknowledgeBy: null,
+    origin: staffOrigin,
+  });
+  if (!need.ok) throw new Error("missing need");
+  expect(await repo.processPendingNotifications(10)).toBe(1);
+  const notifications = await repo.listNotifications(kai);
+  expect(notifications).toMatchObject({
+    ok: true,
+    value: [
+      { needId: need.value.needId, title: "Urgent need requires attention" },
+    ],
+  });
+  const [job] = await repo.claimDeliveries(10);
+  if (!job) throw new Error("missing job");
+  expect(await repo.validateDelivery(job)).toBe(true);
+  expect(
+    (
+      await fixture.needs.transition(kai, {
+        schemaVersion: 1,
+        idempotencyKey: "assign",
+        needId: need.value.needId,
+        expectedRevision: 1,
+        action: "assign",
+        ownerMembershipId: "tidepath-kai",
+        acknowledgeBy: null,
+      })
+    ).ok,
+  ).toBe(true);
+  expect(await repo.validateDelivery(job)).toBe(false);
+});
+it("escalates a reassignment once even when its deadline is unchanged", async () => {
+  const repo = createFollowThroughRepository(fixture.db, { now: () => clock });
+  const kai = await context(
+    fixture.authorization,
+    "user-kai",
+    "tidepath",
+    "staff",
+  );
+  const owner = await context(
+    fixture.authorization,
+    "user-rae",
+    "tidepath",
+    "owner",
+  );
+  const need = await fixture.needs.create(kai, {
+    schemaVersion: 1,
+    idempotencyKey: "create",
+    category: "Transport",
+    urgency: "routine",
+    summary: "Driver",
+    provisional: false,
+    dueAt: null,
+    acknowledgeBy: null,
+    origin: staffOrigin,
+  });
+  if (!need.ok) throw new Error("missing need");
+  const deadline = "2026-11-08T11:00:00Z";
+  expect(
+    (
+      await fixture.needs.transition(kai, {
+        schemaVersion: 1,
+        idempotencyKey: "a",
+        needId: need.value.needId,
+        expectedRevision: 1,
+        action: "assign",
+        ownerMembershipId: "tidepath-kai",
+        acknowledgeBy: deadline,
+      })
+    ).ok,
+  ).toBe(true);
+  expect(await repo.escalateOverdue(10)).toBe(1);
+  expect(await repo.escalateOverdue(10)).toBe(0);
+  expect(
+    (
+      await fixture.needs.transition(owner, {
+        schemaVersion: 1,
+        idempotencyKey: "b",
+        needId: need.value.needId,
+        expectedRevision: 2,
+        action: "assign",
+        ownerMembershipId: "tidepath-rae",
+        acknowledgeBy: deadline,
+      })
+    ).ok,
+  ).toBe(true);
+  expect(await repo.escalateOverdue(10)).toBe(1);
+  expect(await repo.escalateOverdue(10)).toBe(0);
+  const rows = await fixture.db.execute(
+    sql`select assignment_revision from need_escalation order by assignment_revision`,
+  );
+  expect(rows.rows).toEqual([
+    { assignment_revision: 2 },
+    { assignment_revision: 3 },
+  ]);
+});
+it("unlinks a consumed Telegram identity and denies later resolution", async () => {
+  const repo = createFollowThroughRepository(fixture.db, { now: () => clock });
+  const kai = await context(
+    fixture.authorization,
+    "user-kai",
+    "tidepath",
+    "staff",
+  );
+  const link = await repo.createTelegramLink(kai, {
+    idempotencyKey: "link",
+    expiresAt: "2026-11-08T12:20:00Z",
+  });
+  if (!link.ok || !link.value.token) throw new Error("missing link");
+  expect(
+    (await repo.consumeTelegramLink(link.value.token, "telegram-user")).ok,
+  ).toBe(true);
+  expect(
+    (await repo.unlinkTelegram(kai, { identity: "telegram-user" })).ok,
+  ).toBe(true);
+  expect(await repo.resolveTelegramIdentity("telegram-user")).toMatchObject({
+    ok: false,
+    error: { code: "NOT_FOUND" },
+  });
+});

@@ -118,6 +118,7 @@ export const deliveryJob = pgTable(
     appPath: text("app_path").notNull(),
     needId: text("need_id").notNull(),
     needDeadline: time("need_deadline"),
+    needRevision: integer("need_revision").notNull().default(0),
     attempts: integer("attempts").notNull().default(0),
     leaseToken: text("lease_token"),
     leaseUntil: time("lease_until"),
@@ -188,10 +189,19 @@ export const needEscalation = pgTable(
       .references(() => organization.id, { onDelete: "cascade" }),
     needId: text("need_id").notNull(),
     deadline: time("deadline").notNull(),
+    assignmentRevision: integer("assignment_revision").notNull().default(0),
     level: integer("level").notNull(),
     createdAt: time("created_at").notNull(),
   },
   (t) => [
-    primaryKey({ columns: [t.organizationId, t.needId, t.deadline, t.level] }),
+    primaryKey({
+      columns: [
+        t.organizationId,
+        t.needId,
+        t.deadline,
+        t.assignmentRevision,
+        t.level,
+      ],
+    }),
   ],
 );

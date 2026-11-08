@@ -43,6 +43,13 @@
       "when": 1794139009653,
       "tag": "0005_optimal_talkback",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794139298107,
+      "tag": "0006_wooden_starfox",
+      "breakpoints": true
     }
   ]
 }
