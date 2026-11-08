@@ -4,7 +4,7 @@ Multi-organization volunteer operations for receiving updates, preserving eviden
 
 ## Local setup
 
-Install Node **26.11.1**, Bun **1.4.1**, and Docker Compose. With fnm: `fnm use` after installing the version from `.node-version`. Node must be on PATH before invoking Bun scripts; Bun dispatches explicit Node processes and never runs the application or tests itself.
+Install Node **26.11.1**, Bun **1.4.1**, and Docker Compose. With fnm: `fnm use` after installing the version from `.node-version`. Node must be on PATH before invoking Bun scripts; Bun dispatches explicit Node processes and never runs the application or tests itself. Install [just](https://github.com/casey/just) 1.59+ only if you want the optional shortcuts below.
 
 For a fresh host-run development setup, use an isolated local database. The following creates `.env.local` only if it does not already exist, generates a private auth secret and retention signing key, and keeps attachments in this checkout's ignored local directory:
 
@@ -21,6 +21,12 @@ node --env-file=.env.local scripts/run.mjs dev
 ```
 
 Run `bun run verify` separately for the code checks. The web app is at http://localhost:3000, `/api/health` reports the actual Node runtime, and Mailpit is at http://localhost:8025. Local Compose database credentials are `relay:relay`, database `relay`; do not expose these services publicly. Node worker scripts do not automatically load `.env.local`: use `node --env-file=.env.local` or export the required variables. Keep the generated file private and never use its development secrets in production. Model extraction and external channels require their own configuration; see `.env.example`. For synthetic demo accounts and a separate product integration test database, follow [demo guidance](docs/demo.md).
+
+### Optional `just` shortcuts
+
+`just` is optional convenience over the commands above: nothing in the project requires it, and `bun run verify` stays the required gate. From the repository root, `just` (or `just --list`) shows the grouped recipes. Each recipe calls the same pinned Node/Bun scripts, loads the ignored `.env.local` when it exists (so recipe commands do not need `--env-file`), and never replaces the documented boundaries, migrations or test databases.
+
+`just setup` performs the host-run setup in one pass: pinned-tool and Docker check, `bun install --frozen-lockfile`, `.env.local` with generated private secrets plus attachments (an existing file is preserved, never overwritten), local PostgreSQL and Mailpit, the `relay_test` database and migrations. Other recipes cover `doctor`, `install`, `env`, `services` (alias `up`), `down`, `logs`, `compose <args>`, `urls`, `health`, `testdb [name]`, `migrate`, `seed`, `seed-demo`, `psql [db]`, `dev`, `dev-web`, `dev-worker`, `build`, `check`, `format`, `typecheck`, `test`, `verify`, `test-integration`, `test-product [name]`, `test-e2e`, `test-e2e-install`, `test-live`, `agents <command>`, `board`, `dashboard`, `watch`, `clean` and `lint-just`. Isolated worktrees keep their resources private by setting their own ports and `RELAY_COMPOSE_PROJECT` in `.env.local`; the recipes honour both, and `just testdb` derives its default name from `TEST_DATABASE_URL`. The checked-in `Justfile` is formatted with `just --fmt`; `just lint-just` verifies formatting without rewriting.
 
 The development Compose file also defines container web and worker services, but they require explicit application environment configuration and migrations before authenticated use. The host-run commands above start only Compose PostgreSQL and Mailpit; use the [production profile](docs/operations.md) for a production-style topology.
 
