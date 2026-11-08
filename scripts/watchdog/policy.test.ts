@@ -281,4 +281,79 @@ describe("watchdog independent expectations", () => {
       }),
     ).toThrow("Invalid watchdog input");
   });
+  it("keeps every later actionable code when64 dependency details saturate output", () => {
+    const input = fixture();
+    input.queue = Array.from({ length: 64 }, (_, i) => ({
+      id: `wait-${i}`,
+      lane: "B",
+      state: "dependency",
+      since: 0,
+      lastProgressAt: null,
+    }));
+    input.coordinator = { oldestUnhandledAt: 0, turnStartedAt: 0 };
+    input.lanePauses = [
+      { lane: "C", reason: "failure" },
+      { lane: "E", reason: "unknown" },
+    ];
+    input.pendingOperations = [
+      { id: "rollout-1", kind: "rollout", state: "blocked", requestedAt: 0 },
+    ];
+    const result = evaluateWatchdog(input, prior(), settings);
+    expect(result.observations).toHaveLength(64);
+    expect(result.observations.every((o) => o.code === "wait-dependency")).toBe(
+      true,
+    );
+    expect(result.recovery).toBe("escalate");
+    expect(result.notice?.codes).toEqual([
+      "coordinator-long-turn",
+      "operation-stalled",
+      "pause-failure",
+      "pause-unknown",
+      "steering-stalled",
+    ]);
+    const unsaturated = evaluateWatchdog(
+      { ...input, queue: [] },
+      prior(),
+      settings,
+    );
+    expect(result.notice).toEqual(unsaturated.notice);
+    expect(
+      evaluateWatchdog(
+        { ...input, now: input.now + 180000 },
+        result.state,
+        settings,
+      ).notice,
+    ).toBeNull();
+  });
+  it.each(["steering", "turn", "pause", "operation"])(
+    "surfaces %s alone despite64 benign waits",
+    (fault) => {
+      const input = fixture();
+      input.queue = Array.from({ length: 64 }, (_, i) => ({
+        id: `wait-${i}`,
+        lane: "B",
+        state: "dependency",
+        since: 0,
+        lastProgressAt: null,
+      }));
+      const expected = {
+        steering: "steering-stalled",
+        turn: "coordinator-long-turn",
+        pause: "pause-failure",
+        operation: "operation-stalled",
+      };
+      if (fault === "steering") input.coordinator.oldestUnhandledAt = 0;
+      if (fault === "turn") input.coordinator.turnStartedAt = 0;
+      if (fault === "pause")
+        input.lanePauses = [{ lane: "A", reason: "failure" }];
+      if (fault === "operation")
+        input.pendingOperations = [
+          { id: "restart-1", kind: "restart", state: "queued", requestedAt: 0 },
+        ];
+      expect(evaluateWatchdog(input, prior(), settings)).toMatchObject({
+        recovery: "escalate",
+        notice: { codes: [expected[fault as keyof typeof expected]] },
+      });
+    },
+  );
 });

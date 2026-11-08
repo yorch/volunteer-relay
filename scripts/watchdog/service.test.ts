@@ -292,4 +292,75 @@ describe("private watchdog service", () => {
       code: "ENOENT",
     });
   });
+  it("anchors accepted180s-old snapshots to real check time on every tick", async () => {
+    const { options, controller, advance } = await setup();
+    const clock = options.clock;
+    if (!clock) throw new Error("Missing fixture clock");
+    const checkedAt: number[] = [];
+    options.readInput = async () => {
+      checkedAt.push(clock.now());
+      return snapshot(clock.now() - 180000);
+    };
+    const sleeps: number[] = [];
+    clock.sleep = async (ms) => {
+      sleeps.push(ms);
+      advance(ms);
+      if (sleeps.length === 3) controller.abort();
+    };
+    await startWatchdog(options);
+    expect(checkedAt).toEqual([900000, 1080000, 1260000]);
+    expect(sleeps).toEqual([180000, 180000, 180000]);
+    expect(await latest(options.directory)).toMatchObject({
+      checkedAt: 1260000,
+      nextCheck: 1440000,
+      state: { startedAt: 900000, lastCheckAt: 1260000, nextCheckAt: 1440000 },
+    });
+    expect(options.notify).toHaveBeenCalledTimes(1);
+  });
+  it("waits180s after a boundary cached snapshot and then rejects an expired cache", async () => {
+    const { options, advance } = await setup();
+    options.readInput = vi.fn(async () => snapshot(720000));
+    const clock = options.clock;
+    if (!clock) throw new Error("Missing fixture clock");
+    const sleeps: number[] = [];
+    clock.sleep = async (ms) => {
+      sleeps.push(ms);
+      advance(ms);
+    };
+    await expect(startWatchdog(options)).rejects.toThrow(
+      "Watchdog observation time mismatch",
+    );
+    expect(sleeps).toEqual([180000]);
+    expect(options.readInput).toHaveBeenCalledTimes(2);
+    expect(await latest(options.directory)).toMatchObject({
+      checkedAt: 900000,
+      nextCheck: 1080000,
+    });
+    await expect(stat(join(options.directory, "lease"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+  it("uses the post-read check clock and accounts for callback time in cadence", async () => {
+    const { options, controller, advance } = await setup();
+    options.readInput = async () => {
+      advance(1000);
+      return snapshot(900000);
+    };
+    options.notify = vi.fn(async () => {
+      advance(4000);
+    });
+    const clock = options.clock;
+    if (!clock) throw new Error("Missing fixture clock");
+    const sleeps: number[] = [];
+    clock.sleep = async (ms) => {
+      sleeps.push(ms);
+      controller.abort();
+    };
+    await startWatchdog(options);
+    expect(sleeps).toEqual([176000]);
+    expect(await latest(options.directory)).toMatchObject({
+      checkedAt: 901000,
+      nextCheck: 1081000,
+    });
+  });
 });

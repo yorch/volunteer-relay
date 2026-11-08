@@ -231,11 +231,25 @@ export function evaluateWatchdog(
         lastRecoveryAt: null,
       };
   const observations: Observation[] = [];
+  const actionableCodes = new Set<string>();
   const add = (
     code: string,
     subject: string | null = null,
     since: number | null = null,
   ) => {
+    // Summary health must include every fixed fault code even when bounded
+    // detail records have already filled with legitimate queue waits.
+    if (
+      !code.startsWith("wait-") &&
+      ![
+        "intentional-stop",
+        "draining",
+        "desired-unknown",
+        "pause-waiting",
+        "pause-operator",
+      ].includes(code)
+    )
+      actionableCodes.add(code);
     if (observations.length < 64) observations.push({ code, subject, since });
   };
   const old = (t: number | null) =>
@@ -292,23 +306,7 @@ export function evaluateWatchdog(
       if (p.state !== "handled" && old(p.requestedAt))
         add("operation-stalled", p.id, p.requestedAt);
   }
-  const codes = [
-    ...new Set(
-      observations
-        .map((o) => o.code)
-        .filter(
-          (c) =>
-            !c.startsWith("wait-") &&
-            ![
-              "intentional-stop",
-              "draining",
-              "desired-unknown",
-              "pause-waiting",
-              "pause-operator",
-            ].includes(c),
-        ),
-    ),
-  ].sort();
+  const codes = [...actionableCodes].sort();
   const key = codes.join(",").slice(0, 256);
   const notice =
     codes.length > 0 &&

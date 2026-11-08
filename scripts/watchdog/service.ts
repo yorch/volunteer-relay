@@ -114,9 +114,6 @@ async function run(
     }
     let result: WatchdogResult | null = null;
     while (!options.signal.aborted) {
-      const now = clock.now();
-      if (!Number.isFinite(now) || now < 0)
-        throw new Error("Invalid watchdog clock");
       let input: WatchdogInput;
       try {
         input = await options.readInput();
@@ -124,12 +121,19 @@ async function run(
         throw new Error("Watchdog input unavailable");
       }
       if (options.signal.aborted) break;
+      const now = clock.now();
+      if (!Number.isFinite(now) || now < 0)
+        throw new Error("Invalid watchdog clock");
       if (
-        input.now > clock.now() ||
-        clock.now() - input.now > options.settings.intervalMs
+        !Number.isFinite(input.now) ||
+        input.now < 0 ||
+        input.now > now ||
+        now - input.now > options.settings.intervalMs
       )
         throw new Error("Watchdog observation time mismatch");
-      result = evaluateWatchdog(input, previous, options.settings);
+      // Snapshot freshness is distinct from evaluation/scheduling time. Keep all
+      // observed event timestamps intact, but never schedule from cached input.now.
+      result = evaluateWatchdog({ ...input, now }, previous, options.settings);
       if (
         previous?.nextCheckAt !== null &&
         previous?.nextCheckAt !== undefined &&
