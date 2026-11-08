@@ -1,6 +1,6 @@
 # Milestone status
 
-Updated 2026-11-07. Coordinator A owns this file. Current assignment: B/P1-06 authentication lifecycle/session-tenant work is assigned at bcd87b9 after source/outbox acceptance at 237942b. E fixture UI is accepted at 41e7462. R completed the source review and stands by for the next exact-tip request. D/C/F are standby; full M1/M2 gates remain open. Live claims/progress are on the local board.
+Updated 2026-11-07. Coordinator A owns this file. B/P1-06 bounded authentication lifecycle/session-tenant slice is accepted at 76ef4f3 (ready source 2f4c098). E/P1-07 controlled auth UI is ready at 2f68da3 with independent review/browser checks in progress. R found no actionable issues in the server correction recheck. D/C/F are standby; full M1/M2 gates remain open. Live claims/progress are on the local board.
 
 | Milestone | Status                                           | Evidence / remaining gate                                                                                                                                                       |
 | --------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -19,7 +19,7 @@ Integration now includes auth/tenant and source/outbox schema/repositories, migr
 
 ## Ownership
 
-A (current coordinator) completed P0-01 through P0-03. B/P1-01 and source/outbox P1-02, D/P2-01 and E/P2-00/P2-02 slices are reviewed/integrated. B/P1-06 is assigned; other future tasks are unclaimed. Owners claim isolated worktrees and report status through A. No parallel database resets or shared contract edits.
+A (current coordinator) completed P0-01 through P0-03. B/P1-01 and source/outbox P1-02, D/P2-01 and E/P2-00/P2-02 slices are reviewed/integrated. B/P1-06 is accepted; E/P1-07 is under review; other future tasks are unclaimed. Owners claim isolated worktrees and report status through A. No parallel database resets or shared contract edits.
 
 ## Validation evidence
 
@@ -144,3 +144,10 @@ B/P1-06 is assigned at exact baseline bcd87b96bddc78db2f6f20d36937d53651bb0f03. 
 A completed P0-12 setup: bounded event-driven native CLI supervisor, compact board, dashboard process health, canonical auth command/projection contracts and parallel E/P1-07 UI scope. Operator confirmed old B/E/D/R sessions stopped. Initial scope is P1-06/P1-07 only, four concurrent processes, ten-second checks, 25-minute runs and 20 turns/lane/hour. A/B/E/R are enabled; standby lanes require a later assignment/configuration. No supervised child agents or automatic acceptance. Private runtime state is authoritative for whether sessions actually run. Dedicated A takes primary write ownership on launch; this interactive conversation becomes read-only status/control until A is paused and drained.
 
 Root verify passed 13 files / 99 tests, Biome, strict types and web/worker builds. Controlled supervisor lifecycle tests and a real isolated native CLI write/commit/structured-result/explicit-resume smoke passed. No dependencies or migrations changed. B/P1-06 subsequently reported ready at f86665c (author-reported 79 PostgreSQL tests), awaiting canonical type adoption and independent review/verification; no acceptance is claimed. E/P1-07 can independently build controlled auth components on frozen shared inputs while B/R/A complete the server gate. M1/M2 remain open.
+
+
+## Authentication lifecycle accepted — 2026-11-07
+
+Accepted P1-06 source 2f4c098 as integration 76ef4f3 using A-owned clean rebase onto 8a309c3 followed by fast-forward only. Aggregate binary patches matched byte-for-byte; three focused Conventional Commits retained and B's submitted history untouched. R's initial three findings were required corrections: password reset and session revocation now share a supported transaction, unexpected authorization rejections resolve safely, and session renewal/selection headers reach per-call collectors. R recheck be472652 at the exact source found no actionable issues. A independently passed Node 26.11.1 root verify (99 tests), real serial PostgreSQL (85 tests), and combined integration verify (102 tests/builds). No migration, dependency, environment or canonical wire change; resources retained.
+
+The server slice supplies controlled mail callbacks, canonical role validation and verified-session/live membership resolution, listing/switching and reset/invitation helpers. Future HTTP adapters must forward responseHeaders even after later authorization denials. Public routes, actual SMTP, email-verification workflow, demo provisioning and core ledger/need workflows remain open. E's independently prepared controlled UI is still under review; no real production auth UI or M1/M2 completion is claimed.
