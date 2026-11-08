@@ -12,6 +12,7 @@ const configs = [
   "tests/integration/provisioning/vitest.config.ts",
   "tests/integration/import-photos/vitest.config.ts",
   "tests/integration/product/vitest.config.ts",
+  "tests/integration/demo-seed/vitest.config.ts",
 ];
 for (const config of configs) {
   console.info(`Product integration: ${config}`);
