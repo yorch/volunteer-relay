@@ -641,6 +641,12 @@ function Inbox({
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const searchInput = useRef<HTMLInputElement>(null);
+  const backButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (selected && window.matchMedia("(max-width: 760px)").matches)
+      backButton.current?.focus();
+  }, [selected]);
   const [retrying, setRetrying] = useState<string | null>(null);
   const [inspected, setInspected] = useState<string | null>(null);
   const queued = snapshot.sources.filter(
@@ -801,6 +807,7 @@ function Inbox({
                 Search updates
                 <input
                   type="search"
+                  ref={searchInput}
                   value={search}
                   onChange={(e) => {
                     setSearch(e.target.value);
@@ -848,7 +855,11 @@ function Inbox({
               <button
                 type="button"
                 className={styles.backToInbox}
-                onClick={() => setSelected(null)}
+                ref={backButton}
+                onClick={() => {
+                  setSelected(null);
+                  requestAnimationFrame(() => searchInput.current?.focus());
+                }}
               >
                 Back to inbox
               </button>

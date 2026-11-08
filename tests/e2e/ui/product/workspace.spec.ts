@@ -330,8 +330,13 @@ test("removing a selected source never carries its reason to another", async ({
   await page
     .getByLabel("Review reason", { exact: false })
     .fill("Reason for one");
-  if (await page.getByRole("button", { name: "Back to inbox" }).isVisible())
+  if (await page.getByRole("button", { name: "Back to inbox" }).isVisible()) {
+    await expect(
+      page.getByRole("button", { name: "Back to inbox" }),
+    ).toBeFocused();
     await page.getByRole("button", { name: "Back to inbox" }).click();
+    await expect(page.getByLabel("Search updates")).toBeFocused();
+  }
   await page.getByLabel("Search updates").fill("two");
   await expect(
     page.getByRole("button", { name: "Accept proposal" }),
