@@ -24,6 +24,7 @@ import { StaffShell, VolunteerShell } from "../layout";
 import { Members, Notifications, Settings } from "./admin";
 import { Delivery, History } from "./operations";
 import styles from "./product.module.css";
+import { Retention } from "./retention";
 
 type Page =
   | "volunteer"
@@ -36,7 +37,8 @@ type Page =
   | "members"
   | "notifications"
   | "history"
-  | "delivery";
+  | "delivery"
+  | "retention";
 type ResponseResult<T> =
   | { ok: true; value: T }
   | { ok: false; error: { code: string } };
@@ -208,7 +210,7 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
   const allowed =
     activePage === "notifications"
       ? true
-      : activePage === "members"
+      : activePage === "members" || activePage === "retention"
         ? role === "owner"
         : activePage === "volunteer"
           ? role === "volunteer"
@@ -226,7 +228,10 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
         { href: "/workspace/history", label: "History" },
         { href: "/workspace/delivery", label: "Delivery" },
         ...(role === "owner"
-          ? [{ href: "/workspace/members", label: "Members" }]
+          ? [
+              { href: "/workspace/members", label: "Members" },
+              { href: "/workspace/retention", label: "Retention" },
+            ]
           : []),
         { href: "/workspace/notifications", label: "Notifications" },
       ]
@@ -268,6 +273,8 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
         <History />
       ) : activePage === "delivery" ? (
         <Delivery owner={role === "owner"} />
+      ) : activePage === "retention" ? (
+        <Retention mutate={mutate} />
       ) : activePage === "settings" ? (
         <Settings snapshot={snapshot} />
       ) : activePage === "members" ? (
