@@ -21,6 +21,7 @@ export * from "./repositories/attachments.ts";
 export * from "./repositories/blob-pruning.ts";
 export * from "./repositories/domain.ts";
 export * from "./repositories/follow-through.ts";
+export * from "./repositories/last-organization.ts";
 export * from "./repositories/memberships.ts";
 export * from "./repositories/model-budget.ts";
 export * from "./repositories/processing.ts";
