@@ -165,6 +165,8 @@ The live dashboard at :4310 was independently checked after the operator's proce
 
 ## Upcoming queue and real blockers
 
+P0-29 independent watchdog is registered, queued for narrowly delegated B module work after P1-11 acceptance and P0-24 rollout. No assignment/config change or watchdog launch yet. Its180s deterministic checks, notice-only default and explicitly guarded recovery must reuse reload/responsiveness signals; A owns composition and verified durable launch. P0-24 R answer c72d22b4 reports no actionable pure-helper findings (136 tests); actual running-loop/loaded-state integration remains mandatory. P0-20/P0-21 exact-tip reviews are queued behind operational reload. P1-10's combined verification completion remains unavailable, so its gate is unconfirmed rather than passed.
+
 1. P1-08/A explicit auth HTTP composition and controlled/current-membership tests; P1-09/B verified-email lifecycle and P1-10/E production pages are assigned at 0ff17cb and independent on frozen ADR 0007 boundaries. B/E remain unclaimed until supervisor reload; do not treat them as running.
 2. R pinned shared-boundary review is queued. V role setup/pilot is operator-approved; pilot uses accepted development preview only, then on-demand exact-tip UI reviews as slots permit. Runtime stays four total processes.
 3. After this wave's review/integration, scope the next real M1 gap (demo-only credential provisioning and remaining core ledger/need persistence gates) from the plan; no routine continue request. Actual SMTP composition remains a separately bounded dependency, not a fake delivery claim.
