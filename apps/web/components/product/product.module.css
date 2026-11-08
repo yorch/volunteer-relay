@@ -602,3 +602,12 @@
     display: block;
   }
 }
+.updateHeading strong {
+  flex: 1;
+  min-width: 0;
+}
+.updateHeading .badge {
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
