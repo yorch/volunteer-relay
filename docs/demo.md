@@ -65,6 +65,14 @@ The starting dataset uses the fictional week November 2–8, 2026. The manually 
 
 Actions change the demo. Rerunning the seed preserves those changes, including adjusted report totals. For the exact starting presentation again, create a new isolated database and attachment directory, migrate it, and seed it; do not run destructive resets against an existing database.
 
+### Replay a sample message
+
+With `DEMO_MODE=true` outside production, owners and coordinators see a **Replay sample message** control. It injects one fixed, fictional message from a server-side catalog ([demo-replay-samples.ts](../apps/web/lib/product/demo-replay-samples.ts)) through normal intake: a shared English visit, a Spanish update with a routine need, an unknown-duration visit, a possible duplicate, a 60-to-90-minute correction, an urgent provisional need, a supplies photo (a generated, text-free and face-free synthetic PNG) and an undated packing shift. The request carries only a sample id and an idempotency key, never text or files. The tenant and author come from the session. Repeating the same sample and key returns the same source.
+
+There is no separate switch: `DEMO_MODE=true` is the only setting, and configuration validation already refuses it in production. Outside demo mode, `POST /api/product/demo-replay` answers not found and `GET /api/product/demo-replay` reports `{ "enabled": false }`. Volunteers and report readers cannot replay.
+
+A replayed source is stored with channel identity `demo-replay`. In the same request, only that source is processed by the provider-free rules adapter (`provider-free-rules-v1`) through the validating extraction service, and the proposal is saved exactly as the worker saves one. It then appears in Source inbox as an ordinary pending review case, decided through the real review flow. This path uses no model, Telegram or SMTP, and nothing else is changed: imports and other sources still stay queued without an external provider. If processing is unavailable, the replayed source stays queued too. Replays change the demo database, just like any other action.
+
 ### Verification
 
 Ten private PostgreSQL demo/workspace cases cover fresh composed CLI setup, reruns, edited-record preservation, role/tenant evidence boundaries, report totals, all seven review scenarios, need states, private 720×480 PNG bytes, partial/collision refusal and production/default invocation refusal. The seed inserts no unconsumed outbox or model-processing work and no dispatchable external delivery. See [demo-seed acceptance](../tests/integration/demo-seed/README.md). They are part of `bun run test:product:integration`; it uses a disposable `_test` database and never substitutes for live-provider acceptance.

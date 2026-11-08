@@ -1,0 +1,45 @@
+.card {
+  display: grid;
+  align-content: start;
+  gap: var(--relay-space-3, 12px);
+  min-width: 0;
+  margin: 0;
+  padding: var(--relay-space-4, 16px);
+  border: 1px dashed var(--relay-line, #dce5dc);
+  border-radius: var(--relay-radius-lg, 14px);
+  background: var(--relay-paper, #fff);
+  color: var(--relay-ink, #172b26);
+}
+.card h2 {
+  margin: 0;
+  font-family: var(--relay-font-display, inherit);
+  font-size: var(--relay-text-md, 1.05rem);
+  font-weight: 750;
+  line-height: 1.3;
+}
+.card p {
+  margin: 0;
+  line-height: 1.5;
+}
+.hint {
+  color: var(--relay-muted, #4d6058);
+  font-size: var(--relay-text-sm, 0.9rem);
+}
+.form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--relay-space-3, 12px);
+  min-width: 0;
+}
+.field {
+  display: grid;
+  flex: 1 1 16rem;
+  gap: var(--relay-space-2, 8px);
+  min-width: 0;
+  font-weight: 600;
+}
+.status {
+  color: var(--relay-muted, #4d6058);
+  font-size: var(--relay-text-sm, 0.9rem);
+}

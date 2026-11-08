@@ -2,10 +2,13 @@
 
 import {
   type ContributionRecord,
+  contributionStatusSchema,
   productEndpoints,
   type WorkspaceSnapshot,
 } from "@relay/contracts";
-import { type FormEvent, type ReactNode, useState } from "react";
+import type { Route } from "next";
+import { useRouter } from "next/navigation";
+import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { Card as BaseCard } from "../card";
 import { Badge, Button, Icon, Select, TextInput } from "../foundation";
 import styles from "./ledger.module.css";
@@ -13,6 +16,101 @@ import { key, type Mutate, PendingSource } from "./shared";
 
 function Card({ children }: { children: ReactNode }) {
   return <BaseCard className={styles.card}>{children}</BaseCard>;
+}
+
+/**
+ * Deep-link filter for the contribution ledger. `membership` is a membership
+ * id or "unresolved" (no volunteer yet); `duration` "unknown" keeps only
+ * contributions without a known duration. Dates are inclusive activity dates.
+ */
+export interface LedgerFilter {
+  status?: ContributionRecord["status"];
+  membership?: string;
+  contribution?: string;
+  duration?: "unknown";
+  from?: string;
+  to?: string;
+}
+const ledgerParams = [
+  "status",
+  "membership",
+  "contribution",
+  "duration",
+  "from",
+  "to",
+] as const;
+const isoDate = /^\d{4}-\d{2}-\d{2}$/;
+export function ledgerHref(filter: LedgerFilter) {
+  const params = new URLSearchParams();
+  for (const name of ledgerParams) {
+    const value = filter[name];
+    if (value) params.set(name, value);
+  }
+  const query = params.toString();
+  return `/workspace/activities${query ? `?${query}` : ""}` as Route;
+}
+/** Reads a filter from a query string, ignoring malformed values. */
+export function parseLedgerFilter(search: string): LedgerFilter {
+  const params = new URLSearchParams(search);
+  const filter: LedgerFilter = {};
+  const status = contributionStatusSchema.safeParse(params.get("status"));
+  if (status.success) filter.status = status.data;
+  const membership = params.get("membership")?.trim();
+  if (membership && membership.length <= 200) filter.membership = membership;
+  const contribution = params.get("contribution")?.trim();
+  if (contribution && contribution.length <= 200)
+    filter.contribution = contribution;
+  if (params.get("duration") === "unknown") filter.duration = "unknown";
+  const from = params.get("from"),
+    to = params.get("to");
+  if (from && isoDate.test(from)) filter.from = from;
+  if (to && isoDate.test(to)) filter.to = to;
+  return filter;
+}
+function matches(
+  c: ContributionRecord,
+  localDate: string | null | undefined,
+  f: LedgerFilter,
+) {
+  if (f.contribution && c.contributionId !== f.contribution) return false;
+  if (f.status && c.status !== f.status) return false;
+  if (f.membership === "unresolved") {
+    if (c.membershipId !== null) return false;
+  } else if (f.membership && c.membershipId !== f.membership) return false;
+  if (f.duration === "unknown" && c.durationMinutes !== null) return false;
+  // A dated filter excludes contributions whose activity date is unknown.
+  if ((f.from || f.to) && !localDate) return false;
+  if (f.from && localDate && localDate < f.from) return false;
+  if (f.to && localDate && localDate > f.to) return false;
+  return true;
+}
+const statusLabel: Record<ContributionRecord["status"], string> = {
+  pending: "Pending",
+  approved: "Approved",
+  rejected: "Rejected",
+  superseded: "Superseded",
+};
+function describeFilter(
+  f: LedgerFilter,
+  members: WorkspaceSnapshot["members"],
+) {
+  const parts: string[] = [];
+  if (f.status) parts.push(statusLabel[f.status]);
+  if (f.duration === "unknown") parts.push("unknown duration");
+  if (f.membership === "unresolved") parts.push("unresolved volunteer");
+  else if (f.membership)
+    parts.push(
+      members.find((m) => m.membershipId === f.membership)?.name ??
+        "one volunteer",
+    );
+  if (f.from && f.to) parts.push(`${f.from} to ${f.to}`);
+  else if (f.from) parts.push(`from ${f.from}`);
+  else if (f.to) parts.push(`through ${f.to}`);
+  if (f.contribution) parts.push("one contribution");
+  return parts.join(" · ");
+}
+function currentSearch() {
+  return typeof window === "undefined" ? "" : window.location.search;
 }
 export function Activities({
   snapshot,
@@ -22,6 +120,28 @@ export function Activities({
   mutate: Mutate;
 }) {
   const [formKey, setFormKey] = useState(0);
+  const router = useRouter();
+  // The workspace renders client-side only, so the URL is readable on first
+  // render; back/forward navigation re-reads it.
+  const [filter, setFilter] = useState<LedgerFilter>(() =>
+    parseLedgerFilter(currentSearch()),
+  );
+  useEffect(() => {
+    const sync = () => setFilter(parseLedgerFilter(currentSearch()));
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+  const filtered = Object.keys(filter).length > 0;
+  const activityDate = (c: ContributionRecord) =>
+    snapshot.activities?.find((a) => a.activityId === c.activityId)?.localDate;
+  const shown = filtered
+    ? snapshot.contributions.filter((c) => matches(c, activityDate(c), filter))
+    : snapshot.contributions;
+  function clearFilter() {
+    setFilter({});
+    router.replace("/workspace/activities", { scroll: false });
+    document.getElementById("contribution-ledger")?.focus();
+  }
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
@@ -62,10 +182,38 @@ export function Activities({
           remain pending.
         </p>
       </header>
-      <h2 className={styles.sectionTitle}>Contribution ledger</h2>
-      {snapshot.contributions.length ? (
+      <h2
+        id="contribution-ledger"
+        tabIndex={-1}
+        className={styles.sectionTitle}
+      >
+        Contribution ledger
+      </h2>
+      {filtered && (
+        <section className={styles.filterBar} aria-label="Ledger filter">
+          <p>
+            <Icon name="filter" size={16} />
+            <span>
+              <strong>Filtered:</strong>{" "}
+              {describeFilter(filter, snapshot.members)}
+            </span>
+            <span className={styles.filterCount} aria-live="polite">
+              {shown.length} of {snapshot.contributions.length}{" "}
+              {snapshot.contributions.length === 1
+                ? "contribution"
+                : "contributions"}
+            </span>
+          </p>
+          <Button variant="secondary" onClick={clearFilter}>
+            Clear filter
+          </Button>
+        </section>
+      )}
+      {filtered && snapshot.contributions.length > 0 && !shown.length ? (
+        <p>No contributions match this filter.</p>
+      ) : shown.length ? (
         <div className={styles.ledger}>
-          {snapshot.contributions.map((c) => (
+          {shown.map((c) => (
             <Contribution
               key={c.contributionId}
               contribution={c}

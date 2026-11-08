@@ -361,6 +361,8 @@ export function ProductWorkspace({ page: pageProp }: { page?: Page }) {
   const page = pageProp ?? pageFromPath(pathname);
   const firstPage = useRef(true);
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
+  // Monotonic: bumps on every successful refresh so report views refetch.
+  const [snapshotVersion, setSnapshotVersion] = useState(0);
   const [loading, setLoading] = useState(true);
   const [orgOptions, setOrgOptions] = useState<readonly OrgOption[] | null>(
     null,
@@ -398,6 +400,7 @@ export function ProductWorkspace({ page: pageProp }: { page?: Page }) {
     );
     if (result.ok) {
       setSnapshot(result.value);
+      setSnapshotVersion((version) => version + 1);
       setError("");
       setErrorCode("");
     } else {
@@ -624,7 +627,7 @@ export function ProductWorkspace({ page: pageProp }: { page?: Page }) {
           <p>Your role does not have access to this page.</p>
         </StatePanel>
       ) : activePage === "home" ? (
-        <Overview snapshot={snapshot} />
+        <Overview snapshot={snapshot} snapshotVersion={snapshotVersion} />
       ) : activePage === "volunteer" ? (
         <Volunteer snapshot={snapshot} mutate={mutate} refresh={refresh} />
       ) : activePage === "inbox" ? (
@@ -648,7 +651,7 @@ export function ProductWorkspace({ page: pageProp }: { page?: Page }) {
       ) : activePage === "import" ? (
         <Import members={snapshot.members} />
       ) : (
-        <Summary snapshot={snapshot} />
+        <Summary snapshot={snapshot} snapshotVersion={snapshotVersion} />
       )}
     </div>
   );
