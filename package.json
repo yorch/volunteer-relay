@@ -13,9 +13,9 @@
   ],
   "scripts": {
     "agents": "node scripts/agents.mjs",
-    "agents:dashboard": "node scripts/dashboard.ts",
-    "agents:supervisor": "node scripts/supervisor.ts",
-    "agents:watch": "node scripts/watch.ts",
+    "agents:dashboard": "node scripts/crewplane.mjs dashboard",
+    "agents:supervisor": "node scripts/crewplane.mjs",
+    "agents:watch": "node scripts/crewplane.mjs monitor",
     "blob:migrate": "node scripts/blob-migrate.ts",
     "build": "node scripts/run.mjs build",
     "check": "node node_modules/@biomejs/biome/bin/biome check .",
@@ -49,7 +49,10 @@
     "video:typecheck": "node node_modules/typescript/bin/tsc -p video/tsconfig.json",
     "video:validate": "node video/scripts/validate.ts",
     "video:verify": "node node_modules/@biomejs/biome/bin/biome check video && node node_modules/typescript/bin/tsc -p video/tsconfig.json && node node_modules/vitest/vitest.mjs run video",
-    "video:voice": "node video/scripts/voice.ts"
+    "video:voice": "node video/scripts/voice.ts",
+    "crewplane": "node scripts/crewplane.mjs",
+    "agents:watchdog": "node scripts/crewplane.mjs watchdog",
+    "agents:evidence": "node scripts/crewplane.mjs evidence"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "3.1019.0",

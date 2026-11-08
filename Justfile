@@ -292,14 +292,14 @@ board:
 # Serve the read-only coordination dashboard on loopback.
 [group('Agents')]
 dashboard:
-    node scripts/dashboard.ts
+    node scripts/crewplane.mjs dashboard
 
 # Run the shared board watcher.
 [group('Agents')]
 [positional-arguments]
 [script("sh", "-eu")]
 watch *args:
-    exec node scripts/watch.ts "$@"
+    exec node scripts/crewplane.mjs monitor "$@"
 
 # ---------------------------------------------------------------------------
 # Maintenance
