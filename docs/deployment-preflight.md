@@ -166,6 +166,11 @@ If using `s3`, add: the bucket contains the `.relay-deployment` marker for this
 
 ## What this preflight does not establish
 
+Edge hardening is **not** included, by explicit decision: this deployment ships with the same
+posture the bundled Caddy had — HTTPS redirect and compression only, with no HSTS, no baseline
+security headers, no body-size cap and no rate limiting on the auth endpoints. That is an
+accepted risk for the first deployment, tracked as [P7-07](tasks/P7-07.md), not an oversight.
+
 Passing every box above still does not verify: real SMTP/Telegram/OpenAI provider
 behaviour, certificate **renewal** (only issuance), load and concurrency limits, disaster
 recovery against a fresh host, or that the host's Traefik is correctly configured for any
