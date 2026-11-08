@@ -62,3 +62,39 @@ test("moving between workspace pages keeps the loaded workspace and shows no loa
   ).toBe(true);
   expect(snapshotRequests).toBe(1);
 });
+
+test("first load shows a shell-shaped skeleton with one announced status", async ({
+  page,
+}, testInfo) => {
+  await page.route("**/api/product/workspace", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.fulfill({ json: { ok: true, value: snapshot } });
+  });
+  await page.route("**/api/auth/organizations", (route) =>
+    route.fulfill({ status: 503, json: { ok: false } }),
+  );
+  await page.route("**/api/product/reports", (route) =>
+    route.fulfill({ json: { ok: true, value: { approvedHours: 3 } } }),
+  );
+  await page.goto("/workspace");
+  const loading = page.getByText("Loading workspace…");
+  await expect(loading).toBeVisible();
+  // The brand and main landmark are already in place, so the layout does not
+  // jump when the real shell arrives.
+  await expect(
+    page.getByRole("link", { name: "volunteer relay." }),
+  ).toBeVisible();
+  await expect(page.getByRole("main")).toBeVisible();
+  await expect(page.getByRole("status")).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("loading-skeleton.png"),
+    fullPage: true,
+  });
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+  await expect(loading).toHaveCount(0);
+});

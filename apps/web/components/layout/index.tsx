@@ -1,7 +1,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { FoundationRoot, Icon, type IconName } from "../foundation";
+import { FoundationRoot, Icon, type IconName, Skeleton } from "../foundation";
 import styles from "./layout.module.css";
 
 export type NavigationIcon = string;
@@ -53,6 +53,53 @@ export function Brand() {
         volunteer relay<span className={styles.brandDot}>.</span>
       </span>
     </a>
+  );
+}
+/**
+ * Shell-shaped placeholder shown while the workspace loads, so the sidebar and
+ * page area do not jump when the real shell replaces it. Purely decorative:
+ * the caller supplies the one announced status text as `children`.
+ */
+export function ShellSkeleton({
+  mainId,
+  children,
+}: {
+  mainId: string;
+  children: ReactNode;
+}) {
+  return (
+    <FoundationRoot>
+      <div className={styles.staff}>
+        <aside className={styles.sidebar}>
+          <div className={styles.sidebarHead}>
+            <Brand />
+          </div>
+          <div className={styles.skeletonNav} aria-hidden="true">
+            {[72, 88, 64, 80, 76, 68].map((width) => (
+              <Skeleton key={width} width={`${width}%`} height={16} />
+            ))}
+          </div>
+        </aside>
+        <div className={styles.mainColumn}>
+          <header className={styles.topbar} aria-hidden="true">
+            <Skeleton width={200} height={16} />
+          </header>
+          <main id={mainId} tabIndex={-1} className={styles.content}>
+            {children}
+            <div className={styles.skeletonPage} aria-hidden="true">
+              <Skeleton width="min(320px, 60%)" height={36} />
+              <Skeleton width="min(480px, 90%)" height={16} />
+              <div className={styles.skeletonTiles}>
+                <Skeleton height={112} />
+                <Skeleton height={112} />
+                <Skeleton height={112} />
+              </div>
+              <Skeleton height={220} />
+            </div>
+          </main>
+        </div>
+      </div>
+    </FoundationRoot>
   );
 }
 export function StaffShell({

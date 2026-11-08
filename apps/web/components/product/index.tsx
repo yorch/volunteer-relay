@@ -26,8 +26,8 @@ import {
   mutateAuth,
 } from "../auth/transport";
 import { Live } from "../card";
-import { Button, Icon, type IconName, Select, Skeleton } from "../foundation";
-import { StaffShell, VolunteerShell } from "../layout";
+import { Button, Icon, type IconName, Select } from "../foundation";
+import { ShellSkeleton, StaffShell, VolunteerShell } from "../layout";
 import { splitOrganizationHint } from "../org-hint";
 import { Members, Notifications, Settings } from "./admin";
 import { Import } from "./import";
@@ -467,14 +467,11 @@ export function ProductWorkspace({ page: pageProp }: { page?: Page }) {
   };
   if (loading)
     return (
-      <main className={styles.standalone} aria-live="polite">
-        <div className={styles.loading}>
-          <Skeleton width={48} height={48} />
-          <p>Loading workspace…</p>
-          <Skeleton width="100%" height={16} />
-          <Skeleton width="70%" height={16} />
-        </div>
-      </main>
+      <ShellSkeleton mainId="workspace-main">
+        <p className={styles.loadingText} aria-live="polite">
+          Loading workspace…
+        </p>
+      </ShellSkeleton>
     );
   if (!snapshot && orgOptions)
     return <OrganizationPicker options={orgOptions} />;
