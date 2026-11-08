@@ -29,6 +29,7 @@ import { createFollowThroughHttp } from "./follow-through.ts";
 import { createProductHandler, productFailure } from "./http.ts";
 import { createOperationsHttp } from "./operations.ts";
 import { createRetentionHttp } from "./retention.ts";
+import { createWorkspaceActivityReader } from "./workspace-projections.ts";
 
 let handler: ReturnType<typeof createProductHandler> | undefined;
 export async function productHandler(request: Request) {
@@ -82,6 +83,7 @@ export async function productHandler(request: Request) {
           (await retention(context, path, request)) ??
           extended(context, path, request),
         appUrl: env.APP_URL,
+        activityFacts: createWorkspaceActivityReader(db),
         timezone: async (context) =>
           (
             await createFollowThroughRepository(db).getSettingsInternal(

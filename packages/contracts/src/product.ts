@@ -10,9 +10,16 @@ import type {
 export interface WorkspaceSnapshot {
   organization: AuthOrganizationOption;
   members: Array<{ membershipId: string; name: string }>;
+  activities?: Array<{
+    activityId: string;
+    kind: string;
+    localDate: string | null;
+  }>;
   sources: Array<{
     sourceId: string;
     revision: number;
+    preview?: string;
+    receivedAt?: string;
     status: "queued" | "failed" | "review" | "accepted" | "rejected";
   }>;
   queue: ReviewQueueEntry[];

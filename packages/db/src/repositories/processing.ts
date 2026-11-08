@@ -16,7 +16,13 @@ import { sql } from "drizzle-orm";
 import type { Database } from "../types.ts";
 
 type Status = "queued" | "failed" | "review" | "accepted" | "rejected";
-type SourceStatus = { sourceId: string; revision: number; status: Status };
+type SourceStatus = {
+  sourceId: string;
+  revision: number;
+  status: Status;
+  preview?: string;
+  receivedAt?: string;
+};
 type Executor = Pick<Database, "execute">;
 const success = <T>(value: T): Result<T> => ({ ok: true, value });
 function fail(
@@ -754,13 +760,15 @@ export function createProcessingRepository(db: Database) {
         const actorId =
           context.actor.kind === "user" ? context.actor.membershipId : "";
         const rows = await db.execute(
-          sql`select s.source_id,s.revision,coalesce(r.status,case when w.failed or (w.attempts>=3 and (w.lease_until is null or w.lease_until<=now())) then 'failed' else 'queued' end) as status from source_revision s left join extraction_run r on (r.organization_id,r.source_id,r.source_revision)=(s.organization_id,s.source_id,s.revision) and r.generation=(select max(p.generation) from processing_policy_snapshot p where p.organization_id=s.organization_id and p.source_id=s.source_id and p.source_revision=s.revision) left join processing_work w on (w.organization_id,w.source_id,w.source_revision)=(s.organization_id,s.source_id,s.revision) where s.organization_id=${context.organizationId} and not exists (select 1 from source_redaction z where z.organization_id=s.organization_id and z.source_id=s.source_id) and (${staff(role)} or s.author_membership_id=${actorId}) and not exists (select 1 from source_revision n where n.organization_id=s.organization_id and n.source_id=s.source_id and n.revision>s.revision) order by s.received_at desc,s.source_id`,
+          sql`select s.source_id,s.revision,left(s.text_body,160) as preview,s.received_at,coalesce(r.status,case when w.failed or (w.attempts>=3 and (w.lease_until is null or w.lease_until<=now())) then 'failed' else 'queued' end) as status from source_revision s left join extraction_run r on (r.organization_id,r.source_id,r.source_revision)=(s.organization_id,s.source_id,s.revision) and r.generation=(select max(p.generation) from processing_policy_snapshot p where p.organization_id=s.organization_id and p.source_id=s.source_id and p.source_revision=s.revision) left join processing_work w on (w.organization_id,w.source_id,w.source_revision)=(s.organization_id,s.source_id,s.revision) where s.organization_id=${context.organizationId} and not exists (select 1 from source_redaction z where z.organization_id=s.organization_id and z.source_id=s.source_id) and (${staff(role)} or s.author_membership_id=${actorId}) and not exists (select 1 from source_revision n where n.organization_id=s.organization_id and n.source_id=s.source_id and n.revision>s.revision) and exists(select 1 from member live where live.organization_id=s.organization_id and live.id=${actorId} and live.user_id=${context.actor.kind === "user" ? context.actor.userId : ""} and live.role=${role}) order by s.received_at desc,s.source_id`,
         );
         return success(
           rows.rows.map((row) => ({
             sourceId: row.source_id as string,
             revision: row.revision as number,
             status: row.status as Status,
+            preview: row.preview as string,
+            receivedAt: new Date(row.received_at as Date).toISOString(),
           })),
         );
       } catch {

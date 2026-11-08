@@ -49,6 +49,10 @@ export interface ProductHttpDependencies {
   ledger: LedgerService;
   needs: NeedService;
   members(context: TenantContext): Promise<WorkspaceSnapshot["members"]>;
+  activityFacts?(
+    context: TenantContext,
+    activityIds: readonly string[],
+  ): Promise<NonNullable<WorkspaceSnapshot["activities"]>>;
   extensions?(
     context: TenantContext,
     path: string,
@@ -173,6 +177,13 @@ export function createProductHandler(deps: ProductHttpDependencies) {
           value.queue = queue.value;
           value.needs = needs.value;
           value.members = await deps.members(context);
+          if (deps.activityFacts)
+            value.activities = await deps.activityFacts(
+              context,
+              value.contributions.map(
+                (contribution) => contribution.activityId,
+              ),
+            );
         }
         if (staff || role === "report-reader") {
           const summary = await deps.ledger.summarize(context);
