@@ -570,3 +570,12 @@ footer .wrap {
     max-height: 480px;
   }
 }
+
+@media (max-width: 600px) {
+  .frame img,
+  .shot:not(.phone) img {
+    width: 220%;
+    max-width: none;
+    margin-left: -37.9%;
+  }
+}

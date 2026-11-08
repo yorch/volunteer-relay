@@ -2,6 +2,8 @@
 
 Multi-organization volunteer operations for receiving updates, preserving evidence, reviewing proposals, tracking needs and reporting approved contributions. The product includes text, photo, import and Telegram intake; staff review and reconciliation; routing and delivery; reports; and retention controls. See [status](docs/STATUS.md) for verification and open deployment gates. MIT licensed.
 
+Project site: <https://yorch.github.io/volunteer-relay/> (source in [`site/`](site/), published by the `pages` workflow).
+
 ## Local setup
 
 Install Node **26.11.1**, Bun **1.4.1**, and Docker Compose. With fnm: `fnm use` after installing the version from `.node-version`. Node must be on PATH before invoking Bun scripts; Bun dispatches explicit Node processes and never runs the application or tests itself. Install [just](https://github.com/casey/just) 1.59+ only if you want the optional shortcuts below.
