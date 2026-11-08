@@ -26,9 +26,13 @@
         "@relay/intake": "workspace:*",
         "better-auth": "1.7.18",
         "next": "16.4.5",
+        "nodemailer": "10.4.0",
         "react": "19.3.1",
         "react-dom": "19.3.1",
         "sharp": "0.35.5",
+      },
+      "devDependencies": {
+        "@types/nodemailer": "8.0.2",
       },
     },
     "apps/worker": {
@@ -40,6 +44,7 @@
         "@relay/contracts": "workspace:*",
         "@relay/db": "workspace:*",
         "@relay/intake": "workspace:*",
+        "@relay/notifications": "workspace:*",
       },
     },
     "packages/ai": {

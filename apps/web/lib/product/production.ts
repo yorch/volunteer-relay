@@ -18,10 +18,10 @@ import {
   createSourceRepository,
 } from "@relay/domain/core";
 import {
-  createAuthFromEnvironment,
   createSessionResolver,
   createTenantAuthorization,
 } from "../auth/index.ts";
+import { createProductionAuth } from "../mail/production.ts";
 import { createProductExtensions, readPrivateBlob } from "./extensions.ts";
 import { createProductHandler, productFailure } from "./http.ts";
 
@@ -32,13 +32,13 @@ export async function productHandler(request: Request) {
       const env = parseEnvironment(process.env);
       const { db } = createDatabase(env.DATABASE_URL);
       const authorization = createTenantAuthorization({ db });
-      const auth = createAuthFromEnvironment(db);
+      const auth = createProductionAuth(db);
       const sessions = createSessionResolver({
         auth,
         authorization,
         memberships: createMembershipReader(db),
         appUrl: env.APP_URL,
-        mailConfigured: false,
+        mailConfigured: true,
       });
       const store = createDomainStore(db);
       const sources = createSourceRepository({

@@ -1,10 +1,10 @@
 import { parseEnvironment } from "@relay/config";
 import { createDatabase, createMembershipReader } from "@relay/db";
 import {
-  createAuthFromEnvironment,
   createSessionResolver,
   createTenantAuthorization,
 } from "../auth/index.ts";
+import { createProductionAuth } from "../mail/production.ts";
 import { createAuthHttpHandlers } from "./index.ts";
 
 let handlers: ReturnType<typeof createAuthHttpHandlers> | undefined;
@@ -12,7 +12,7 @@ function production() {
   if (handlers) return handlers;
   const env = parseEnvironment(process.env);
   const { db } = createDatabase(env.DATABASE_URL);
-  const auth = createAuthFromEnvironment(db);
+  const auth = createProductionAuth(db);
   handlers = createAuthHttpHandlers({
     appUrl: env.APP_URL,
     auth,
@@ -21,7 +21,7 @@ function production() {
       authorization: createTenantAuthorization({ db }),
       memberships: createMembershipReader(db),
       appUrl: env.APP_URL,
-      mailConfigured: false,
+      mailConfigured: true,
     }),
   });
   return handlers;

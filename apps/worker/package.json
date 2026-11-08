@@ -8,6 +8,7 @@
     "@relay/contracts": "workspace:*",
     "@relay/db": "workspace:*",
     "@relay/ai": "workspace:*",
-    "@relay/intake": "workspace:*"
+    "@relay/intake": "workspace:*",
+    "@relay/notifications": "workspace:*"
   }
 }
