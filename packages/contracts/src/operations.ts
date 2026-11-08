@@ -1,7 +1,7 @@
 export interface ProductAuditEntry {
   aggregateType: string;
   aggregateId: string;
-  revision: number;
+  revision: number | null;
   action: string;
   occurredAt: string;
   actor: unknown;

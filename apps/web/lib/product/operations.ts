@@ -59,11 +59,15 @@ export function createOperationsHttp(db: Database, attachmentRoot: string) {
             select aggregate_type,aggregate_id,aggregate_revision,action,occurred_at,actor,reason,before,after,id as sort_id from domain_audit_event where organization_id=${context.organizationId}
             union all select 'source',r.source_id,r.source_revision,'review:' || coalesce(d.command->>'decision','redacted'),d.created_at,d.actor,d.command->>'reason',null::jsonb,null::jsonb,'review:' || d.idempotency_key from review_decision d join extraction_run r on (r.organization_id,r.run_id)=(d.organization_id,d.run_id) where d.organization_id=${context.organizationId}
             union all select 'source',source_id,source_revision,'retry',created_at,actor,null::text,null::jsonb,null::jsonb,'retry:' || idempotency_key from processing_retry where organization_id=${context.organizationId}
+            union all select 'organization',target_id,case when phase='applied' then (after->>'revision')::integer else null::integer end,action || ':' || phase,occurred_at,actor,null::text,before,after,'administration:' || operation_id || ':' || phase from organization_audit_event where organization_id=${context.organizationId}
           ) events where (${aggregateId}::text is null or aggregate_id=${aggregateId}) and (${before}::timestamptz is null or occurred_at<${before}::timestamptz) order by occurred_at desc,sort_id desc limit 100`);
           const entries: ProductAuditEntry[] = rows.rows.map((r) => ({
             aggregateType: r.aggregate_type as string,
             aggregateId: r.aggregate_id as string,
-            revision: r.aggregate_revision as number,
+            revision:
+              r.aggregate_revision == null
+                ? null
+                : Number(r.aggregate_revision),
             action: r.action as string,
             occurredAt: timestamp(r.occurred_at) as string,
             actor: r.actor,

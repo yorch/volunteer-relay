@@ -401,10 +401,18 @@ export function createProductExtensions(options: {
             await tx.execute(
               sql`select pg_advisory_xact_lock(hashtextextended(${`blob:${blob.metadata.storageKey}`},0))`,
             );
+          }
+          for (const source of preview.sources) {
+            const hidden = await tx.execute(
+              sql`select 1 from source_redaction where organization_id=${context.organizationId} and source_id=${source.sourceId}`,
+            );
+            if (hidden.rows.length)
+              throw new ImportRollback(denied("NOT_FOUND"));
+          }
+          for (const blob of prepared.blobs)
             await createPrivateFilesystemBlobStore(options.root, {
               maxBytes: options.maxBytes,
             }).put(blob.content);
-          }
           for (const source of preview.sources) {
             const old = await options.processing.getSource(
               context,

@@ -101,7 +101,11 @@ it.each(["review-all", "validated-auto-record"] as const)(
         const proposal = await extractor.extract(
           systemContext(source.organizationId),
           lease.source,
-          { model: "fixture", prompt: "fixture", policy: "week-1" },
+          {
+            model: "fixture",
+            prompt: "fixture",
+            policy: lease.policy.policyVersion,
+          },
         );
         if (!proposal.ok)
           throw new Error(`Extraction failed ${source.sourceId}`);

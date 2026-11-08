@@ -157,7 +157,11 @@ it("reviews the first five fixture sources against the independent ledger oracle
     const extraction = await extractor.extract(
       systemContext("tidepath"),
       lease.source,
-      { model: "fixture", prompt: "fixture", policy: "fixture" },
+      {
+        model: "fixture",
+        prompt: "fixture",
+        policy: lease.policy.policyVersion,
+      },
     );
     expect(extraction.ok).toBe(true);
     if (!extraction.ok) throw new Error("Extraction failed");
@@ -369,7 +373,11 @@ it("replays intake and review across repository restart and amends 60 minutes to
     const proposal = await extractor.extract(
       systemContext("tidepath"),
       source,
-      { model: "fixture", prompt: "fixture", policy: "fixture" },
+      {
+        model: "fixture",
+        prompt: "fixture",
+        policy: lease.policy.policyVersion,
+      },
     );
     if (!proposal.ok) throw new Error("Extraction failed");
     expect(
@@ -429,7 +437,11 @@ it("reviews routine and urgent needs and reports local calendar dates consistent
     const proposal = await extractor.extract(
       systemContext("tidepath"),
       source,
-      { model: "fixture", prompt: "fixture", policy: "fixture" },
+      {
+        model: "fixture",
+        prompt: "fixture",
+        policy: lease.policy.policyVersion,
+      },
     );
     if (!proposal.ok) throw new Error("Need extraction failed");
     expect(

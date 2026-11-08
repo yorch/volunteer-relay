@@ -1,15 +1,19 @@
+import { createHash } from "node:crypto";
 import {
+  authResetRequestSchema,
   type Result,
   roleSchema,
   type TenantContext,
   updateOrganizationSettingsSchema,
 } from "@relay/contracts";
 import {
+  createAdministrationAuditRepository,
   createFollowThroughRepository,
   createProcessingRepository,
   type Database,
   sql,
 } from "@relay/db";
+import { APIError } from "better-auth/api";
 import type { Auth, SessionResolver } from "../auth/index.ts";
 import { productFailure, readProductJson } from "./http.ts";
 export function createFollowThroughHttp(
@@ -47,7 +51,7 @@ export function createFollowThroughHttp(
     if (path === "members" && request.method === "GET") {
       if (currentRole !== "owner") return fail("FORBIDDEN");
       const rows = await db.execute(
-        sql`select m.id as "membershipId",u.name,u.email,m.role from member m join "user" u on u.id=m.user_id where m.organization_id=${context.organizationId} order by u.name,m.id`,
+        sql`select m.id as "membershipId",u.name,u.email,m.role from member m join "user" u on u.id=m.user_id where m.organization_id=${context.organizationId} and exists(select 1 from member a where a.organization_id=${context.organizationId} and a.id=${context.actor.membershipId} and a.user_id=${context.actor.userId} and a.role='owner') order by u.name,m.id`,
       );
       return { ok: true, value: rows.rows };
     }
@@ -57,7 +61,7 @@ export function createFollowThroughHttp(
       const sourceId = new URL(request.url).searchParams.get("sourceId");
       if (!sourceId) return fail("VALIDATION");
       const rows = await db.execute(
-        sql`select a.id as "activityId",a.revision,'Similar date or beneficiary; staff must verify source evidence' as reason from activity a where a.organization_id=${context.organizationId} and exists (select 1 from source_revision s where s.organization_id=a.organization_id and s.source_id=${sourceId} and ((s.occurred_at at time zone s.timezone)::date=a.local_date or (a.beneficiary_reference is not null and position(lower(a.beneficiary_reference) in lower(s.text_body))>0))) order by a.created_at desc,a.id limit 20`,
+        sql`select a.id as "activityId",a.revision,'Similar date or beneficiary; staff must verify source evidence' as reason from activity a where a.organization_id=${context.organizationId} and exists(select 1 from member caller where caller.organization_id=${context.organizationId} and caller.id=${context.actor.membershipId} and caller.user_id=${context.actor.userId} and caller.role in ('owner','coordinator')) and exists (select 1 from source_revision s where s.organization_id=a.organization_id and s.source_id=${sourceId} and ((s.occurred_at at time zone s.timezone)::date=a.local_date or (a.beneficiary_reference is not null and position(lower(a.beneficiary_reference) in lower(s.text_body))>0))) order by a.created_at desc,a.id limit 20`,
       );
       return { ok: true, value: rows.rows };
     }
@@ -152,42 +156,80 @@ export function createFollowThroughHttp(
     }
     if (path === "telegram-unlink") return repo.unlinkTelegram(context, {});
     if (currentRole !== "owner") return fail("FORBIDDEN");
+    const audit = createAdministrationAuditRepository(db);
+    const audited = async (
+      action: "member.role" | "member.remove" | "member.invite",
+      targetId: string,
+      execute: () => Promise<Result<unknown>>,
+    ): Promise<Result<unknown>> => {
+      const started = await audit.beginOperation(context, { action, targetId });
+      if (!started.ok) return started;
+      try {
+        const result = await execute();
+        await audit.finishOperation(
+          context.organizationId,
+          started.value.operationId,
+          result.ok ? "succeeded" : "failed",
+        );
+        return result;
+      } catch (error) {
+        await audit.finishOperation(
+          context.organizationId,
+          started.value.operationId,
+          "failed",
+        );
+        return fail(
+          error instanceof APIError && error.statusCode < 500
+            ? "FORBIDDEN"
+            : "DEPENDENCY_UNAVAILABLE",
+        );
+      }
+    };
     if (path === "members/invite") {
-      const role = roleSchema.safeParse(input.role);
-      if (typeof input.email !== "string" || !role.success)
-        return fail("VALIDATION");
-      return sessions.createInvitation({
-        headers: request.headers,
-        organizationId: context.organizationId,
-        email: input.email,
-        role: role.data,
-        correlationId: context.correlationId,
-      });
+      const role = roleSchema.safeParse(input.role),
+        email = authResetRequestSchema.safeParse({ email: input.email });
+      if (!role.success || !email.success) return fail("VALIDATION");
+      return audited(
+        "member.invite",
+        createHash("sha256")
+          .update(email.data.email.toLowerCase())
+          .digest("hex"),
+        () =>
+          sessions.createInvitation({
+            headers: request.headers,
+            organizationId: context.organizationId,
+            email: email.data.email,
+            role: role.data,
+            correlationId: context.correlationId,
+          }),
+      );
     }
     if (typeof input.membershipId !== "string") return fail("VALIDATION");
-    try {
-      if (path === "members/role") {
-        const role = roleSchema.safeParse(input.role);
-        if (!role.success) return fail("VALIDATION");
+    const membershipId = input.membershipId;
+    if (path === "members/role") {
+      const role = roleSchema.safeParse(input.role);
+      if (!role.success) return fail("VALIDATION");
+      return audited("member.role", membershipId, async () => {
         await auth.api.updateMemberRole({
           headers: request.headers,
           body: {
             organizationId: context.organizationId,
-            memberId: input.membershipId,
+            memberId: membershipId,
             role: role.data,
           },
         });
-      } else
-        await auth.api.removeMember({
-          headers: request.headers,
-          body: {
-            organizationId: context.organizationId,
-            memberIdOrEmail: input.membershipId,
-          },
-        });
-      return { ok: true, value: undefined };
-    } catch {
-      return fail("FORBIDDEN");
+        return { ok: true, value: undefined };
+      });
     }
+    return audited("member.remove", membershipId, async () => {
+      await auth.api.removeMember({
+        headers: request.headers,
+        body: {
+          organizationId: context.organizationId,
+          memberIdOrEmail: membershipId,
+        },
+      });
+      return { ok: true, value: undefined };
+    });
   };
 }
