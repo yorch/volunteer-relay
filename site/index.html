@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Volunteer Relay</title>
+<meta name="description" content="Volunteer Relay turns messy volunteer updates into traceable activity records, urgent needs with owners, and totals you can defend.">
+<meta property="og:title" content="Volunteer Relay — a little clarity. More care.">
+<meta property="og:description" content="Multi-organization volunteer operations: intake, evidence, review, needs and reporting.">
+<meta property="og:image" content="img/overview-desktop.png">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="#top"><img src="favicon.svg" alt="">Volunteer Relay</a>
+    <ul>
+      <li><a class="link" href="#value">Value</a></li>
+      <li><a class="link" href="#how">How it works</a></li>
+      <li><a class="link" href="#capabilities">Capabilities</a></li>
+      <li><a class="link" href="#architecture">Architecture</a></li>
+      <li><a class="btn sm" href="https://github.com/yorch/volunteer-relay">GitHub</a></li>
+    </ul>
+  </div>
+</header>
+
+<main id="top">
+<div class="hero">
+  <div class="wrap">
+    <p class="eyebrow">Volunteer operations for nonprofits</p>
+    <h1>Every update counted once.<br><em>Every urgent need owned.</em></h1>
+    <p class="lead">Volunteers report in whatever way is easiest — a mobile page, Telegram, or a chat export. Volunteer Relay turns those messages into evidence-backed records, assigns urgent needs to accountable staff, and produces totals a board can trust.</p>
+    <div class="cta">
+      <a class="btn" href="https://github.com/yorch/volunteer-relay">View the source</a>
+      <a class="btn ghost" href="#how">See how it works</a>
+    </div>
+    <div class="pills">
+      <span class="pill">Multi-organization</span><span class="pill">Photos &amp; text</span>
+      <span class="pill">English &amp; Spanish intake</span><span class="pill">Open source · MIT</span>
+    </div>
+    <div class="frame">
+      <div class="bar"><i></i><i></i><i></i></div>
+      <img src="img/overview-desktop.png" alt="The staff overview: updates awaiting review, open needs and approved time." width="1440" height="900">
+    </div>
+  </div>
+</div>
+
+<section id="value">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">The problem</p>
+      <h2>Volunteer work lives in chat threads. Decisions need more than that.</h2>
+      <p>Hours get double-counted, urgent requests scroll away, and nobody can say where a number came from. Volunteer Relay keeps the messy human input and adds the structure around it.</p>
+    </div>
+    <div class="grid g3">
+      <div class="card">
+        <div class="stat">1×</div>
+        <h3>Hours counted once</h3>
+        <p>Duplicates and corrections are reconciled against earlier reports, so the same visit never inflates the total.</p>
+      </div>
+      <div class="card">
+        <div class="stat">Same day</div>
+        <h3>Urgent needs reach a person</h3>
+        <p>Requests are routed to an accountable owner, with acknowledgment deadlines and escalation if no one picks them up.</p>
+      </div>
+      <div class="card">
+        <div class="stat">100%</div>
+        <h3>Totals backed by evidence</h3>
+        <p>Every approved minute links back to the original message or photo, so any number can be explained.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how" class="alt">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">How it works</p>
+      <h2>From a quick message to a defensible report</h2>
+    </div>
+    <div class="steps">
+      <div class="step"><h3>Volunteers report</h3><p>Send an update with an optional photo from the web, Telegram, or a staff-imported chat export.</p></div>
+      <div class="step"><h3>Evidence is preserved</h3><p>The original text, photo and every revision are stored untouched. Nothing is overwritten.</p></div>
+      <div class="step"><h3>AI proposes, staff decide</h3><p>Structured extraction suggests hours, activities and needs. Staff review proposals beside the source, or let validated ones record automatically.</p></div>
+      <div class="step"><h3>Needs get owners</h3><p>Needs are assigned, acknowledged and resolved. Approved contributions flow into reports.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="show">
+      <div class="copy">
+        <p class="eyebrow">Review</p>
+        <h2>Proposals next to the proof</h2>
+        <p>Coordinators see the original message and the proposed fields side by side. Accept, edit with a reason, or reject. Unknown values stay unknown instead of being guessed.</p>
+        <ul>
+          <li>Source evidence and revisions always visible</li>
+          <li>Corrections linked to the record they change</li>
+          <li>Per-organization choice: review everything, or auto-record validated updates</li>
+        </ul>
+      </div>
+      <div class="shot"><img src="img/inbox-desktop.png" alt="Source inbox showing an original update beside its proposed fields." loading="lazy"></div>
+    </div>
+    <div class="show flip">
+      <div class="copy">
+        <p class="eyebrow">Needs board</p>
+        <h2>Nothing urgent falls through</h2>
+        <p>Track every need from new to assigned to acknowledged to resolved. A notification being delivered is never mistaken for a person acknowledging it.</p>
+        <ul>
+          <li>Owner, due time and acknowledgment deadline tracked separately</li>
+          <li>Escalation and reassignment recorded as events</li>
+          <li>Routing by category; in-app, Telegram and email alerts</li>
+        </ul>
+      </div>
+      <div class="shot"><img src="img/needs-desktop.png" alt="Needs board with New, Assigned and Acknowledged columns." loading="lazy"></div>
+    </div>
+    <div class="show">
+      <div class="copy">
+        <p class="eyebrow">Reporting</p>
+        <h2>Numbers you can stand behind</h2>
+        <p>Reports are built only from approved contributions. Pending, unknown-duration and unresolved items are shown separately — never silently counted as zero.</p>
+        <ul>
+          <li>Filter by date, program and volunteer</li>
+          <li>Aggregate CSV for board readers, without sensitive source text</li>
+          <li>Evidence drill-down limited to authorized staff</li>
+        </ul>
+      </div>
+      <div class="shot"><img src="img/reports-desktop.png" alt="Summary report with approved hours and pending counts." loading="lazy"></div>
+    </div>
+    <div class="show flip">
+      <div class="copy">
+        <p class="eyebrow">For volunteers</p>
+        <h2>As easy as sending a message</h2>
+        <p>A simple mobile form asks one question: how did you help today? Volunteers get a receipt, can see their own contributions, and respond to clarification requests.</p>
+        <ul>
+          <li>Text plus optional photo</li>
+          <li>Link Telegram with a short-lived, single-use token</li>
+          <li>Volunteers only ever see their own records</li>
+        </ul>
+      </div>
+      <div class="shot phone"><img src="img/volunteer-mobile.png" alt="Mobile volunteer page: How did you help today?" loading="lazy"></div>
+    </div>
+  </div>
+</section>
+
+<section id="capabilities" class="alt">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">Capabilities</p>
+      <h2>Everything a small team needs to run volunteer operations</h2>
+    </div>
+    <div class="grid g4">
+      <div class="card"><div class="icon"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div><h3>Multi-channel intake</h3><p>Web form, Telegram bot, and chat-export imports, with text and photos.</p></div>
+      <div class="card"><div class="icon"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></div><h3>Structured AI extraction</h3><p>Model output is validated against a schema, versioned, and always reviewable.</p></div>
+      <div class="card"><div class="icon"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></div><h3>Deduplication &amp; corrections</h3><p>Repeated reports collapse into one activity; later corrections link to the original.</p></div>
+      <div class="card"><div class="icon"><svg viewBox="0 0 24 24"><path d="M4 21V4m0 0h12l-2 4 2 4H4"/></svg></div><h3>Needs lifecycle</h3><p>Assign, acknowledge, escalate and resolve, with reasons for cancel and reopen.</p></div>
+      <div class="card"><div class="icon"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div><h3>Notifications</h3><p>In-app, Telegram and email delivery with retries and per-recipient state.</p></div>
+      <div class="card"><div class="icon"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M8 17v-5m5 5V8m5 9v-3"/></svg></div><h3>Reports &amp; CSV</h3><p>Totals from the approved ledger, with aggregate export for board readers.</p></div>
+      <div class="card"><div class="icon"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/></svg></div><h3>Roles &amp; organizations</h3><p>Volunteers, coordinators, admins and board readers, across multiple nonprofits.</p></div>
+      <div class="card"><div class="icon"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg></div><h3>Audit &amp; retention</h3><p>Full change history and retention controls with signed ledgers.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="architecture">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">Architecture</p>
+      <h2>Simple to run. Safe to replay.</h2>
+      <p>A Next.js web app accepts requests and writes the source evidence together with a work record in one transaction. A separate worker does the slow work, so nothing depends on a request staying open.</p>
+    </div>
+    <div class="arch">
+      <p class="label">Channels</p>
+      <div class="layer">
+        <div class="node"><b>Mobile web</b><span>Volunteer page</span></div>
+        <div class="node"><b>Telegram bot</b><span>Webhook ingress</span></div>
+        <div class="node"><b>Chat imports</b><span>Staff-uploaded files</span></div>
+      </div>
+      <p class="label">Pipeline</p>
+      <div class="flow">
+        <div class="node"><b>Web app</b><span>Next.js · authorization · tenant resolved by the server</span><small>apps/web</small></div>
+        <div class="arrow">→</div>
+        <div class="node key"><b>PostgreSQL</b><span>Source evidence + transactional outbox, written atomically</span><small>packages/db</small></div>
+        <div class="arrow">→</div>
+        <div class="node"><b>Worker</b><span>Leased, retried jobs: extraction, reconciliation, delivery</span><small>apps/worker</small></div>
+        <div class="arrow">→</div>
+        <div class="node"><b>Review &amp; ledger</b><span>Staff approve; approved minutes feed reports and needs</span><small>packages/domain</small></div>
+      </div>
+      <p class="label">Pluggable adapters</p>
+      <div class="layer">
+        <div class="node"><b>AI extraction</b><span>Configurable OpenAI model, schema-validated</span></div>
+        <div class="node"><b>Notifications</b><span>In-app · Telegram · SMTP email</span></div>
+        <div class="node"><b>Private storage</b><span>Authenticated file streaming; object-storage ready</span></div>
+      </div>
+    </div>
+    <div class="principles" style="margin-top:28px">
+      <div class="principle"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg><div><b>Tenant isolation</b><p>Organization is resolved server-side; membership is rechecked when jobs run.</p></div></div>
+      <div class="principle"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg><div><b>Replay-safe</b><p>Jobs tolerate retries and restarts; unique constraints prevent duplicate effects.</p></div></div>
+      <div class="principle"><svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg><div><b>Honest numbers</b><p>Unknown is null, never zero. Reports use approved contributions only.</p></div></div>
+      <div class="principle"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><div><b>Privacy by default</b><p>No face recognition, no URL fetching, no sensitive source text in logs.</p></div></div>
+    </div>
+    <p style="margin-top:28px;color:var(--muted);font-size:.95rem">Stack: TypeScript · Next.js · PostgreSQL + Drizzle · Better Auth · Tailwind CSS · Docker Compose on a single host. All demo data is synthetic.</p>
+  </div>
+</section>
+
+<div class="final">
+  <div class="wrap">
+    <h2>A little clarity. More care.</h2>
+    <p>Volunteer Relay is open source under the MIT license. Read the plan, explore the code, or run the demo locally with synthetic data.</p>
+    <a class="btn" href="https://github.com/yorch/volunteer-relay">Explore on GitHub →</a>
+  </div>
+</div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© Volunteer Relay · MIT License</span>
+    <span>Demo screens use synthetic data only.</span>
+  </div>
+</footer>
+</body>
+</html>
