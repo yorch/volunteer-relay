@@ -155,3 +155,43 @@ it("projects only fixed reload outcomes and safe error codes", () => {
     JSON.stringify(projectHeadless(config, observed, now).configReload),
   ).not.toContain("SECRET_SENTINEL");
 });
+
+it("retains runtime reload errors while disk JSON is malformed and recovers", async () => {
+  const root = await mkdtemp(join(tmpdir(), "relay-reload-reader-"));
+  try {
+    await mkdir(join(root, "supervisor"));
+    const checkedAt = new Date().toISOString();
+    await writeFile(
+      join(root, "supervisor/state.json"),
+      JSON.stringify({
+        ...state,
+        checkedAt,
+        configReload: {
+          outcome: "invalid",
+          errorCode: "INVALID_CONFIG",
+          evaluatedAt: checkedAt,
+        },
+      }),
+    );
+    await writeFile(
+      join(root, "supervisor/config.json"),
+      "{PRIVATE_INVALID_SENTINEL",
+    );
+    const broken = await readHeadless(root);
+    expect(broken.state).toBe("running");
+    expect(broken.checkedAt).toBe(checkedAt);
+    expect(broken.diskConfigAvailable).toBe(false);
+    expect(broken.configReload?.errorCode).toBe("INVALID_CONFIG");
+    expect(broken.lanes.find((lane) => lane.lane === "B")?.task).toBe("P1-06");
+    expect(JSON.stringify(broken)).not.toContain("PRIVATE_INVALID_SENTINEL");
+    await writeFile(
+      join(root, "supervisor/config.json"),
+      JSON.stringify(config),
+    );
+    const recovered = await readHeadless(root);
+    expect(recovered.diskConfigAvailable).toBe(true);
+    expect(recovered.checkedAt).toBe(checkedAt);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

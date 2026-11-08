@@ -29,6 +29,7 @@ export function projectHeadless(
           : "running";
   return {
     state,
+    diskConfigAvailable: config !== null,
     checkedAt: value?.checkedAt ?? null,
     configReload:
       value?.configReload &&
@@ -133,7 +134,7 @@ export async function readHeadless(store: string) {
   }
   try {
     const [config, state] = await Promise.all([
-      read<Config>("config.json"),
+      read<Config>("config.json").catch(() => null),
       read<State>("state.json"),
     ]);
     return projectHeadless(config, state, Date.now(), (pid) => {
