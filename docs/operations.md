@@ -1,0 +1,78 @@
+# Single-host operations
+
+This profile is a deployment starting point, not proof of production readiness. It runs Caddy with automatic TLS, a private PostgreSQL 18 database, a one-shot migration, the standalone web server, and the worker. PostgreSQL and attachments have no published ports. Caddy is the only published service. The web and worker run as the image's unprivileged `node` user with read-only root filesystems; writable attachments and Caddy state are named volumes. The initialization container sets their ownership. The database volume and Caddy state must persist across upgrades. Do not use the development Compose file for production.
+
+## Provision and start
+
+1. Provision a dedicated host with Docker Engine and Compose v2, persistent encrypted storage, monitoring, backups and restricted administrative access. Set DNS for a domain you control to this host and allow inbound TCP 80 and TCP/UDP 443. Caddy needs outbound ACME access. Keep the environment file, Docker socket, volumes and backups private.
+2. Build the `web` and `worker` targets of `infra/Dockerfile` from the same reviewed commit, publish to a trusted registry, and pin the resulting image digests. The build uses Node 26.11.1 and Bun 1.4.1. On restricted networks supply the required trusted proxy CA to networked build steps without disabling TLS verification. Do not include secrets in build arguments or images.
+3. Create a host-only environment file, for example `/etc/volunteer-relay/production.env`, owned by the operator and mode `0600`. Use unique high-entropy credentials; the example below is a template, not usable credentials. `DATABASE_URL` must use the same user, password and database as the PostgreSQL variables, with any URL-special characters percent-encoded. Compose reads the file and the application receives it; keep it out of source control. The Postgres image only applies initial user/password/database variables to a new volume; changing the file alone does not rotate existing credentials.
+
+   ```dotenv
+   POSTGRES_USER=relay
+   POSTGRES_PASSWORD=REPLACE_WITH_URL_SAFE_RANDOM_PASSWORD
+   POSTGRES_DB=relay
+   DATABASE_URL=postgres://relay:REPLACE_WITH_URL_SAFE_RANDOM_PASSWORD@postgres:5432/relay
+   BETTER_AUTH_SECRET=REPLACE_WITH_AT_LEAST_32_RANDOM_CHARACTERS
+   NODE_ENV=production
+   DEMO_MODE=false
+   APP_URL=https://relay.example.org
+   RELAY_DOMAIN=relay.example.org
+   RELAY_WEB_IMAGE=registry.example.org/relay-web@sha256:REPLACE
+   RELAY_WORKER_IMAGE=registry.example.org/relay-worker@sha256:REPLACE
+   ATTACHMENT_ROOT=/data/attachments
+   SMTP_HOST=mail.example.org
+   SMTP_PORT=465
+   SMTP_TLS=true
+   SMTP_USER=REPLACE
+   SMTP_PASSWORD=REPLACE
+   SMTP_FROM=relay@example.org
+   ```
+
+   Configure provider credentials and budget only when approved and tested; missing extraction provider configuration leaves extraction disabled. Telegram is replay-only by default. Never use demo mode or synthetic credentials for production. Application configuration is defined in `packages/config/src/index.ts`; configure outbound SMTP and any optional provider separately and validate their actual transport behavior before relying on delivery.
+4. From the checked-out release directory, set an explicit project name and absolute environment path:
+
+   ```sh
+   export COMPOSE_PROJECT_NAME=volunteer-relay-prod
+   export RELAY_ENV_FILE=/etc/volunteer-relay/production.env
+   docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RELAY_ENV_FILE" -f compose.production.yaml config --quiet
+   docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RELAY_ENV_FILE" -f compose.production.yaml up -d
+   docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RELAY_ENV_FILE" -f compose.production.yaml ps -a
+   ```
+
+   The migration container must exit successfully before web and worker start. Caddy waits for web health. Investigate failed migrations before restarting; do not bypass the gate. Check HTTPS certificate issuance, `/api/health`, sign-in and authorized workflows, worker logs, disk space and backup alerting. Health alone does not prove database connectivity, provider delivery or business workflow correctness. The web and worker have graceful stop periods; allow in-flight work to finish before maintenance.
+
+## Backup
+
+Backups contain private source evidence, identity data and attachments. Encrypt them at rest and in transit, restrict access, retain according to policy, and regularly test restoration in a separate environment. The scripts require Docker access and an explicit project and environment file. Never point them at a shared or unintended project. The backup directory must not exist and is created with restrictive permissions. Check exit status; discard any incomplete directory.
+
+For a consistent database/attachment pair, stop all writers and ingress, including any external or manually started writers, before starting the backup. The script checks only the Compose services it knows about. Maintenance causes downtime.
+
+```sh
+docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RELAY_ENV_FILE" -f compose.production.yaml stop caddy web worker
+COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" RELAY_ENV_FILE="$RELAY_ENV_FILE" infra/production/backup.sh /secure/backups/relay-2026-01-01
+# After confirming success, restart:
+docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RELAY_ENV_FILE" -f compose.production.yaml up -d
+```
+
+The backup contains a PostgreSQL custom dump, a tar archive of attachments and SHA-256 checksums. The dump and archive are captured sequentially while writers are stopped. Checksums detect accidental corruption; they do not authenticate the backup. Protect and verify the backup's origin separately. Caddy certificate state and the environment file are not in this backup; manage those separately. Caddy can reissue certificates subject to ACME limits.
+
+## Restore and upgrade
+
+Restore only a trusted backup into a **new**, isolated Compose project with a fresh PostgreSQL and attachments volume. Do not restore into a live project. The restore script refuses a nonempty database or attachments volume and never drops existing data; failure after database restoration may leave a partially restored target, so discard that isolated target and start over. It validates checksums and rejects links, special files and unsafe paths in the attachment archive; it is not a sandbox for untrusted archives. Use compatible PostgreSQL image and application release, and keep services and external writers stopped.
+
+```sh
+export COMPOSE_PROJECT_NAME=relay-restore-unique
+export RELAY_ENV_FILE=/absolute/path/to/isolated-restore.env
+# Environment points to isolated credentials and project; never the live project.
+docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RELAY_ENV_FILE" -f compose.production.yaml up -d postgres volume-init
+# Wait for postgres health and successful volume-init before restore.
+docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RELAY_ENV_FILE" -f compose.production.yaml ps -a
+COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" RELAY_ENV_FILE="$RELAY_ENV_FILE" infra/production/restore.sh /secure/backups/relay-2026-01-01
+```
+
+Validate row counts, representative authorization and attachment access in isolation before any cutover. Restore does not automatically start the application. Plan cutover, DNS, secrets and rollback with the operator; do not start Caddy with the production domain in a test project. For upgrades, take and verify a quiesced backup, review migrations and compatibility, deploy pinned matching images, and verify health and workflows. A failed migration blocks startup; rollback may require a tested restore rather than an older image against a newer schema. Never run concurrent migrations or destructive resets against shared data.
+
+## Evidence and remaining gates
+
+A local synthetic rehearsal used two distinct Compose projects with PostgreSQL 18.1: a row and attachment survived backup and restore, and a second restore was refused for the nonempty target. Compose configuration and shell syntax were checked. Fresh-host image builds and startup, Caddy certificate issuance and renewal, real SMTP/Telegram/OpenAI providers, network egress, monitoring, disaster recovery cutover and production load remain unverified. Complete these gates with appropriate access before public operation; do not infer delivery or acknowledgment from provider acceptance.
