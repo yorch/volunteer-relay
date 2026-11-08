@@ -1,0 +1,20 @@
+[
+  {
+    "id": "demo-import-json-01",
+    "author": "Demo Volunteer",
+    "timestamp": "2026-11-07T14:00:00-05:00",
+    "text": "On November 7, 2026, I helped pack pantry boxes for 45 minutes. This is a synthetic demo update."
+  },
+  {
+    "id": "demo-import-json-02",
+    "author": "Demo Coordinator",
+    "timestamp": "2026-11-07T15:00:00-05:00",
+    "text": "Ayer ayudé a entregar alimentos durante 30 minutos. Mensaje ficticio para la demostración."
+  },
+  {
+    "id": "demo-import-json-03",
+    "author": "Unknown demo sender",
+    "timestamp": "2026-11-07T16:00:00-05:00",
+    "text": "I helped at the pantry but do not remember how long. Synthetic data; please leave the duration unknown."
+  }
+]

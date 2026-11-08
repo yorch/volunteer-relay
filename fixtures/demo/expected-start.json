@@ -1,0 +1,25 @@
+{
+  "profileVersion": 1,
+  "authorship": "Manually specified demo starting state; separate from the 28-source acceptance oracle. Does not describe live extraction output.",
+  "dateWindow": "2026-11-02/2026-11-08",
+  "tidepath": {
+    "sources": 10,
+    "reviewQueue": 7,
+    "approvedMinutes": 180,
+    "approvedHours": 3,
+    "approvedContributions": 3,
+    "activitiesWithApprovedContributions": 2,
+    "pendingContributionsWithUnknownDuration": 1,
+    "needs": {
+      "new": 2,
+      "assigned": 1,
+      "acknowledged": 1,
+      "resolved": 1,
+      "urgentProvisional": 1
+    }
+  },
+  "harbor": {
+    "sources": 1,
+    "approvedMinutes": 0
+  }
+}

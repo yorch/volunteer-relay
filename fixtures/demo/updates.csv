@@ -1,0 +1,4 @@
+id,author,timestamp,text
+demo-import-csv-01,Demo Volunteer,2026-11-07T14:00:00-05:00,"On November 7, 2026, I helped pack pantry boxes for 45 minutes. This is a synthetic demo update."
+demo-import-csv-02,Demo Coordinator,2026-11-07T15:00:00-05:00,"Ayer ayudé a entregar alimentos durante 30 minutos. Mensaje ficticio para la demostración."
+demo-import-csv-03,Unknown demo sender,2026-11-07T16:00:00-05:00,"I helped at the pantry but do not remember how long. Synthetic data; please leave the duration unknown."

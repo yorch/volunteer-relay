@@ -4,6 +4,8 @@
 
 **Open UI acceptance:** Functional product screens are implemented, but full prototype UX parity remains open. See the [product parity assessment](../design/product-parity.md) and follow-up [P2-06](P2-06.md); current browser checks do not close that design gate.
 
+Current demo-data work: [P7-06](P7-06.md) is implemented and validated with eight PostgreSQL cases; see the [populated demo walkthrough](../demo.md).
+
 ## Current product task status
 
 | Product task cards                | Current implementation and verification                                                                                                                                            | Open external or acceptance work                                                                                                                                       |
