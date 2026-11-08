@@ -233,4 +233,6 @@ it("records changes once, recovers read errors and stops cleanly without board w
     else process.env.RELAY_COORD_DIR = oldStore;
     await rm(root, { recursive: true, force: true });
   }
-});
+  // Spawns node and git subprocesses; the 5s default is not enough under a
+  // full parallel run, where this test has timed out twice.
+}, 30_000);
