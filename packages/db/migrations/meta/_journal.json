@@ -22,6 +22,13 @@
       "when": 1794135543806,
       "tag": "0002_wooden_blindfold",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794135543807,
+      "tag": "0003_processing",
+      "breakpoints": true
     }
   ]
 }

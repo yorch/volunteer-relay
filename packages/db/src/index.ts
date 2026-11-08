@@ -19,6 +19,7 @@ export * from "./migrations.ts";
 export * from "./repositories/attachments.ts";
 export * from "./repositories/domain.ts";
 export * from "./repositories/memberships.ts";
+export * from "./repositories/processing.ts";
 export * from "./repositories/sources.ts";
 export * as schema from "./schema/index.ts";
 export * from "./seed-data.ts";
