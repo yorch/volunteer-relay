@@ -71,7 +71,6 @@ function parseMappedDate(
     const a = Number(m[1]),
       b = Number(m[2]),
       y = Number(m[3]);
-    if (a <= 12 && b <= 12) return null;
     year = y;
     month = format === "MM/DD/YYYY" ? a : b;
     day = format === "MM/DD/YYYY" ? b : a;
@@ -604,7 +603,7 @@ export function normalizeTelegramUpdate(
   context: Omit<
     TrustedImportContext,
     "authorByExternalIdentity" | "importerIdentity"
-  > & { membershipId: string | null },
+  > & { membershipId: string | null; previousRevision?: number },
 ): SourceEnvelope | null {
   if (
     !Number.isSafeInteger(update.update_id) ||
@@ -637,10 +636,13 @@ export function normalizeTelegramUpdate(
   )
     return null;
   const externalMessageId = identity;
-  const revision = changed ? 2 : 1;
+  const previousRevision = context.previousRevision ?? 1;
+  if (!Number.isSafeInteger(previousRevision) || previousRevision < 1)
+    return null;
+  const revision = changed ? previousRevision + 1 : 1;
   const idempotencyKey = stableId(
     "src",
-    `${context.organizationId}\u0000telegram\u0000${identity}\u0000${revision}`,
+    `${context.organizationId}\u0000telegram\u0000${identity}\u0000${update.update_id}`,
   );
   const photos = Array.isArray(message.photo) ? message.photo : [];
   const candidate = {
@@ -670,7 +672,7 @@ export function normalizeTelegramUpdate(
           `${context.organizationId}\u0000telegram\u0000${chat}:${message.reply_to_message.message_id}`,
         )
       : null,
-    replacesRevision: changed ? 1 : null,
+    replacesRevision: changed ? previousRevision : null,
     original: {
       mediaType: "application/json",
       payload: JSON.stringify({

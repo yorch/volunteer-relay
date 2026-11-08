@@ -44,18 +44,33 @@ describe("intake normalization", () => {
     ).toEqual(parsed.sources.map((s) => s.idempotencyKey));
   });
 
-  it("rejects ambiguous mapped dates and reports unmapped authors row by row", () => {
+  it("uses a selected date order and reports unmapped authors row by row", () => {
     const input =
       '[{"id":"x","author":"Alice","text":"hello","sent":"07/08/2026"},{"id":"y","author":"Eve","text":"hello","sent":"2026-07-08"}]';
     const result = parseJsonImport(input, context, {
       mapping,
       dateFormat: "MM/DD/YYYY",
     });
-    expect(result.sources).toHaveLength(0);
-    expect(result.errors.map((e) => e.code)).toEqual([
-      "invalid_timestamp",
-      "unmapped_author",
-    ]);
+    expect(result.sources).toHaveLength(1);
+    expect(result.sources[0]?.occurredAt).toBe("2026-07-08T07:00:00.000Z");
+    expect(result.errors.map((e) => e.code)).toEqual(["unmapped_author"]);
+  });
+
+  it("honors the caller-selected interpretation of ambiguous slash dates", () => {
+    const input =
+      '[{"id":"x","author":"Alice","text":"hello","sent":"01/02/2026"}]';
+    const us = parseJsonImport(input, context, {
+      mapping,
+      dateFormat: "MM/DD/YYYY",
+    });
+    const eu = parseJsonImport(input, context, {
+      mapping,
+      dateFormat: "DD/MM/YYYY",
+    });
+    expect(us.sources[0]?.occurredAt).toBe("2026-01-02T08:00:00.000Z");
+    expect(eu.sources[0]?.occurredAt).toBe("2026-02-01T08:00:00.000Z");
+    expect(us.errors).toEqual([]);
+    expect(eu.errors).toEqual([]);
   });
 
   it("parses WhatsApp continuation lines in a caller-selected timezone and keeps identity stable", () => {
@@ -134,6 +149,50 @@ describe("intake normalization", () => {
     expect(edited?.revision).toBe(2);
     expect(edited?.replacesRevision).toBe(1);
     expect(edited?.sourceId).toBe(first?.sourceId);
+  });
+
+  it("uses trusted prior Telegram revisions for successive edits and deduplicates update IDs", () => {
+    const sourceContext = {
+      organizationId: "org-a",
+      membershipId: null,
+      timezone: "UTC",
+      receivedAt: context.receivedAt,
+    };
+    const update = (update_id: number, edit_date: number, text: string) =>
+      normalizeTelegramUpdate(
+        {
+          update_id,
+          edited_message: {
+            message_id: 7,
+            date: 1_700_000_000,
+            edit_date,
+            chat: { id: -55 },
+            text,
+          },
+        },
+        sourceContext,
+      );
+    const second = update(13, 1_700_000_100, "edit 1");
+    const replay = update(13, 1_700_000_100, "edit 1");
+    const third = normalizeTelegramUpdate(
+      {
+        update_id: 14,
+        edited_message: {
+          message_id: 7,
+          date: 1_700_000_000,
+          edit_date: 1_700_000_200,
+          chat: { id: -55 },
+          text: "edit 2",
+        },
+      },
+      { ...sourceContext, previousRevision: 2 },
+    );
+    expect(second?.revision).toBe(2);
+    expect(third?.revision).toBe(3);
+    expect(third?.replacesRevision).toBe(2);
+    expect(second?.sourceId).toBe(third?.sourceId);
+    expect(second?.idempotencyKey).toBe(replay?.idempotencyKey);
+    expect(second?.idempotencyKey).not.toBe(third?.idempotencyKey);
   });
 
   it("writes only bounded image content and rejects fake MIME or escaped roots", async () => {
