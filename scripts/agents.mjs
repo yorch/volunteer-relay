@@ -7,6 +7,7 @@ import {
   readFile,
   realpath,
   rename,
+  rmdir,
   unlink,
   writeFile,
 } from "node:fs/promises";
@@ -161,10 +162,101 @@ async function claimed(ctx, id, agent) {
   );
   return { assignment, claim };
 }
+function scopePaths(value) {
+  ensure(
+    Array.isArray(value) && value.length > 0 && value.length <= 64,
+    "Scope requires 1–64 paths",
+  );
+  return [
+    ...new Set(
+      value.map((path) => {
+        ensure(
+          typeof path === "string" &&
+            path.length > 0 &&
+            path.length <= 256 &&
+            !/[\\:*?[\]{}\s]/.test(path) &&
+            [...path].every(
+              (character) =>
+                character.charCodeAt(0) > 31 && character.charCodeAt(0) !== 127,
+            ) &&
+            !isAbsolute(path),
+          "Scope paths must be relative paths without backslashes, globs or whitespace",
+        );
+        const normalized = path.replace(/\/$/, "");
+        ensure(
+          normalized
+            .split("/")
+            .every((part) => part && part !== "." && part !== ".."),
+          "Scope paths must not contain traversal or empty segments",
+        );
+        return normalized;
+      }),
+    ),
+  ];
+}
+async function knownScope(ctx, id) {
+  const scope = await read(taskPath(ctx, id, "scope.json"), null);
+  ensure(
+    scope?.version === 1 && scope.task === id && scope.by === "A",
+    `Unknown coordinator scope for ${id}; publish scope before pipelining`,
+  );
+  return scopePaths(scope.paths);
+}
+function overlaps(left, right) {
+  return left.some((a) =>
+    right.some(
+      (b) => a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`),
+    ),
+  );
+}
+async function taskEntries(ctx) {
+  const result = [];
+  for (const id of await readdir(join(ctx.store, "tasks"))) {
+    if (!/^P\d-\d{2}$/.test(id)) continue;
+    const assignment = await read(taskPath(ctx, id, "assignment.json"), null);
+    if (!assignment) continue;
+    result.push({
+      id,
+      assignment,
+      claim: await read(taskPath(ctx, id, "claim.json"), null),
+      status: await read(taskPath(ctx, id, "status.json"), null),
+      accepted: await read(taskPath(ctx, id, "accepted.json"), null),
+    });
+  }
+  return result;
+}
+async function executionGuard(ctx, id, agent) {
+  const state = await read(join(ctx.store, "supervisor", "state.json"), null);
+  for (const record of Object.values(state?.records ?? {})) {
+    ensure(
+      record.lane !== agent ||
+        record.status !== "running" ||
+        (record.task === id && record.cwd === ctx.root),
+      `Lane ${agent} has another running native record; wait for its checkpoint`,
+    );
+  }
+  for (const entry of await taskEntries(ctx)) {
+    if (entry.id === id) continue;
+    ensure(
+      entry.claim?.worktree !== ctx.root,
+      `Worktree already claimed by ${entry.id}; preserve frozen resources`,
+    );
+    if (entry.accepted || entry.assignment.owner !== agent) continue;
+    ensure(
+      entry.status?.state === "ready",
+      `Lane ${agent} already has active task ${entry.id}`,
+    );
+    ensure(
+      !overlaps(await knownScope(ctx, id), await knownScope(ctx, entry.id)),
+      `Coordinator scopes overlap with ${entry.id}`,
+    );
+  }
+}
 const help = `Harness-neutral local coordination (Node 26.11.1)
   agents init
   agents prompt A|B|C|D|E|F|R|V
   agents assign --agent A --task P1-01 --owner B --ref HEAD --text "Approved slice"
+  agents scope --agent A --task P1-01 --paths-json '["packages/example"]'
   agents claim --agent B --task P1-01
   agents status --agent B --task P1-01 --state working|blocked|ready --text "Progress/handoff" [--commit HEAD]
   agents send --agent D --to B|all --kind question|answer|update|handoff|request [--task P2-01] [--reply-to UUID] --text "Message"
@@ -190,6 +282,7 @@ export async function main(args = process.argv.slice(2)) {
   const valid = [
     "init",
     "assign",
+    "scope",
     "claim",
     "status",
     "send",
@@ -203,6 +296,26 @@ export async function main(args = process.argv.slice(2)) {
   const o = options(rest);
   const ctx = await context();
   await prepare(ctx);
+  const lock = join(ctx.store, "board-mutation.lock");
+  const mutating = ["scope", "assign", "claim", "status"].includes(command);
+  if (mutating) {
+    try {
+      await mkdir(lock, { mode: 0o700 });
+    } catch (error) {
+      if (error.code === "EEXIST")
+        throw new Error(
+          "Board mutation busy; retry after current command finishes (inspect stale lock before recovery)",
+        );
+      throw error;
+    }
+  }
+  try {
+    return await execute(command, o, ctx);
+  } finally {
+    if (mutating) await rmdir(lock);
+  }
+}
+async function execute(command, o, ctx) {
   if (command === "init")
     return { store: ctx.store, gitCommonDir: ctx.common, schemaVersion: 1 };
   if (command === "board" || command === "brief") {
@@ -312,6 +425,36 @@ export async function main(args = process.argv.slice(2)) {
     });
   }
   const id = task(o.task);
+  if (command === "scope") {
+    ensure(agent === "A", "Only coordinator A publishes scope");
+    const paths = scopePaths(JSON.parse(o["paths-json"]));
+    // Amendments cannot make existing same-lane pipelined submissions overlap.
+    const entries = await taskEntries(ctx);
+    const own = entries.find((entry) => entry.id === id);
+    if (own && !own.accepted) {
+      for (const entry of entries) {
+        if (
+          entry.id === id ||
+          entry.accepted ||
+          entry.assignment.owner !== own.assignment.owner
+        )
+          continue;
+        ensure(
+          !overlaps(paths, await knownScope(ctx, entry.id)),
+          `Coordinator scopes overlap with ${entry.id}`,
+        );
+      }
+    }
+    const scope = {
+      version: 1,
+      task: id,
+      paths,
+      at: new Date().toISOString(),
+      by: "A",
+    };
+    await put(taskPath(ctx, id, "scope.json"), scope);
+    return scope;
+  }
   if (command === "assign") {
     ensure(agent === "A", "Only coordinator A assigns tasks");
     const owner = lane(o.owner);
@@ -324,19 +467,28 @@ export async function main(args = process.argv.slice(2)) {
       ["rev-parse", "--verify", `${o.ref}^{commit}`],
       ctx.root,
     );
+    const primaryHead = git(["rev-parse", "HEAD"], dirname(ctx.common));
+    try {
+      git(["merge-base", "--is-ancestor", baseCommit, primaryHead], ctx.root);
+    } catch {
+      throw new Error("Assignment base must be primary HEAD or its ancestor");
+    }
     const card = git(["show", `${baseCommit}:docs/tasks/${id}.md`], ctx.root);
     const cardOwner = card.match(/Owner(?: lane)?: ([A-F])\b/);
     ensure(
       cardOwner?.[1] === owner,
       "Owner does not match the committed task card",
     );
-    for (const other of await readdir(join(ctx.store, "tasks"))) {
-      if (!/^P\d-\d{2}$/.test(other) || other === id) continue;
-      const current = await read(taskPath(ctx, other, "assignment.json"), null);
-      const accepted = await read(taskPath(ctx, other, "accepted.json"), null);
+    for (const entry of await taskEntries(ctx)) {
+      if (entry.id === id || entry.assignment.owner !== owner || entry.accepted)
+        continue;
       ensure(
-        !current || current.owner !== owner || accepted,
-        `Lane ${owner} already has active task ${other}`,
+        entry.status?.state === "ready",
+        `Lane ${owner} already has active task ${entry.id}`,
+      );
+      ensure(
+        !overlaps(await knownScope(ctx, id), await knownScope(ctx, entry.id)),
+        `Coordinator scopes overlap with ${entry.id}`,
       );
     }
     const assignment = {
@@ -360,6 +512,7 @@ export async function main(args = process.argv.slice(2)) {
       ["merge-base", "--is-ancestor", assignment.baseCommit, "HEAD"],
       ctx.root,
     );
+    await executionGuard(ctx, id, agent);
     const branch = git(["branch", "--show-current"], ctx.root);
     ensure(branch, "Claim requires a named branch");
     const claim = {
@@ -496,6 +649,7 @@ export async function main(args = process.argv.slice(2)) {
     ["working", "blocked", "ready"].includes(o.state),
     "State must be working, blocked or ready",
   );
+  if (o.state === "working") await executionGuard(ctx, id, agent);
   let commit = null;
   if (o.state === "ready") {
     ensure(o.commit, "Ready requires --commit HEAD (or exact SHA)");

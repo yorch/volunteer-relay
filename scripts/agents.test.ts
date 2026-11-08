@@ -641,3 +641,287 @@ it("offers a compact orchestration brief without replaying all historical messag
     expect(brief.messages).toBeUndefined();
   });
 });
+
+function scope(root: string, task: string, paths: string[]) {
+  return ok(
+    root,
+    "scope",
+    "--agent",
+    "A",
+    "--task",
+    task,
+    "--paths-json",
+    JSON.stringify(paths),
+  );
+}
+function second(root: string, ref = "HEAD") {
+  return cli(
+    root,
+    "assign",
+    "--agent",
+    "A",
+    "--task",
+    "P1-02",
+    "--owner",
+    "B",
+    "--ref",
+    ref,
+    "--text",
+    "Independent synthetic slice",
+  );
+}
+const claimSecond = ["claim", "--agent", "B", "--task", "P1-02"];
+const working = [
+  "status",
+  "--agent",
+  "B",
+  "--task",
+  "P1-01",
+  "--state",
+  "working",
+  "--text",
+  "Required revision",
+];
+
+it("allows disjoint frozen submissions while preserving tips and original resources", async () => {
+  await fixture(({ root, b, b2 }) => {
+    assign(root);
+    scope(root, "P1-01", ["packages/first/"]);
+    scope(root, "P1-02", ["packages/second"]);
+    ok(b, ...claim);
+    writeFileSync(
+      join(b, "first.txt"),
+      "Independent authored synthetic work\n",
+    );
+    git(b, "add", ".");
+    git(b, "commit", "-qm", "feat(test): freeze first submission");
+    ok(b, ...ready);
+    const frozen = ok(root, "board").tasks[0];
+    expect(second(root).code).toBe(0);
+    expect(cli(b, ...claimSecond).error).toContain("Worktree already claimed");
+    ok(b2, ...claimSecond);
+    expect(cli(b, ...working).error).toContain("already has active task P1-02");
+    expect(ok(root, "board").tasks[0]).toEqual(frozen);
+    ok(b2, ...ready.map((v) => (v === "P1-01" ? "P1-02" : v)));
+    ok(b, ...working);
+    expect(
+      cli(
+        b2,
+        "status",
+        "--agent",
+        "B",
+        "--task",
+        "P1-02",
+        "--state",
+        "working",
+        "--text",
+        "Concurrent revision",
+      ).code,
+    ).toBe(1);
+    expect(
+      cli(
+        root,
+        "scope",
+        "--agent",
+        "A",
+        "--task",
+        "P1-02",
+        "--paths-json",
+        '["packages/first/child"]',
+      ).error,
+    ).toContain("overlap");
+  });
+});
+
+it.each(["assigned", "claimed", "working", "blocked"])(
+  "refuses a second assignment while the first is %s",
+  async (state) => {
+    await fixture(({ root, b }) => {
+      assign(root);
+      scope(root, "P1-01", ["first"]);
+      scope(root, "P1-02", ["second"]);
+      if (state !== "assigned") ok(b, ...claim);
+      if (["working", "blocked"].includes(state))
+        ok(
+          b,
+          "status",
+          "--agent",
+          "B",
+          "--task",
+          "P1-01",
+          "--state",
+          state,
+          "--text",
+          "Synthetic state",
+        );
+      expect(second(root).error).toContain("already has active task");
+    });
+  },
+);
+
+it("fails closed for unknown scopes and segment overlaps, but permits similar names", async () => {
+  await fixture(({ root, b }) => {
+    assign(root);
+    ok(b, ...claim);
+    ok(b, ...ready);
+    expect(second(root).error).toContain("Unknown coordinator scope");
+    scope(root, "P1-02", ["packages/intake"]);
+    expect(second(root).error).toContain("Unknown coordinator scope");
+    scope(root, "P1-01", ["packages/intake/child"]);
+    expect(second(root).error).toContain("overlap");
+    scope(root, "P1-01", ["packages/intake"]);
+    expect(second(root).error).toContain("overlap");
+    scope(root, "P1-01", ["packages/intake-other"]);
+    expect(second(root).code).toBe(0);
+  });
+});
+
+it("validates coordinator-only normalized scope metadata without executing input", async () => {
+  await fixture(({ root }) => {
+    for (const agent of ["B", "R", "V"]) {
+      expect(
+        cli(
+          root,
+          "scope",
+          "--agent",
+          agent,
+          "--task",
+          "P1-01",
+          "--paths-json",
+          '["safe"]',
+        ).error,
+      ).toMatch(/Only coordinator A|Verification roles R\/V/);
+    }
+    for (const paths of [
+      [],
+      ["/absolute"],
+      ["../escape"],
+      ["a/../b"],
+      ["a//b"],
+      ["a\\b"],
+      ["a/**"],
+      ["."],
+      ["a/./b"],
+      ["C:drive"],
+      ["x".repeat(257)],
+      Array.from({ length: 65 }, (_, i) => `path${i}`),
+    ]) {
+      expect(
+        cli(
+          root,
+          "scope",
+          "--agent",
+          "A",
+          "--task",
+          "P1-01",
+          "--paths-json",
+          JSON.stringify(paths),
+        ).code,
+      ).toBe(1);
+    }
+    expect(scope(root, "P1-01", ["safe/", "safe", "safe/sub"]).paths).toEqual([
+      "safe",
+      "safe/sub",
+    ]);
+    expect(scope(root, "P1-01", ["other"]).version).toBe(1);
+    expect(git(root, "status", "--porcelain")).toBe("");
+  });
+});
+
+it("rejects an unaccepted author baseline even when its committed card matches", async () => {
+  await fixture(({ root, b }) => {
+    writeFileSync(join(b, "unaccepted.txt"), "Unaccepted synthetic source\n");
+    git(b, "add", ".");
+    git(b, "commit", "-qm", "feat(test): add unaccepted work");
+    expect(second(root, git(b, "rev-parse", "HEAD")).error).toContain(
+      "primary HEAD or its ancestor",
+    );
+    expect(second(root, git(root, "rev-parse", "HEAD")).code).toBe(0);
+  });
+});
+
+it("refuses claims and revisions while a different native task is running", async () => {
+  await fixture(({ root, b, b2 }) => {
+    assign(root);
+    scope(root, "P1-01", ["first"]);
+    scope(root, "P1-02", ["second"]);
+    ok(b, ...claim);
+    ok(b, ...ready);
+    expect(second(root).code).toBe(0);
+    const directory = join(root, ".relay-coordination/supervisor");
+    mkdirSync(directory, { recursive: true });
+    const state = join(directory, "state.json");
+    writeFileSync(
+      state,
+      JSON.stringify({
+        records: {
+          original: {
+            lane: "B",
+            task: "P1-01",
+            cwd: b,
+            status: "running",
+          },
+        },
+      }),
+    );
+    expect(cli(b2, ...claimSecond).error).toContain("running native record");
+    writeFileSync(
+      state,
+      JSON.stringify({
+        records: {
+          next: {
+            lane: "B",
+            task: "P1-02",
+            cwd: b2,
+            status: "running",
+          },
+        },
+      }),
+    );
+    ok(b2, ...claimSecond);
+    expect(cli(b, ...working).error).toContain("running native record");
+  });
+});
+
+it("serializes concurrent different-task claims instead of allowing two writers", async () => {
+  await fixture(async ({ root, b, b2 }) => {
+    assign(root);
+    scope(root, "P1-01", ["first"]);
+    scope(root, "P1-02", ["second"]);
+    ok(b, ...claim);
+    ok(b, ...ready);
+    expect(second(root).code).toBe(0);
+    const results = await Promise.all([
+      race(b, ...working),
+      race(b2, ...claimSecond),
+    ]);
+    expect(
+      results.filter((result) => result.code === 0).length,
+    ).toBeLessThanOrEqual(1);
+    // The revision may see the queued assignment before the new claim wins the lock.
+    if (results.every((result) => result.code !== 0)) ok(b2, ...claimSecond);
+    const tasks = ok(root, "board").tasks;
+    expect(
+      tasks.filter(
+        (entry: { status: { state: string } | null; claim: unknown }) =>
+          entry.status?.state === "working" || (entry.claim && !entry.status),
+      ).length,
+    ).toBe(1);
+  });
+});
+
+it("does not require pipeline scope for accepted tasks or ordinary ancestor assignments", async () => {
+  await fixture(({ root, b, b2 }) => {
+    assign(root);
+    ok(b, ...claim);
+    ok(b, ...ready);
+    ok(root, ...accept);
+    const ancestor = git(root, "rev-parse", "HEAD");
+    writeFileSync(join(root, "coordinator.txt"), "Synthetic approved update\n");
+    git(root, "add", ".");
+    git(root, "commit", "-qm", "chore(test): advance approved baseline");
+    expect(second(root, ancestor).code).toBe(0);
+    expect(cli(b, ...claimSecond).error).toContain("Worktree already claimed");
+    ok(b2, ...claimSecond);
+  });
+});
