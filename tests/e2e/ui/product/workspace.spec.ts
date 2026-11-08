@@ -731,6 +731,11 @@ test("user with no organizations sees the not-in-an-organization page", async ({
       json: { ok: true, value: { currentOrganizationId: null, options: [] } },
     }),
   );
+  await page.route("**/api/auth/invitations", (route) =>
+    route.fulfill({
+      json: { ok: true, value: { emailVerified: true, invitations: [] } },
+    }),
+  );
   await page.route("**/api/auth/sign-out", (route) =>
     route.fulfill({ json: { ok: true } }),
   );
