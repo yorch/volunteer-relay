@@ -91,7 +91,7 @@ function render() {
   const headless = data.headless;
   $("headless-status").textContent = headless?.state ?? "not-started";
   $("headless-note").textContent = headless?.checkedAt
-    ? `Checked ${date(headless.checkedAt)} · Held lanes: ${headless.held.join(", ") || "none"} · Loaded config: ${headless.configState ?? "unknown"}`
+    ? `Checked ${date(headless.checkedAt)} · Held lanes: ${headless.held.join(", ") || "none"} · Loaded config: ${headless.configState ?? "unknown"} · Reload: ${headless.configReload ? `${headless.configReload.outcome}${headless.configReload.errorCode ? ` (${headless.configReload.errorCode})` : ""} at ${date(headless.configReload.evaluatedAt)}` : "not reported"}`
     : "Not started. Dedicated sessions require an exclusive ownership handover.";
   const budgets = headless?.budgets;
   $("headless-budgets").textContent = budgets

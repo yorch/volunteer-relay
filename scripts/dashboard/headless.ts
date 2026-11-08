@@ -30,6 +30,25 @@ export function projectHeadless(
   return {
     state,
     checkedAt: value?.checkedAt ?? null,
+    configReload:
+      value?.configReload &&
+      ["applied", "unchanged", "invalid", "deferred"].includes(
+        value.configReload.outcome,
+      )
+        ? {
+            outcome: value.configReload.outcome,
+            errorCode: ["INVALID_CONFIG", "RESTART_REQUIRED"].includes(
+              value.configReload.errorCode ?? "",
+            )
+              ? value.configReload.errorCode
+              : null,
+            evaluatedAt: Number.isFinite(
+              Date.parse(value.configReload.evaluatedAt),
+            )
+              ? value.configReload.evaluatedAt
+              : null,
+          }
+        : null,
     held: value?.held ?? [],
     budgets: config
       ? {

@@ -134,3 +134,24 @@ it("labels configured harness/model separately from legacy native observations",
     observedModel: null,
   });
 });
+
+it("projects only fixed reload outcomes and safe error codes", () => {
+  const observed = {
+    ...state,
+    configReload: {
+      outcome: "invalid" as const,
+      errorCode: "INVALID_CONFIG",
+      evaluatedAt: new Date(now).toISOString(),
+      private: "SECRET_SENTINEL",
+    },
+  };
+  expect(projectHeadless(config, observed, now).configReload).toEqual({
+    outcome: "invalid",
+    errorCode: "INVALID_CONFIG",
+    evaluatedAt: new Date(now).toISOString(),
+  });
+  observed.configReload.errorCode = "SECRET_SENTINEL";
+  expect(
+    JSON.stringify(projectHeadless(config, observed, now).configReload),
+  ).not.toContain("SECRET_SENTINEL");
+});
