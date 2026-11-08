@@ -1,0 +1,29 @@
+.form {
+  display: grid;
+  gap: 1rem;
+}
+.fields {
+  display: grid;
+  gap: 1rem;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.feedback {
+  overflow-wrap: anywhere;
+}
+.feedback:empty {
+  display: none;
+}
+.feedback:focus-visible {
+  outline: 3px solid #8b4b17;
+  outline-offset: 3px;
+}
+.preview {
+  max-width: 44rem;
+  margin: auto;
+  padding: 1rem;
+  display: grid;
+  gap: 1.5rem;
+}
