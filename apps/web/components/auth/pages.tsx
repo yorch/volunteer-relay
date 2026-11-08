@@ -16,6 +16,7 @@ import {
   VerificationRequestForm,
 } from ".";
 import styles from "./auth.module.css";
+import { destinationFromSearch } from "./next-path";
 import { loadOrganizations, mutateAuth } from "./transport";
 
 function Shell({ title, children }: { title: string; children: ReactNode }) {
@@ -53,7 +54,10 @@ export function SignInPage() {
       <SignInForm
         onSignIn={async (command) => {
           const result = await mutateAuth("sign-in", command);
-          if (result.ok) window.location.assign("/account");
+          if (result.ok)
+            window.location.assign(
+              destinationFromSearch(window.location.search),
+            );
           return result;
         }}
       />
@@ -128,9 +132,12 @@ export function InvitationPage({ invitationId }: { invitationId: string }) {
       </p>
       <InvitationAcceptanceForm
         invitationId={invitationId}
-        onAcceptInvitation={(command) =>
-          mutateAuth("invitations/accept", command)
-        }
+        onAcceptInvitation={async (command) => {
+          const result = await mutateAuth("invitations/accept", command);
+          // The server has already made the accepted organization active.
+          if (result.ok) window.location.assign("/workspace");
+          return result;
+        }}
       />
     </Shell>
   );
@@ -187,15 +194,17 @@ export function AccountPage() {
                 "organizations/select",
                 command,
               );
-              // Keep the form mounted so its completion status receives focus.
-              // Re-read the projection; a successful mutation alone cannot invent choices.
-              if (selected.ok) setResult(await loadOrganizations());
+              // The server has made the organization active; continue there.
+              if (selected.ok) window.location.assign("/workspace");
               return selected;
             }}
           />
           <Button onClick={reload}>Refresh organizations</Button>
         </>
       )}
+      <p>
+        <a href="/workspace">Open workspace</a>
+      </p>
       <SignOutForm
         onSignOut={async () => {
           const signedOut = await mutateAuth("sign-out", {});

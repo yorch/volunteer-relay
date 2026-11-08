@@ -235,18 +235,42 @@ export function InvitationAcceptanceForm({
   invitationId: string;
   onAcceptInvitation: Command<AuthInvitationAcceptance>;
 }) {
+  const [code, setCode] = useState<string | null>(null);
   return (
-    <CommandForm
-      key={invitationId}
-      title="Accept invitation"
-      action="Accept invitation"
-      success="Invitation request completed."
-      disabled={!invitationId}
-      submit={() => onAcceptInvitation({ invitationId })}
-    >
-      <p>The server will check this invitation and your current identity.</p>
-      {!invitationId && <p>An invitation is required.</p>}
-    </CommandForm>
+    <>
+      <CommandForm
+        key={invitationId}
+        title="Accept invitation"
+        action="Accept invitation"
+        success="Invitation request completed."
+        disabled={!invitationId}
+        submit={async () => {
+          setCode(null);
+          const result = await onAcceptInvitation({ invitationId });
+          if (!result.ok) setCode(result.error.code);
+          return result;
+        }}
+      >
+        <p>The server will check this invitation and your current identity.</p>
+        {!invitationId && <p>An invitation is required.</p>}
+      </CommandForm>
+      {code === "UNAUTHENTICATED" && (
+        <p>
+          <a
+            href={`/sign-in?next=${encodeURIComponent(
+              `/invitations/${invitationId}`,
+            )}`}
+          >
+            Sign in to accept this invitation
+          </a>
+        </p>
+      )}
+      {code === "FORBIDDEN" && (
+        <p>
+          <a href="/verify-email">Verify your email address</a>, then try again.
+        </p>
+      )}
+    </>
   );
 }
 export function OrganizationSwitcher({

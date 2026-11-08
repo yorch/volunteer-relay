@@ -19,10 +19,16 @@ import {
   useRef,
   useState,
 } from "react";
-import { errorMessage, request } from "../api-client";
+import {
+  errorMessage,
+  onWorkspaceChanged,
+  request,
+  setRenderedOrganization,
+} from "../api-client";
 import { loadOrganizations, mutateAuth } from "../auth/transport";
 import { Card as BaseCard, Live } from "../card";
 import { StaffShell, VolunteerShell } from "../layout";
+import { splitOrganizationHint } from "../org-hint";
 import { Members, Notifications, Settings } from "./admin";
 import { Delivery, History } from "./operations";
 import styles from "./product.module.css";
@@ -113,10 +119,91 @@ function Organization() {
     </div>
   );
 }
+type OrgOption = { organizationId: string; name: string; role: string };
+function OrganizationPicker({ options }: { options: readonly OrgOption[] }) {
+  const [chosen, setChosen] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  return (
+    <main className={styles.standalone}>
+      <h1>Choose an organization</h1>
+      <form
+        aria-label="Choose an organization"
+        aria-busy={pending}
+        onSubmit={async (event) => {
+          event.preventDefault();
+          if (pending || !chosen) return;
+          setPending(true);
+          setError("");
+          const result = await mutateAuth("organizations/select", {
+            organizationId: chosen,
+          });
+          if (result.ok) window.location.href = "/workspace";
+          else {
+            setError(errorMessage(result.error.code));
+            setPending(false);
+          }
+        }}
+      >
+        <fieldset disabled={pending}>
+          <legend>Select an organization to open its workspace.</legend>
+          {options.map((option) => (
+            <label key={option.organizationId} style={{ display: "block" }}>
+              <input
+                type="radio"
+                name="organizationId"
+                value={option.organizationId}
+                checked={chosen === option.organizationId}
+                onChange={() => setChosen(option.organizationId)}
+              />{" "}
+              {option.name} ({option.role})
+            </label>
+          ))}
+        </fieldset>
+        <Live kind="alert">{error}</Live>
+        <button type="submit" disabled={pending || !chosen}>
+          {pending ? "Opening…" : "Open workspace"}
+        </button>
+      </form>
+    </main>
+  );
+}
+function NoOrganization() {
+  const [error, setError] = useState("");
+  return (
+    <main className={styles.standalone}>
+      <h1>You&apos;re not in an organization yet</h1>
+      <p>
+        An owner or coordinator needs to invite you. Check your email for an
+        invitation, and make sure your email address is{" "}
+        <a href="/verify-email">verified</a>. Then open the invitation link to
+        join.
+      </p>
+      <Live kind="alert">{error}</Live>
+      <button
+        type="button"
+        onClick={async () => {
+          setError("");
+          const result = await mutateAuth("sign-out", {});
+          if (result.ok) window.location.assign("/sign-in");
+          else setError(errorMessage(result.error.code));
+        }}
+      >
+        Sign out
+      </button>
+    </main>
+  );
+}
 export function ProductWorkspace({ page }: { page: Page | "home" }) {
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
-  const [chooseOrganization, setChooseOrganization] = useState(false);
+  const [orgOptions, setOrgOptions] = useState<readonly OrgOption[] | null>(
+    null,
+  );
+  const [noOrganization, setNoOrganization] = useState(false);
+  const [workspaceChanged, setWorkspaceChanged] = useState(false);
+  const hintResolved = useRef(false);
+  useEffect(() => onWorkspaceChanged(() => setWorkspaceChanged(true)), []);
   const [error, setError] = useState("");
   // Kept beside the message so the recovery link can match the reason: a
   // signed-in user without usable membership must not be sent to /sign-in,
@@ -128,7 +215,11 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
   );
   const refresh = useCallback(async () => {
     const result = await request<WorkspaceSnapshot>(productEndpoints.workspace);
-    setChooseOrganization(false);
+    setOrgOptions(null);
+    setNoOrganization(false);
+    setRenderedOrganization(
+      result.ok ? result.value.organization.organizationId : null,
+    );
     if (result.ok) {
       setSnapshot(result.value);
       setError("");
@@ -139,18 +230,48 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
       setErrorCode(result.error.code);
       if (result.error.code === "FORBIDDEN") {
         const choices = await loadOrganizations();
-        if (
-          choices.ok &&
-          choices.value.currentOrganizationId === null &&
-          choices.value.options.length > 1
-        )
-          setChooseOrganization(true);
+        if (choices.ok && choices.value.currentOrganizationId === null) {
+          if (choices.value.options.length > 0)
+            setOrgOptions(choices.value.options);
+          else setNoOrganization(true);
+        }
       }
     }
     setLoading(false);
   }, []);
   useEffect(() => {
-    void refresh();
+    // Run once (also under StrictMode): resolve a deep-link ?org= hint before
+    // any snapshot is fetched so another organization's data never flashes.
+    if (hintResolved.current) return;
+    hintResolved.current = true;
+    const { present, hint, rest } = splitOrganizationHint(
+      window.location.search,
+    );
+    if (!present) {
+      void refresh();
+      return;
+    }
+    const clean = `${window.location.pathname}${rest}${window.location.hash}`;
+    window.history.replaceState(null, "", clean);
+    if (!hint) {
+      void refresh();
+      return;
+    }
+    void (async () => {
+      const choices = await loadOrganizations();
+      const current = choices.ok ? choices.value.currentOrganizationId : null;
+      if (current !== hint) {
+        const selected = await mutateAuth("organizations/select", {
+          organizationId: hint,
+        });
+        // The URL no longer carries the hint, so this reload cannot loop.
+        if (selected.ok) {
+          window.location.replace(clean);
+          return;
+        }
+      }
+      await refresh();
+    })();
   }, [refresh]);
   const mutate = async (
     endpoint: string,
@@ -191,14 +312,9 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
         Loading workspace…
       </main>
     );
-  if (!snapshot && chooseOrganization)
-    return (
-      <main className={styles.standalone}>
-        <h1>Choose an organization</h1>
-        <p>Select an organization to open its workspace.</p>
-        <a href="/account">Choose organization in your account</a>
-      </main>
-    );
+  if (!snapshot && orgOptions)
+    return <OrganizationPicker options={orgOptions} />;
+  if (!snapshot && noOrganization) return <NoOrganization />;
   if (!snapshot)
     return (
       <main className={styles.standalone}>
@@ -285,6 +401,17 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
         attempts.current = {};
       }}
     >
+      {workspaceChanged && (
+        <div role="alert" className={styles.error}>
+          <p>The workspace changed in another tab. Refresh to continue.</p>
+          <button
+            type="button"
+            onClick={() => window.location.assign("/workspace")}
+          >
+            Reload workspace
+          </button>
+        </div>
+      )}
       <Live kind="alert" className={styles.error}>
         {error}
       </Live>
