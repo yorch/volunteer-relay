@@ -53,6 +53,43 @@ jobs:
       - run: node node_modules/@playwright/test/cli.js install --with-deps chromium
       - run: bun run test:e2e
 
+  # Publishes ghcr.io/<owner>/<repo>-{web,worker} for linux/amd64 and
+  # linux/arm64 on native runners, only after every gate passes on main or a
+  # v* tag.
+  publish:
+    needs: [quality, compose, browser, postgres-integration]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    strategy:
+      matrix:
+        target: [web, worker]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: docker/github-builder/.github/workflows/build.yml@cbc9d42f8c89a55623392aadd03600965b80e963 # v1.18.1
+    with:
+      output: image
+      push: true
+      platforms: linux/amd64,linux/arm64
+      file: infra/Dockerfile
+      target: ${{ matrix.target }}
+      cache: true
+      cache-scope: ${{ matrix.target }}
+      set-meta-labels: true
+      set-meta-annotations: true
+      meta-images: ghcr.io/${{ github.repository }}-${{ matrix.target }}
+      meta-tags: |
+        type=raw,value=latest,enable={{is_default_branch}}
+        type=ref,event=branch
+        type=sha
+        type=semver,pattern={{version}}
+        type=semver,pattern={{major}}.{{minor}}
+    secrets:
+      registry-auths: |
+        - registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
   postgres-integration:
     runs-on: ubuntu-latest
     services:

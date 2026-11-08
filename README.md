@@ -1,6 +1,6 @@
 # Volunteer Relay
 
-Multi-organization volunteer operations, currently **foundation and first implementation slices**. This baseline contains contracts, synthetic fixtures, web/worker skeletons, an auth/tenant persistence slice and a provider-free extraction/evaluation slice. Public authentication routes/UI, the contribution ledger and volunteer workflows remain future work. MIT licensed.
+Multi-organization volunteer operations, currently through **milestone M1** (identity, tenancy and domain persistence). This baseline contains contracts, synthetic fixtures, authentication routes/pages, tenant-scoped source/outbox persistence, the contribution ledger and need lifecycle domain services, a provider-free extraction/evaluation slice and an idle worker skeleton. The end-to-end submit/extract/review workflow, ledger/need UI and later channels remain future work; see [status](docs/STATUS.md). MIT licensed.
 
 ## Local setup
 
@@ -26,6 +26,15 @@ docker compose down
 ```
 
 Use either host web/worker or container web/worker to avoid port conflicts. If a host port is occupied, set `RELAY_POSTGRES_PORT`, `RELAY_WEB_PORT`, `RELAY_MAILPIT_UI_PORT` or `RELAY_SMTP_PORT` in a Compose env file and pass `docker compose --env-file <path> ...`. Host-run processes must use matching DATABASE_URL/APP_URL/SMTP_PORT values; container-internal service ports stay fixed. Compose persists database and private attachment volumes; `down` retains data. The Dockerfiles install with Bun and launch with Node. Local Compose runs the Next development server with NODE_ENV=development; the image build also checks the production bundle. Production reverse proxy, migrations gating, backup and least-privilege deployment are deferred to M7.
+
+### Published images
+
+CI publishes multi-architecture (linux/amd64, linux/arm64) images to GitHub Container Registry after all gates pass: `ghcr.io/yorch/volunteer-relay-web` and `ghcr.io/yorch/volunteer-relay-worker`. Tags are `latest` and `main` for the default branch, `sha-<commit>` for every published commit, and `X.Y.Z` / `X.Y` for `vX.Y.Z` release tags. Images run as the unprivileged `node` user; the web image serves the production Next build on port 3000 and both expect the same environment as Compose (`DATABASE_URL` and the variables in `.env.example`). They are pre-M7 builds, not a hardened production deployment.
+
+```sh
+docker pull ghcr.io/yorch/volunteer-relay-web:latest
+docker pull ghcr.io/yorch/volunteer-relay-worker:latest
+```
 
 ## Commands and boundaries
 
