@@ -5,7 +5,11 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import { focusCss, focusTransform } from "../lib/focus-transform.ts";
+import {
+  focusCss,
+  focusOrigin,
+  focusTransform,
+} from "../lib/focus-transform.ts";
 import type { Focus } from "../lib/schema.ts";
 import { theme, typography } from "../theme.ts";
 
@@ -31,6 +35,7 @@ export function ProductFrame({
   const { fps } = useVideoConfig();
   const transform = focusTransform(frame / fps, focus);
   const css = focusCss(transform);
+  const transformOrigin = focusOrigin(transform);
   return (
     <AbsoluteFill style={{ background: theme.ink }}>
       {missing || !captureFile ? (
@@ -51,6 +56,7 @@ export function ProductFrame({
         <AbsoluteFill
           style={{
             transform: css,
+            transformOrigin,
           }}
         >
           <OffthreadVideo

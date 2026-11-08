@@ -52,7 +52,7 @@ bun run video:validate
 ```
 
 The render path normalises narration to −16 LUFS per scene, limits true peaks and
-adds sparse UI click/confirm accents tied to real action markers. Annotation
-spotlights are implemented but disabled in this cut: the workspace scrolls its
-panes independently, so static boxes drift; the footage instead shows real cursor
-movement, clicks and typing. The programme is 157.30 s, under the 180 s limit.
+adds sparse UI click/confirm accents tied to real action markers. Spotlights are enabled only on page-level headings, which sit outside every
+scrolling pane; inner-element boxes drift in this workspace, so they are not
+annotated. The footage shows real cursor movement, clicks and typing, and S04
+ends by opening the visit's original evidence. The programme is 157.30 s, under the 180 s limit.

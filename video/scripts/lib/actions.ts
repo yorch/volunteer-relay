@@ -12,9 +12,9 @@ import { readTotals } from "./totals.ts";
 /**
  * Typed capture actions, one per product scene. Each entry proves the visible
  * state it records, performs the action with a visible pointer and real typing,
- * records the on-screen regions the composition annotates, and asserts persisted
- * totals. A failed assertion aborts the take instead of rendering a plausible
- * but wrong scene.
+ * records only *stable* element boxes (page-level headings: the workspace scrolls
+ * its panes, so inner elements drift), and asserts persisted totals. A failed
+ * assertion aborts the take instead of rendering a plausible but wrong scene.
  */
 
 export interface ActionContext {
@@ -22,15 +22,10 @@ export interface ActionContext {
   target: CaptureTarget;
   scenario: RecordingScenario;
   expected: ExpectedResults;
-  /** Records a timestamped action marker for the capture manifest. */
   mark: (label: string) => void;
-  /** Moves the visible pointer, then clicks. */
   click: (locator: Locator) => Promise<void>;
-  /** Moves the pointer to the field and types at a human pace. */
   typeInto: (locator: Locator, text: string) => Promise<void>;
-  /** Clicks the field, then sets a non-text value (dates, selects). */
   fill: (locator: Locator, value: string) => Promise<void>;
-  /** Records one element (or the union of several) for spotlight annotation. */
   region: (label: string, locators: Locator | Locator[]) => Promise<void>;
 }
 
@@ -84,6 +79,11 @@ async function selectReviewItem(
     .waitFor();
 }
 
+/** The page heading is outside every scroll container: safe to annotate. */
+function pageHeading(context: ActionContext): Locator {
+  return context.page.getByRole("heading", { level: 1 });
+}
+
 export const sceneActions: Record<string, SceneAction> = {
   S02: {
     startsFrom: "baseline",
@@ -99,14 +99,9 @@ export const sceneActions: Record<string, SceneAction> = {
         throw new Error(
           `The review queue count is not the authored baseline: ${text}`,
         );
-      await context.region(
-        "queue",
-        page
-          .getByRole("heading", { name: /Awaiting review/ })
-          .locator("xpath=ancestor::section[1]"),
-      );
+      await context.region("heading", pageHeading(context));
       await context.click(
-        page.locator('input[name="search"], input[type="search"]'),
+        page.locator('input[name="search"], input[type="search"]').first(),
       );
       await page.keyboard.press("Escape");
       mark("queue-verified");
@@ -120,15 +115,13 @@ export const sceneActions: Record<string, SceneAction> = {
       mark("inbox-ready");
       await selectReviewItem(context, SHARED_REVIEW_TEXT);
       mark("review-opened");
-      const original = page.getByRole("heading", { name: "Original update" });
-      await original.waitFor();
+      await page.getByRole("heading", { name: "Original update" }).waitFor();
       const evidence = page
         .locator("p")
         .filter({ hasText: "planted seedlings" })
         .first();
       if ((await evidence.count()) === 0)
         throw new Error("The original update text is not visible");
-
       const durations = page.getByLabel(/Duration in minutes/);
       const count = await durations.count();
       if (count < 2)
@@ -143,21 +136,7 @@ export const sceneActions: Record<string, SceneAction> = {
       await context.click(durations.nth(1));
       await page.keyboard.press("Tab");
       mark("proposal-verified");
-      // Record after the interaction settles, so boxes match the final view.
-      await context.region("evidence", evidence);
-      await context.region("contributions", [
-        durations.nth(0),
-        durations.nth(1),
-      ]);
-      await context.region(
-        "proposal",
-        page
-          .locator("section")
-          .filter({
-            has: page.getByRole("heading", { name: "Proposed fields" }),
-          })
-          .first(),
-      );
+      await context.region("heading", pageHeading(context));
     },
   },
   S04: {
@@ -168,12 +147,12 @@ export const sceneActions: Record<string, SceneAction> = {
       await selectReviewItem(context, SHARED_REVIEW_TEXT);
       mark("proposal-open");
       const accept = page.getByRole("button", { name: "Accept proposal" });
-      await context.region("accept", accept);
       await context.click(accept);
       await page.getByText("Proposal accepted.").waitFor();
       mark("accepted");
-      // Navigate by clicking the real nav item, but never depend on SPA timing:
-      // if the client route does not settle, load the page directly.
+
+      // Navigate by clicking the real nav item; fall back to a direct load so
+      // client-route timing can never stall the take.
       await context.click(
         page.getByRole("link", { name: "Activities" }).first(),
       );
@@ -188,14 +167,20 @@ export const sceneActions: Record<string, SceneAction> = {
         .getByRole("heading", { name: "Contribution ledger" })
         .waitFor({ timeout: 20_000 });
       mark("ledger-visible");
-      const rows = page.getByRole("listitem");
-      const rowCount = await rows.count();
-      if (rowCount >= 2)
-        await context.region("ledger-pair", [rows.nth(0), rows.nth(1)]);
-      await context.region(
-        "ledger",
-        page.getByRole("heading", { name: "Contribution ledger" }),
+
+      // Prove the record traces to its source: open the garden visit's evidence
+      // instead of leaving a list of identical-looking contribution rows.
+      await context.click(
+        page
+          .getByRole("button", { name: "Inspect current source evidence" })
+          .first(),
       );
+      await page
+        .getByText(/planted seedlings/)
+        .first()
+        .waitFor();
+      mark("evidence-opened");
+      await context.region("heading", pageHeading(context));
     },
   },
   S05: {
@@ -219,13 +204,13 @@ export const sceneActions: Record<string, SceneAction> = {
         throw new Error(
           `The possible-duplicate flag is not visible in the review pane. Saw: ${body.slice(0, 400)}`,
         );
-      await context.region("duplicate", unresolved);
+      await context.region("heading", pageHeading(context));
       const reason = page.getByLabel(/Review reason/);
-      await context.region("reason", reason);
       await context.typeInto(reason, "Duplicate of the approved garden visit.");
       mark("reason-typed");
-      const reject = page.getByRole("button", { name: "Reject proposal" });
-      await context.click(reject);
+      await context.click(
+        page.getByRole("button", { name: "Reject proposal" }),
+      );
       await page.getByText("Proposal rejected.").waitFor();
       mark("rejected");
     },
@@ -241,7 +226,7 @@ export const sceneActions: Record<string, SceneAction> = {
         .locator("xpath=ancestor::section[1]");
       await card.waitFor();
       mark("needs-board");
-      await context.region("need", card);
+      await context.region("heading", pageHeading(context));
 
       async function selectAction(desired: "assign" | "acknowledge") {
         for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -271,11 +256,9 @@ export const sceneActions: Record<string, SceneAction> = {
 
       await selectAction("assign");
       const owner = card.getByLabel("Owner");
-      await context.region("owner", owner);
       await context.click(owner);
       await owner.selectOption({ label: "Demo Owner" });
-      const deadline = card.getByLabel("Acknowledge by");
-      await context.fill(deadline, "2026-11-12T17:00");
+      await context.fill(card.getByLabel("Acknowledge by"), "2026-11-12T17:00");
       mark("assignment-filled");
       await context.click(card.getByRole("button", { name: "Update need" }));
       await page.getByText("Need updated.").waitFor();
@@ -287,10 +270,6 @@ export const sceneActions: Record<string, SceneAction> = {
       await page.getByText("Need updated.").waitFor();
       await card.getByText("acknowledged", { exact: true }).waitFor();
       mark("acknowledged");
-      await context.region(
-        "status",
-        card.getByText("acknowledged", { exact: true }),
-      );
 
       const workspace = await page.request.get(
         `${context.target.baseUrl}/api/product/workspace`,
@@ -315,37 +294,22 @@ export const sceneActions: Record<string, SceneAction> = {
     async run(context) {
       const { page, scenario, mark } = context;
       await page.getByRole("heading", { name: "Summary" }).waitFor();
-      const from = page.getByLabel("From date");
-      await context.fill(from, scenario.dateWindow.from);
-      const to = page.getByLabel("To date");
-      await context.fill(to, scenario.dateWindow.to);
-      const apply = page.getByRole("button", { name: "Apply filters" });
-      await context.click(apply);
+      await context.fill(
+        page.getByLabel("From date"),
+        scenario.dateWindow.from,
+      );
+      await context.fill(page.getByLabel("To date"), scenario.dateWindow.to);
+      await context.click(page.getByRole("button", { name: "Apply filters" }));
       await page.getByRole("heading", { name: "Approved hours" }).waitFor();
       mark("report-filtered");
-      await context.region("filter", page.locator("section").first());
+      await context.region("heading", pageHeading(context));
       const minutes = page.getByRole("row", { name: /Approved minutes/ });
       const text = (await minutes.textContent()) ?? "";
       if (!/300/.test(text))
         throw new Error(`Approved minutes should be 300, saw: ${text}`);
-      await context.region("metrics", [
-        page
-          .getByRole("heading", { name: "Approved hours" })
-          .locator("xpath=ancestor::section[1]"),
-        page
-          .getByRole("heading", { name: "Pending contributions" })
-          .locator("xpath=ancestor::section[1]"),
-      ]);
-      await context.region(
-        "table",
-        page
-          .getByRole("heading", { name: "At a glance" })
-          .locator("xpath=ancestor::section[1]"),
-      );
-      const pending = page.getByRole("heading", {
-        name: "Pending contributions",
-      });
-      await pending.waitFor();
+      await page
+        .getByRole("heading", { name: "Pending contributions" })
+        .waitFor();
       mark("pending-visible");
     },
   },

@@ -1,16 +1,17 @@
 import type { Focus } from "./schema.ts";
 
 /**
- * Ken-Burns transform for one frame. The content is translated toward the focus
- * point and scaled enough that the translated frame still covers the viewport
- * (a bare translate would expose the background), then capped so pushes stay
- * gentle. Annotations use the same transform so recorded boxes stay aligned.
+ * Ken-Burns push for one frame. The zoom is anchored on the focus point via
+ * `transform-origin` and never translated: translating a full-frame video always
+ * exposes the edge (centring a left-side point needs a scale of 0.5/x), which is
+ * exactly the dark band this replaced. Annotation layers use the same transform
+ * so recorded boxes stay aligned with the footage.
  */
 export interface FocusTransform {
   scale: number;
-  /** Fraction of the frame width/height. */
-  tx: number;
-  ty: number;
+  /** Transform origin, normalised within the frame. */
+  originX: number;
+  originY: number;
 }
 
 export const MAX_FOCUS_SCALE = 1.45;
@@ -24,7 +25,7 @@ export function focusTransform(
       seconds >= target.atSeconds &&
       seconds < target.atSeconds + target.holdSeconds,
   );
-  if (!active) return { scale: 1, tx: 0, ty: 0 };
+  if (!active) return { scale: 1, originX: 0.5, originY: 0.5 };
 
   const elapsed = seconds - active.atSeconds;
   const remaining = active.atSeconds + active.holdSeconds - seconds;
@@ -35,20 +36,21 @@ export function focusTransform(
     Math.max(0, remaining) / 1.2,
   );
   const eased = ramp * ramp * (3 - 2 * ramp);
-
-  const tx = 0.5 - active.x;
-  const ty = 0.5 - active.y;
-  const coverage = 1 + Math.max(Math.abs(tx), Math.abs(ty));
-  const target = Math.min(MAX_FOCUS_SCALE, Math.max(active.scale, coverage));
+  const target = Math.min(MAX_FOCUS_SCALE, Math.max(1, active.scale));
 
   return {
     scale: 1 + (target - 1) * eased,
-    tx: tx * eased,
-    ty: ty * eased,
+    originX: active.x,
+    originY: active.y,
   };
 }
 
 /** CSS transform string shared by the footage and the annotation layer. */
 export function focusCss(transform: FocusTransform): string {
-  return `translate(${transform.tx * 100}%, ${transform.ty * 100}%) scale(${transform.scale})`;
+  return `scale(${transform.scale})`;
+}
+
+/** Matching `transform-origin`. */
+export function focusOrigin(transform: FocusTransform): string {
+  return `${transform.originX * 100}% ${transform.originY * 100}%`;
 }

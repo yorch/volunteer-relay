@@ -11,7 +11,7 @@
       "title": "The buried need",
       "kind": "graphic",
       "narration": "A volunteer spends an hour mentoring a child. Before she leaves, she learns the family needs diapers tonight, so she posts a brief update. By morning it is buried under dozens of messages. The hour may never be counted. The family may still be waiting.",
-      "onScreenDisclosure": "Illustrative reenactment · not a real chat provider",
+      "onScreenDisclosure": null,
       "capture": null,
       "overlays": [
         {
@@ -62,14 +62,21 @@
       ],
       "minSeconds": 20,
       "maxSeconds": 26,
-      "annotations": []
+      "annotations": [
+        {
+          "region": "heading",
+          "atSeconds": 2,
+          "holdSeconds": 5,
+          "label": null
+        }
+      ]
     },
     {
       "id": "S03",
       "title": "One everyday update",
       "kind": "product",
       "narration": "Volunteers report in their own words. This update describes one shared garden visit, two volunteers, and the time each of them gave. Relay proposes an activity and two contributions, and keeps every proposed field tied to the original message. Nothing is approved until staff decide.",
-      "onScreenDisclosure": "Prepared demo proposal",
+      "onScreenDisclosure": null,
       "capture": {
         "checkpointId": "baseline",
         "role": "coordinator",
@@ -101,7 +108,14 @@
       ],
       "minSeconds": 18,
       "maxSeconds": 32,
-      "annotations": []
+      "annotations": [
+        {
+          "region": "heading",
+          "atSeconds": 2,
+          "holdSeconds": 5,
+          "label": null
+        }
+      ]
     },
     {
       "id": "S04",
@@ -140,7 +154,14 @@
       ],
       "minSeconds": 18,
       "maxSeconds": 32,
-      "annotations": []
+      "annotations": [
+        {
+          "region": "heading",
+          "atSeconds": 2,
+          "holdSeconds": 5,
+          "label": null
+        }
+      ]
     },
     {
       "id": "S05",
@@ -179,7 +200,14 @@
       ],
       "minSeconds": 15,
       "maxSeconds": 28,
-      "annotations": []
+      "annotations": [
+        {
+          "region": "heading",
+          "atSeconds": 2,
+          "holdSeconds": 5,
+          "label": null
+        }
+      ]
     },
     {
       "id": "S06",
@@ -218,7 +246,14 @@
       ],
       "minSeconds": 22,
       "maxSeconds": 32,
-      "annotations": []
+      "annotations": [
+        {
+          "region": "heading",
+          "atSeconds": 2,
+          "holdSeconds": 5,
+          "label": null
+        }
+      ]
     },
     {
       "id": "S07",
@@ -257,7 +292,14 @@
       ],
       "minSeconds": 20,
       "maxSeconds": 30,
-      "annotations": []
+      "annotations": [
+        {
+          "region": "heading",
+          "atSeconds": 2,
+          "holdSeconds": 5,
+          "label": null
+        }
+      ]
     },
     {
       "id": "S08",

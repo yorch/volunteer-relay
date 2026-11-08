@@ -2,7 +2,11 @@ import { useCurrentFrame, useVideoConfig } from "remotion";
 import { Callout } from "../components/Callout.tsx";
 import { ProductFrame } from "../components/ProductFrame.tsx";
 import { Spotlight } from "../components/Spotlight.tsx";
-import { focusCss, focusTransform } from "../lib/focus-transform.ts";
+import {
+  focusCss,
+  focusOrigin,
+  focusTransform,
+} from "../lib/focus-transform.ts";
 import type { HackathonVideoProps } from "../lib/props.ts";
 import type { Scene } from "../lib/schema.ts";
 
@@ -19,9 +23,9 @@ export function ProductScene({
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   // Annotations live in capture space, so they move with the footage.
-  const annotationTransform = focusCss(
-    focusTransform(frame / fps, scene.focus),
-  );
+  const annotationFocus = focusTransform(frame / fps, scene.focus);
+  const annotationTransform = focusCss(annotationFocus);
+  const annotationOrigin = focusOrigin(annotationFocus);
   const captureFile = props.captureFiles[scene.id] ?? null;
   const available = props.assets.captures && captureFile !== null;
   return (
@@ -39,6 +43,7 @@ export function ProductScene({
           position: "absolute",
           inset: 0,
           transform: annotationTransform,
+          transformOrigin: annotationOrigin,
         }}
       >
         {scene.annotations.map((annotation) => {
