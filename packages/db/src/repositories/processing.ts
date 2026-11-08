@@ -14,6 +14,7 @@ import {
 } from "@relay/contracts";
 import { sql } from "drizzle-orm";
 import type { Database } from "../types.ts";
+import { lockOrganizationLedger } from "./domain.ts";
 
 type Status = "queued" | "failed" | "review" | "accepted" | "rejected";
 type SourceStatus = {
@@ -173,6 +174,12 @@ export function createProcessingRepository(db: Database) {
             !validEvidence(original, source)
           )
             throw new Abort("VALIDATION", "Stored proposal is invalid");
+          // Acceptance may insert or change activity/need rows: serialize with
+          // every same-organization ledger writer (see lockOrganizationLedger)
+          // after the idempotency and source/run locks, before any ledger row
+          // lock. The automatic gate's match check below relies on it.
+          if (command.decision === "accept" || automaticSource)
+            await lockOrganizationLedger(tx, context.organizationId);
           if (automaticSource) {
             if (!equal(automaticSource, source))
               throw new Abort("CONFLICT", "Automatic source changed");
@@ -674,6 +681,14 @@ export function createProcessingRepository(db: Database) {
               "CONFLICT",
               "Processing generation already has a proposal",
             );
+          // Provisional urgent needs are open needs the automatic gate must
+          // see: take the organization ledger lock before any need row lock.
+          if (
+            proposal.items.some(
+              (item) => item.kind === "need" && item.urgency === "urgent",
+            )
+          )
+            await lockOrganizationLedger(tx, context.organizationId);
           await withdrawEarlierProvisional(tx, context, proposal, generation);
           await tx.execute(
             sql`insert into extraction_run (organization_id,run_id,source_id,source_revision,generation,proposal) values (${context.organizationId},${proposal.runId},${proposal.sourceId},${proposal.sourceRevision},${generation},${json(proposal)}::jsonb)`,
@@ -1314,10 +1329,9 @@ async function requireValidatedPolicy(
   );
   if (!author.rows.length)
     throw new Abort("CONFLICT", "Author membership unavailable");
-  // The table locks close the race with a simultaneous human ledger/need insert.
-  // They are held only through the small acceptance transaction.
-  await tx.execute(sql`lock table activity in share row exclusive mode`);
-  await tx.execute(sql`lock table need in share row exclusive mode`);
+  // The caller holds lockOrganizationLedger for this organization, so no
+  // cooperating activity/need writer of this tenant can commit between these
+  // READ COMMITTED match checks and this transaction's commit.
   const activityKeys = new Set(
     proposal.items
       .filter((item) => item.kind === "activity")
