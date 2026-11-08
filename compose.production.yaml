@@ -1,0 +1,116 @@
+services:
+  postgres:
+    image: postgres:18.1-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    networks: [private]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    stop_grace_period: 60s
+  volume-init:
+    image: postgres:18.1-bookworm
+    user: "0:0"
+    network_mode: none
+    command: ["sh", "-c", "chown 1000:1000 /vol/attachments /vol/caddy-data /vol/caddy-config && chmod 700 /vol/attachments /vol/caddy-data /vol/caddy-config"]
+    volumes:
+      - attachments:/vol/attachments
+      - caddy-data:/vol/caddy-data
+      - caddy-config:/vol/caddy-config
+    restart: "no"
+  migrate:
+    image: ${RELAY_WORKER_IMAGE:?Set RELAY_WORKER_IMAGE}
+    env_file: ${RELAY_ENV_FILE:?Set RELAY_ENV_FILE}
+    command: ["node", "packages/db/src/migrate.ts"]
+    networks: [private]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: "no"
+  web:
+    image: ${RELAY_WEB_IMAGE:?Set RELAY_WEB_IMAGE}
+    env_file: ${RELAY_ENV_FILE:?Set RELAY_ENV_FILE}
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp", "/app/apps/web/.next/cache:uid=1000,gid=1000"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes: ["attachments:/data/attachments"]
+    networks: [private, edge]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      volume-init: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    stop_grace_period: 30s
+  worker:
+    image: ${RELAY_WORKER_IMAGE:?Set RELAY_WORKER_IMAGE}
+    env_file: ${RELAY_ENV_FILE:?Set RELAY_ENV_FILE}
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes: ["attachments:/data/attachments"]
+    networks: [private, edge]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      volume-init: {condition: service_completed_successfully}
+    stop_grace_period: 60s
+  caddy:
+    image: caddy:2.10.2-alpine
+    user: "1000:1000"
+    restart: unless-stopped
+    environment:
+      RELAY_DOMAIN: ${RELAY_DOMAIN:?Set RELAY_DOMAIN}
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./infra/production/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [edge]
+    depends_on:
+      web: {condition: service_healthy}
+      volume-init: {condition: service_completed_successfully}
+    stop_grace_period: 30s
+  tools:
+    image: postgres:18.1-bookworm
+    profiles: [tools]
+    user: "1000:1000"
+    env_file: ${RELAY_ENV_FILE:?Set RELAY_ENV_FILE}
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      PGDATABASE: ${POSTGRES_DB:?Set POSTGRES_DB}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes: ["attachments:/data/attachments"]
+    networks: [private]
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    entrypoint: []
+networks:
+  private: {internal: true}
+  edge: {}
+volumes:
+  postgres-data: {}
+  attachments: {}
+  caddy-data: {}
+  caddy-config: {}
