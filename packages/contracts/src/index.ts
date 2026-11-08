@@ -280,6 +280,17 @@ export const apiErrorSchema = z
   })
   .strict();
 export type ApiError = z.infer<typeof apiErrorSchema>;
+/**
+ * Optional request header on mutating product API requests carrying the
+ * organization ID the client believes it is acting in. It is an assertion,
+ * never authority: the server resolves tenant context from the verified
+ * session and live membership, and rejects a mismatch with CONFLICT.
+ */
+export const ORGANIZATION_ASSERTION_HEADER = "x-relay-org";
+/** Accepted shape of an organization assertion header value. */
+export const organizationAssertionSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9_-]{1,128}$/);
 export type Result<T> =
   | { ok: true; value: T }
   | { ok: false; error: ApiError["error"] };
