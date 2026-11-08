@@ -42,6 +42,9 @@ export async function watchdogHealth(store: string, now = Date.now()) {
       checkedAt?: unknown;
       nextCheck?: unknown;
       observations?: unknown;
+      availableSignals?: unknown;
+      codes?: unknown;
+      notice?: unknown;
     };
     if (
       !v ||
@@ -52,7 +55,7 @@ export async function watchdogHealth(store: string, now = Date.now()) {
       !Array.isArray(v.observations)
     )
       throw Error("Unavailable");
-    const codes = v.observations
+    const observationCodes = v.observations
       .slice(0, 64)
       .flatMap((entry) =>
         entry &&
@@ -63,6 +66,26 @@ export async function watchdogHealth(store: string, now = Date.now()) {
           ? [entry.code]
           : [],
       );
+    const notice =
+      v.notice !== null && typeof v.notice === "object"
+        ? (v.notice as { codes?: unknown })
+        : null;
+    const safeCodes = (codes: unknown) =>
+      Array.isArray(codes)
+        ? codes
+            .slice(0, 64)
+            .filter(
+              (code): code is string =>
+                typeof code === "string" && faults.has(code),
+            )
+        : [];
+    // Fault summaries are independent of capped detail observations and notice
+    // cooldown. Older persisted checks may contain only notice.codes.
+    const codes = [
+      ...observationCodes,
+      ...safeCodes(v.codes),
+      ...safeCodes(notice?.codes),
+    ];
     return {
       state:
         now - v.checkedAt > 365000
@@ -78,7 +101,11 @@ export async function watchdogHealth(store: string, now = Date.now()) {
         "oldest steering",
         "capacity",
         "operations",
-      ],
+      ].filter(
+        (signal) =>
+          !Array.isArray(v.availableSignals) ||
+          !v.availableSignals.includes(signal),
+      ),
       recovery: "disabled",
     };
   } catch {

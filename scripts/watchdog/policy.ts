@@ -1,5 +1,6 @@
 export type Liveness = "alive" | "dead" | "unknown";
 export interface WatchdogInput {
+  availableSignals?: string[];
   version: 1;
   now: number;
   desiredRunning: boolean | null;
@@ -75,6 +76,8 @@ export interface WatchdogNotice {
 }
 export type Recovery = "none" | "escalate" | "request-restart";
 export interface WatchdogResult {
+  availableSignals?: string[];
+  codes: string[];
   state: WatchdogState;
   observations: Observation[];
   notice: WatchdogNotice | null;
@@ -346,5 +349,14 @@ export function evaluateWatchdog(
   }
   state.lastCheckAt = input.now;
   state.nextCheckAt = input.now + settings.intervalMs;
-  return { state, observations, notice, recovery };
+  return {
+    state,
+    observations,
+    notice,
+    recovery,
+    codes,
+    availableSignals: (input.availableSignals ?? []).filter((signal) =>
+      ["queue", "capacity", "oldest steering", "operations"].includes(signal),
+    ),
+  };
 }

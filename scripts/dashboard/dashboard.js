@@ -4,7 +4,7 @@ const labels = {
   assigned: "Assigned",
   working: "In progress",
   blocked: "Blocked",
-  review: "Awaiting review",
+  review: "Submitted / disposition",
   completed: "Completed / accepted slice",
 };
 let data;
@@ -83,6 +83,18 @@ function messageCard(message, threaded = true) {
 }
 function render() {
   if (!data) return;
+  const activeControl = document.activeElement;
+  const focusedDetail =
+    activeControl?.tagName === "SUMMARY"
+      ? activeControl.parentElement?.dataset.key
+      : null;
+  const scrollPosition = { x: window.scrollX, y: window.scrollY };
+  const detailScroll = new Map(
+    [...document.querySelectorAll("details[data-key]")].map((n) => [
+      n.dataset.key,
+      n.querySelector("pre")?.scrollTop ?? 0,
+    ]),
+  );
   const open = new Set(
     [...document.querySelectorAll("details[open][data-key]")].map(
       (n) => n.dataset.key,
@@ -95,7 +107,7 @@ function render() {
     : "Not started. Dedicated sessions require an exclusive ownership handover.";
   const budgets = headless?.budgets;
   $("headless-budgets").textContent = budgets
-    ? `Limits: ${budgets.maxParallel} concurrent lanes · ${budgets.maxRunMinutes} minutes/run · ${budgets.maxRunsPerHour} runs/lane/hour · heartbeat interval ${budgets.intervalSeconds}s`
+    ? `Limits (${headless.budgetsSource ?? "unknown source"}): ${budgets.maxParallel} concurrent lanes · ${budgets.maxRunMinutes} minutes/run · ${budgets.maxRunsPerHour} runs/lane/hour · heartbeat interval ${budgets.intervalSeconds}s`
     : "Supervisor budgets unavailable";
   $("headless-lanes").replaceChildren(
     ...(headless?.lanes ?? []).map((lane) => {
@@ -104,6 +116,16 @@ function render() {
       card.append(el("h3", `Agent ${lane.lane} · ${lane.status}`));
       const rows = [
         ["Harness", lane.harness],
+        [
+          "Scheduling",
+          `${lane.scheduling?.code ?? "Unknown"}${lane.scheduling?.nextEligibleAt ? ` · next slot ${date(lane.scheduling.nextEligibleAt)}` : ""}`,
+        ],
+        [
+          "Open assignments",
+          (lane.assignments ?? [])
+            .map((t) => `${t.task} · ${t.state}`)
+            .join(", ") || "None",
+        ],
         ["Configured model", lane.configuredModel],
         ["Observed model", lane.observedModel ?? "Not recorded"],
         [
@@ -262,8 +284,18 @@ function render() {
   if (!messages.length)
     $("messages").append(el("p", "No messages in this view.", "empty"));
   $("milestones").textContent = data.milestoneStatus;
-  for (const node of document.querySelectorAll("details[data-key]"))
+  for (const node of document.querySelectorAll("details[data-key]")) {
     node.open = open.has(node.dataset.key);
+    const pre = node.querySelector("pre");
+    if (pre) pre.scrollTop = detailScroll.get(node.dataset.key) ?? 0;
+  }
+  if (focusedDetail && activeControl && !activeControl.isConnected) {
+    [...document.querySelectorAll("details[data-key]")]
+      .find((n) => n.dataset.key === focusedDetail)
+      ?.querySelector("summary")
+      ?.focus({ preventScroll: true });
+  }
+  window.scrollTo(scrollPosition.x, scrollPosition.y);
 }
 async function refresh() {
   if (busy) return;

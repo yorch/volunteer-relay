@@ -20,15 +20,46 @@ export function projectHeadless(
       ((config?.intervalSeconds ?? 10) * 2 + 5) * 1000;
   const state = !value
     ? "not-started"
-    : !fresh
-      ? "stale"
-      : !value.running
-        ? "stopped"
+    : !value.running
+      ? "stopped"
+      : !fresh
+        ? "stale"
         : value.draining
           ? "draining"
           : "running";
+  const loaded = value?.scheduling;
+  const hasLoadedBudgets =
+    loaded &&
+    [loaded.maxRunsPerHour, loaded.maxRunMinutes, loaded.intervalSeconds].every(
+      (n) => typeof n === "number" && Number.isFinite(n),
+    );
+  const budgets = hasLoadedBudgets
+    ? {
+        maxParallel: loaded.maxParallel,
+        maxRunsPerHour: loaded.maxRunsPerHour as number,
+        maxRunMinutes: loaded.maxRunMinutes as number,
+        intervalSeconds: loaded.intervalSeconds as number,
+      }
+    : config
+      ? {
+          maxParallel: config.maxParallel,
+          maxRunsPerHour: config.maxRunsPerHour,
+          maxRunMinutes: config.maxRunMinutes,
+          intervalSeconds: config.intervalSeconds,
+        }
+      : null;
   return {
     state,
+    budgetsSource: hasLoadedBudgets ? "loaded" : "configured-only",
+    attention: value?.attention
+      ? {
+          backlog: count(value.attention.backlog),
+          planningSince: count(value.attention.planningSince ?? undefined),
+          oldestUnhandledAt: count(
+            value.attention.oldestUnhandledAt ?? undefined,
+          ),
+        }
+      : null,
     diskConfigAvailable: config !== null,
     checkedAt: value?.checkedAt ?? null,
     configReload:
@@ -51,14 +82,7 @@ export function projectHeadless(
           }
         : null,
     held: value?.held ?? [],
-    budgets: config
-      ? {
-          maxParallel: config.maxParallel,
-          intervalSeconds: config.intervalSeconds,
-          maxRunMinutes: config.maxRunMinutes,
-          maxRunsPerHour: config.maxRunsPerHour,
-        }
-      : null,
+    budgets,
     lanes: lanes.map((lane) => {
       const records = Object.values(value?.records ?? {}).filter(
         (r) => r.lane === lane,
@@ -69,6 +93,20 @@ export function projectHeadless(
       const enabled = config?.lanes[lane]?.enabled ?? false;
       const held = value?.held.includes(lane) ?? false;
       const processAlive = r?.pid ? alive(r.pid) : null;
+      const runs = records
+        .flatMap((r) => r.runs)
+        .filter((at) => at <= now && at > now - 3600000)
+        .sort((a, b) => a - b);
+      const entry = value?.queue?.queue.find((q) => q.lane === lane);
+      const code =
+        entry?.reason && /^[A-Z_]{1,64}$/.test(entry.reason)
+          ? entry.reason
+          : null;
+      const rateLimited =
+        hasLoadedBudgets && budgets && runs.length >= budgets.maxRunsPerHour;
+      const next = rateLimited
+        ? runs[runs.length - budgets.maxRunsPerHour]
+        : undefined;
       const status =
         r?.status === "running"
           ? fresh && value?.running && processAlive === true
@@ -84,6 +122,20 @@ export function projectHeadless(
         enabled,
         status,
         reportedProcessStatus: r?.status ?? null,
+        scheduling: {
+          code: !value?.running
+            ? "STOPPED"
+            : held
+              ? "LANE_HELD"
+              : r?.status === "paused"
+                ? "FAILURE_PAUSED"
+                : rateLimited
+                  ? "RATE_LIMITED"
+                  : (code ?? "NO_PENDING_EVENT"),
+          position: entry?.position ?? null,
+          nextEligibleAt:
+            next === undefined ? null : new Date(next + 3600000).toISOString(),
+        },
         processAlive,
         task: r?.task ?? null,
         worktree: r?.cwd ?? null,

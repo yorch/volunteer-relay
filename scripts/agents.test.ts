@@ -671,6 +671,22 @@ function second(root: string, ref = "HEAD") {
   );
 }
 const claimSecond = ["claim", "--agent", "B", "--task", "P1-02"];
+function revisionRequest(root: string, task = "P1-01") {
+  return ok(
+    root,
+    "send",
+    "--agent",
+    "A",
+    "--to",
+    "B",
+    "--kind",
+    "request",
+    "--task",
+    task,
+    "--text",
+    "Required synthetic review correction",
+  );
+}
 const working = [
   "status",
   "--agent",
@@ -703,6 +719,7 @@ it("allows disjoint frozen submissions while preserving tips and original resour
     expect(cli(b, ...working).error).toContain("already has active task P1-02");
     expect(ok(root, "board").tasks[0]).toEqual(frozen);
     ok(b2, ...ready.map((v) => (v === "P1-01" ? "P1-02" : v)));
+    revisionRequest(root);
     ok(b, ...working);
     expect(
       cli(
@@ -891,6 +908,7 @@ it("serializes concurrent different-task claims instead of allowing two writers"
     ok(b, ...claim);
     ok(b, ...ready);
     expect(second(root).code).toBe(0);
+    revisionRequest(root);
     const results = await Promise.all([
       race(b, ...working),
       race(b2, ...claimSecond),
@@ -1011,6 +1029,7 @@ it.each(["assigned", "claimed", "working", "native-running"])(
             "Missing revision transition",
           ).error,
         ).toContain("explicit working revision transition");
+        revisionRequest(root);
         ok(b, ...working);
         ok(
           b,
@@ -1044,6 +1063,8 @@ it("keeps the losing frozen submission intact after concurrent revision attempts
     const secondWorking = working.map((value) =>
       value === "P1-01" ? "P1-02" : value,
     );
+    revisionRequest(root);
+    revisionRequest(root, "P1-02");
     const results = await Promise.all([
       race(b, ...working),
       race(b2, ...secondWorking),
@@ -1084,5 +1105,471 @@ it("keeps the losing frozen submission intact after concurrent revision attempts
         (entry: { task: string }) => entry.task === task,
       ),
     ).toEqual(frozen);
+  });
+});
+
+it("publishes coordinator-only versioned scheduling metadata with stable queue age", async () => {
+  await fixture(({ root }) => {
+    assign(root);
+    const dependencies = [
+      { taskId: "P1-02", require: "accepted", commit: null },
+    ];
+    const metadata = ok(
+      root,
+      "schedule",
+      "--agent",
+      "A",
+      "--task",
+      "P1-01",
+      "--priority",
+      "gate-critical",
+      "--dependencies-json",
+      JSON.stringify(dependencies),
+      "--enqueued-at",
+      "1000",
+    );
+    expect(metadata).toEqual({
+      version: 1,
+      priority: "gate-critical",
+      dependsOn: dependencies,
+      reviewOf: null,
+      enqueuedAt: 1000,
+      updatedBy: "A",
+    });
+    const reprioritized = ok(
+      root,
+      "schedule",
+      "--agent",
+      "A",
+      "--task",
+      "P1-01",
+      "--priority",
+      "normal",
+    );
+    expect(reprioritized.enqueuedAt).toBe(1000);
+    expect(reprioritized.dependsOn).toEqual(dependencies);
+    expect(ok(root, "board").tasks[0].scheduling).toEqual(reprioritized);
+    expect(ok(root, "brief").tasks[0].scheduling).toEqual(reprioritized);
+    expect(
+      cli(
+        root,
+        "schedule",
+        "--agent",
+        "A",
+        "--task",
+        "P1-01",
+        "--priority",
+        "low",
+        "--enqueued-at",
+        "2000",
+      ).error,
+    ).toContain("enqueue time is immutable");
+    expect(ok(root, "board").tasks[0].scheduling).toEqual(reprioritized);
+    for (const agent of ["B", "C", "D", "E", "F", "R", "V"]) {
+      expect(
+        cli(
+          root,
+          "schedule",
+          "--agent",
+          agent,
+          "--task",
+          "P1-01",
+          "--priority",
+          "urgent-operational",
+        ).code,
+      ).toBe(1);
+    }
+  });
+});
+
+it("pins ready dependencies and refuses malformed or over-authoritative scheduling input", async () => {
+  await fixture(({ root }) => {
+    const base = git(root, "rev-parse", "HEAD");
+    assign(root);
+    const args = [
+      "schedule",
+      "--agent",
+      "A",
+      "--task",
+      "P1-01",
+      "--priority",
+      "normal",
+    ];
+    const valid = [{ taskId: "P1-02", require: "ready", commit: base }];
+    const expected = ok(
+      root,
+      ...args,
+      "--dependencies-json",
+      JSON.stringify(valid),
+    );
+    for (const dependency of [
+      { taskId: "P1-02", require: "ready", commit: null },
+      { taskId: "P1-02", require: "ready", commit: "HEAD" },
+      { taskId: "P1-02", require: "ready", commit: `--${base}` },
+      { taskId: "P1-02", require: "accepted", commit: base, authorized: true },
+      { taskId: "P1-01", require: "accepted", commit: null },
+      { taskId: "../P1-02", require: "accepted", commit: null },
+      { taskId: "P1-02", require: "working", commit: null },
+      null,
+    ])
+      expect(
+        cli(root, ...args, "--dependencies-json", JSON.stringify([dependency]))
+          .code,
+      ).toBe(1);
+    for (const invalid of [{}, [valid[0], valid[0]], Array(65).fill(valid[0])])
+      expect(
+        cli(root, ...args, "--dependencies-json", JSON.stringify(invalid)).code,
+      ).toBe(1);
+    expect(cli(root, ...args, "--updated-by", "operator").error).toContain(
+      "Unknown schedule option",
+    );
+    expect(ok(root, "board").tasks[0].scheduling).toEqual(expected);
+  });
+});
+
+it("requires committed task cards and leaves scheduling absent until explicitly published", async () => {
+  await fixture(({ root }) => {
+    assign(root);
+    expect(ok(root, "board").tasks[0].scheduling).toBeNull();
+    expect(
+      cli(
+        root,
+        "schedule",
+        "--agent",
+        "A",
+        "--task",
+        "P1-99",
+        "--priority",
+        "normal",
+      ).code,
+    ).toBe(1);
+    expect(
+      cli(
+        root,
+        "schedule",
+        "--agent",
+        "A",
+        "--task",
+        "P1-01",
+        "--priority",
+        "invented",
+      ).error,
+    ).toContain("Unknown scheduling priority");
+    for (const timestamp of ["NaN", "-1", "1.2", `${Date.now() + 3600000}`])
+      expect(
+        cli(
+          root,
+          "schedule",
+          "--agent",
+          "A",
+          "--task",
+          "P1-01",
+          "--priority",
+          "normal",
+          "--enqueued-at",
+          timestamp,
+        ).code,
+      ).toBe(1);
+    const assignment = ok(root, "board").tasks[0].assignment;
+    const metadata = ok(
+      root,
+      "schedule",
+      "--agent",
+      "A",
+      "--task",
+      "P1-01",
+      "--priority",
+      "normal",
+    );
+    expect(metadata.enqueuedAt).toBe(Date.parse(assignment.at));
+    expect(metadata.dependsOn).toEqual([]);
+    expect(metadata.reviewOf).toBeNull();
+  });
+});
+
+it("records exact coordinator review pins as data and rejects pins on other message types", async () => {
+  await fixture(({ root }) => {
+    const expected = git(root, "rev-parse", "HEAD");
+    const message = ok(
+      root,
+      "send",
+      "--agent",
+      "A",
+      "--to",
+      "R",
+      "--kind",
+      "request",
+      "--task",
+      "P1-01",
+      "--commit",
+      "HEAD",
+      "--text",
+      "Synthetic exact-tip review",
+    );
+    expect(message.reviewCommit).toBe(expected);
+    expect(ok(root, "board").messages[0].reviewCommit).toBe(expected);
+    expect(ok(root, "inbox", "--agent", "R")[0].reviewCommit).toBe(expected);
+    const legacy = ok(
+      root,
+      "send",
+      "--agent",
+      "A",
+      "--to",
+      "V",
+      "--kind",
+      "request",
+      "--task",
+      "P1-01",
+      "--text",
+      "Legacy text-only review",
+    );
+    expect(legacy.reviewCommit).toBeUndefined();
+    for (const [from, to, kind, task] of [
+      ["B", "R", "request", "P1-01"],
+      ["A", "B", "request", "P1-01"],
+      ["A", "V", "update", "P1-01"],
+      ["A", "R", "request", ""],
+    ] as const) {
+      expect(
+        cli(
+          root,
+          "send",
+          "--agent",
+          from,
+          "--to",
+          to,
+          "--kind",
+          kind,
+          ...(task ? ["--task", task] : []),
+          "--commit",
+          "HEAD",
+          "--text",
+          "Synthetic invalid pin",
+        ).error,
+      ).toContain("Only A task requests to R/V");
+    }
+    expect(
+      cli(
+        root,
+        "send",
+        "--agent",
+        "A",
+        "--to",
+        "R",
+        "--kind",
+        "request",
+        "--task",
+        "P1-01",
+        "--commit",
+        "missing-ref",
+        "--text",
+        "Synthetic missing pin",
+      ).code,
+    ).toBe(1);
+    expect(ok(root, "board").messages).toHaveLength(2);
+  });
+});
+
+it("requires an outstanding task-specific coordinator request to unfreeze an author submission", async () => {
+  await fixture(({ root, b }) => {
+    assign(root);
+    ok(b, ...claim);
+    ok(b, ...ready);
+    const frozen = ok(root, "board").tasks[0];
+    expect(cli(b, ...working).error).toContain(
+      "outstanding coordinator revision request",
+    );
+    expect(
+      cli(
+        b,
+        "checkpoint",
+        "--agent",
+        "B",
+        "--task",
+        "P1-01",
+        "--text",
+        "Cannot checkpoint frozen work",
+      ).code,
+    ).toBe(1);
+    revisionRequest(root, "P1-02");
+    expect(cli(b, ...working).code).toBe(1);
+    const request = revisionRequest(root);
+    ok(
+      b,
+      "send",
+      "--agent",
+      "B",
+      "--to",
+      "A",
+      "--kind",
+      "answer",
+      "--reply-to",
+      request.id,
+      "--text",
+      "Request was withdrawn before execution",
+    );
+    expect(cli(b, ...working).code).toBe(1);
+    expect(ok(root, "board").tasks[0]).toEqual(frozen);
+    revisionRequest(root);
+    ok(b, ...working);
+    expect(ok(root, "board").tasks[0].status.state).toBe("working");
+  });
+});
+
+it("allows an authorized revision before an unclaimed assignment but not a claimed or unsafe blocked task", async () => {
+  await fixture(({ root, b, b2 }) => {
+    assign(root);
+    scope(root, "P1-01", ["first"]);
+    scope(root, "P1-02", ["second"]);
+    ok(b, ...claim);
+    ok(b, ...ready);
+    expect(second(root).code).toBe(0);
+    revisionRequest(root);
+    ok(b, ...working);
+    expect(cli(b2, ...claimSecond).error).toContain(
+      "already has active task P1-01",
+    );
+    ok(b, ...ready);
+    ok(b2, ...claimSecond);
+    expect(cli(b, ...working).error).toContain("already has active task P1-02");
+    ok(
+      b2,
+      "status",
+      "--agent",
+      "B",
+      "--task",
+      "P1-02",
+      "--state",
+      "blocked",
+      "--text",
+      "Uncheckpointed blocker",
+    );
+    expect(cli(b, ...working).error).toContain("already has active task P1-02");
+  });
+});
+
+it("checkpoints the current task before routing a revision to its original worktree and session", async () => {
+  await fixture(({ root, b, b2 }) => {
+    assign(root);
+    scope(root, "P1-01", ["first"]);
+    scope(root, "P1-02", ["second"]);
+    ok(b, ...claim);
+    ok(b, ...ready);
+    expect(second(root).code).toBe(0);
+    ok(b2, ...claimSecond);
+    const secondWorking = working.map((value) =>
+      value === "P1-01" ? "P1-02" : value,
+    );
+    ok(b2, ...secondWorking);
+    revisionRequest(root);
+    const directory = join(root, ".relay-coordination/supervisor");
+    mkdirSync(directory, { recursive: true });
+    const state = join(directory, "state.json");
+    writeFileSync(
+      state,
+      JSON.stringify({
+        records: {
+          newer: { lane: "B", task: "P1-02", cwd: b2, status: "running" },
+        },
+      }),
+    );
+    expect(cli(b, ...working).error).toContain("running native record");
+    const checkpoint = ok(
+      b2,
+      "checkpoint",
+      "--agent",
+      "B",
+      "--task",
+      "P1-02",
+      "--text",
+      "Synthetic work saved; yielding only after this native turn finishes",
+    );
+    expect(checkpoint.state).toBe("blocked");
+    expect(checkpoint.checkpointed).toBe(true);
+    expect(ok(root, "board").tasks[1].status.checkpointed).toBe(true);
+    expect(cli(b, ...working).error).toContain("running native record");
+    writeFileSync(
+      state,
+      JSON.stringify({
+        records: {
+          newer: { lane: "B", task: "P1-02", cwd: b2, status: "idle" },
+        },
+      }),
+    );
+    ok(b, ...working);
+    expect(cli(b2, ...secondWorking).error).toContain(
+      "already has active task P1-01",
+    );
+    ok(b, ...ready);
+    ok(b2, ...secondWorking);
+    const rows = ok(root, "board").tasks;
+    expect(rows[0].claim.worktree).toBe(b);
+    expect(rows[1].claim.worktree).toBe(b2);
+    expect(rows[0].status.state).toBe("ready");
+    expect(rows[1].status.checkpointed).toBeUndefined();
+  });
+});
+
+it("refuses known path overlap across lanes while permitting unknown legacy scopes", async () => {
+  await fixture(({ root }) => {
+    writeFileSync(
+      join(root, "docs/tasks/P1-02.md"),
+      "Owner lane: C.\nAllowed paths: synthetic/**.\n",
+    );
+    git(root, "add", ".");
+    git(root, "commit", "-qm", "test: declare disjoint lane fixture");
+    scope(root, "P1-01", ["shared"]);
+    scope(root, "P1-02", ["shared/child"]);
+    assign(root);
+    const assignC = [
+      "assign",
+      "--agent",
+      "A",
+      "--task",
+      "P1-02",
+      "--owner",
+      "C",
+      "--ref",
+      "HEAD",
+      "--text",
+      "Synthetic C assignment",
+    ];
+    expect(cli(root, ...assignC).error).toContain("scopes overlap with P1-01");
+    scope(root, "P1-02", ["separate"]);
+    ok(root, ...assignC);
+    expect(
+      cli(
+        root,
+        "scope",
+        "--agent",
+        "A",
+        "--task",
+        "P1-02",
+        "--paths-json",
+        '["shared"]',
+      ).error,
+    ).toContain("scopes overlap with P1-01");
+  });
+  await fixture(({ root }) => {
+    writeFileSync(join(root, "docs/tasks/P1-02.md"), "Owner lane: C.\n");
+    git(root, "add", ".");
+    git(root, "commit", "-qm", "test: retain legacy scope fixture");
+    assign(root);
+    expect(
+      ok(
+        root,
+        "assign",
+        "--agent",
+        "A",
+        "--task",
+        "P1-02",
+        "--owner",
+        "C",
+        "--ref",
+        "HEAD",
+        "--text",
+        "Legacy unknown scope retains protocol ownership",
+      ).owner,
+    ).toBe("C");
   });
 });

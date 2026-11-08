@@ -131,3 +131,49 @@ it("keeps failed rollout observable while protecting a live drain and intentiona
     await rm(store, { recursive: true, force: true });
   }
 });
+
+it("keeps actionable summaries visible beyond capped detail and notice cooldown without leaking unknown codes", async () => {
+  const store = await mkdtemp(join(tmpdir(), "relay-watchdog-summary-"));
+  try {
+    await (await import("node:fs/promises")).mkdir(join(store, "watchdog"), {
+      mode: 0o700,
+    });
+    const details = Array.from({ length: 64 }, () => ({
+      code: "wait-dependency",
+    }));
+    const path = join(store, "watchdog/latest.json");
+    const save = async (extra: object) =>
+      writeFile(
+        path,
+        JSON.stringify({
+          checkedAt: 900000,
+          nextCheck: 1080000,
+          observations: details,
+          ...extra,
+        }),
+        { mode: 0o600 },
+      );
+    await save({ notice: { codes: ["steering-stalled", "PRIVATE_SENTINEL"] } });
+    const legacy = await watchdogHealth(store, 900000);
+    expect(legacy).toMatchObject({
+      state: "alert",
+      codes: ["steering-stalled"],
+    });
+    expect(JSON.stringify(legacy)).not.toContain("PRIVATE_SENTINEL");
+    await save({
+      codes: ["steering-stalled", "pause-failure", "PRIVATE_SENTINEL"],
+      notice: null,
+    });
+    expect(await watchdogHealth(store, 900000)).toMatchObject({
+      state: "alert",
+      codes: ["steering-stalled", "pause-failure"],
+    });
+    await save({ codes: [], notice: null, observations: [] });
+    expect(await watchdogHealth(store, 900000)).toMatchObject({
+      state: "observing",
+      codes: [],
+    });
+  } finally {
+    await rm(store, { recursive: true, force: true });
+  }
+});

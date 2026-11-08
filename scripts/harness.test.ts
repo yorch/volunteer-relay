@@ -21,6 +21,33 @@ const lane = {
   sessionEpoch: "test",
   piModel: { provider: "synthetic", id: "local" },
 };
+it("requires literal final-state strings instead of coercing malformed native JSON", () => {
+  for (const state of ["working", "waiting", "ready", "needs_operator"]) {
+    expect(validFinal({ state, summary: "Synthetic" })).toBe(true);
+    for (const invalid of [[state], { state }, null, false, 0])
+      expect(validFinal({ state: invalid, summary: "Synthetic" })).toBe(false);
+  }
+  const stream: HarnessStream = {
+    inputTokens: 0,
+    outputTokens: 0,
+    settled: false,
+    invalid: false,
+  };
+  consumeEvent("pi", stream, {
+    type: "message_end",
+    message: {
+      role: "assistant",
+      stopReason: "stop",
+      content: [
+        {
+          type: "text",
+          text: '{"state":["needs_operator"],"summary":"Synthetic"}',
+        },
+      ],
+    },
+  });
+  expect(stream.final).toBeUndefined();
+});
 it("preserves Codex legacy argv and binds exact native resume to harness and epoch", () => {
   const legacy = harnessCommand(
     config,

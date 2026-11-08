@@ -194,13 +194,76 @@ function scopePaths(value) {
     ),
   ];
 }
-async function knownScope(ctx, id) {
+async function optionalScope(ctx, id) {
   const scope = await read(taskPath(ctx, id, "scope.json"), null);
+  if (scope === null) return null;
   ensure(
-    scope?.version === 1 && scope.task === id && scope.by === "A",
-    `Unknown coordinator scope for ${id}; publish scope before pipelining`,
+    scope.version === 1 && scope.task === id && scope.by === "A",
+    `Invalid coordinator scope for ${id}`,
   );
   return scopePaths(scope.paths);
+}
+async function knownScope(ctx, id) {
+  const paths = await optionalScope(ctx, id);
+  ensure(
+    paths !== null,
+    `Unknown coordinator scope for ${id}; publish scope before pipelining`,
+  );
+  return paths;
+}
+async function outstandingRevision(ctx, id, agent) {
+  const all = await messages(ctx);
+  const answered = new Set(
+    all.filter((m) => m.kind === "answer").map((m) => m.replyTo),
+  );
+  return all.some(
+    (m) =>
+      m.from === "A" &&
+      m.to === agent &&
+      m.task === id &&
+      m.kind === "request" &&
+      !answered.has(m.id),
+  );
+}
+const priorities = ["urgent-operational", "gate-critical", "normal", "low"];
+function schedulingDependencies(value, ownTask) {
+  ensure(
+    Array.isArray(value) && value.length <= 64,
+    "Dependencies require an array of at most 64 entries",
+  );
+  const seen = new Set();
+  return value.map((dependency) => {
+    ensure(
+      dependency &&
+        typeof dependency === "object" &&
+        !Array.isArray(dependency) &&
+        Object.keys(dependency).every((key) =>
+          ["taskId", "require", "commit"].includes(key),
+        ),
+      "Invalid scheduling dependency fields",
+    );
+    const dependencyTask = task(dependency.taskId);
+    ensure(
+      dependencyTask !== ownTask && !seen.has(dependencyTask),
+      "Dependencies must be distinct other tasks",
+    );
+    seen.add(dependencyTask);
+    ensure(
+      ["accepted", "ready"].includes(dependency.require),
+      "Dependency require must be accepted or ready",
+    );
+    const commit = dependency.commit ?? null;
+    ensure(
+      commit === null ||
+        (typeof commit === "string" && /^[a-f0-9]{40}$/.test(commit)),
+      "Dependency commit must be a full lowercase SHA or null",
+    );
+    ensure(
+      dependency.require !== "ready" || commit !== null,
+      "Ready dependency requires an exact commit",
+    );
+    return { taskId: dependencyTask, require: dependency.require, commit };
+  });
 }
 function overlaps(left, right) {
   return left.some((a) =>
@@ -225,7 +288,7 @@ async function taskEntries(ctx) {
   }
   return result;
 }
-async function executionGuard(ctx, id, agent) {
+async function executionGuard(ctx, id, agent, revision = false) {
   const state = await read(join(ctx.store, "supervisor", "state.json"), null);
   for (const record of Object.values(state?.records ?? {})) {
     ensure(
@@ -243,7 +306,11 @@ async function executionGuard(ctx, id, agent) {
     );
     if (entry.accepted || entry.assignment.owner !== agent) continue;
     ensure(
-      entry.status?.state === "ready",
+      entry.status?.state === "ready" ||
+        (revision &&
+          ((!entry.claim && !entry.status) ||
+            (entry.status?.state === "blocked" &&
+              entry.status.checkpointed === true))),
       `Lane ${agent} already has active task ${entry.id}`,
     );
     ensure(
@@ -256,10 +323,13 @@ const help = `Harness-neutral local coordination (Node 26.11.1)
   agents init
   agents prompt A|B|C|D|E|F|R|V
   agents assign --agent A --task P1-01 --owner B --ref HEAD --text "Approved slice"
+  agents schedule --agent A --task P1-01 --priority normal [--dependencies-json '[]'] [--enqueued-at MILLISECONDS]
   agents scope --agent A --task P1-01 --paths-json '["packages/example"]'
   agents claim --agent B --task P1-01
+  agents checkpoint --agent B --task P1-01 --text "Work saved; yielding after this native turn"
   agents status --agent B --task P1-01 --state working|blocked|ready --text "Progress/handoff" [--commit HEAD]
   agents send --agent D --to B|all --kind question|answer|update|handoff|request [--task P2-01] [--reply-to UUID] --text "Message"
+  agents send --agent A --to R|V --kind request --task P1-01 --commit REF --text "Pinned review brief"
   agents inbox --agent B [--unanswered true] [--task P1-01]
   agents board
   agents brief
@@ -283,7 +353,9 @@ export async function main(args = process.argv.slice(2)) {
     "init",
     "assign",
     "scope",
+    "schedule",
     "claim",
+    "checkpoint",
     "status",
     "send",
     "inbox",
@@ -297,7 +369,14 @@ export async function main(args = process.argv.slice(2)) {
   const ctx = await context();
   await prepare(ctx);
   const lock = join(ctx.store, "board-mutation.lock");
-  const mutating = ["scope", "assign", "claim", "status"].includes(command);
+  const mutating = [
+    "scope",
+    "schedule",
+    "assign",
+    "claim",
+    "checkpoint",
+    "status",
+  ].includes(command);
   if (mutating) {
     try {
       await mkdir(lock, { mode: 0o700 });
@@ -330,6 +409,8 @@ async function execute(command, o, ctx) {
         claim: await read(taskPath(ctx, id, "claim.json"), null),
         status: await read(taskPath(ctx, id, "status.json"), null),
         accepted: await read(taskPath(ctx, id, "accepted.json"), null),
+        scheduling: await read(taskPath(ctx, id, "metadata.json"), null),
+        scope: await read(taskPath(ctx, id, "scope.json"), null),
       });
     }
     const all = await messages(ctx);
@@ -346,6 +427,7 @@ async function execute(command, o, ctx) {
             ? "accepted"
             : (t.status?.state ?? (t.claim ? "claimed" : "assigned")),
           commit: t.accepted?.commit ?? t.status?.commit ?? null,
+          scheduling: t.scheduling,
         })),
         unanswered: all.filter(
           (m) =>
@@ -415,35 +497,105 @@ async function execute(command, o, ctx) {
           "Answers must reference a question/request",
         );
     }
+    let reviewCommit;
+    if (o.commit !== undefined) {
+      ensure(
+        agent === "A" &&
+          ["R", "V"].includes(to) &&
+          o.kind === "request" &&
+          messageTask,
+        "Only A task requests to R/V may pin a review commit",
+      );
+      reviewCommit = git(
+        ["rev-parse", "--verify", "--end-of-options", `${o.commit}^{commit}`],
+        ctx.root,
+      );
+      ensure(/^[a-f0-9]{40}$/.test(reviewCommit), "Invalid review commit");
+    }
     return send(ctx, {
       from: agent,
       to,
       kind: o.kind,
+      ...(reviewCommit ? { reviewCommit } : {}),
       task: messageTask,
       replyTo: o["reply-to"] ?? null,
       text: await text(o),
     });
   }
   const id = task(o.task);
+  if (command === "schedule") {
+    ensure(agent === "A", "Only coordinator A publishes scheduling metadata");
+    ensure(
+      Object.keys(o).every((key) =>
+        [
+          "agent",
+          "task",
+          "priority",
+          "dependencies-json",
+          "enqueued-at",
+        ].includes(key),
+      ),
+      "Unknown schedule option",
+    );
+    // Require an actual committed task card; a priority entry does not authorize implementation.
+    git(["show", `HEAD:docs/tasks/${id}.md`], ctx.root);
+    ensure(priorities.includes(o.priority), "Unknown scheduling priority");
+    const prior = await read(taskPath(ctx, id, "metadata.json"), null);
+    const assignment = await read(taskPath(ctx, id, "assignment.json"), null);
+    const enqueuedAt =
+      prior?.enqueuedAt ??
+      (o["enqueued-at"] === undefined
+        ? assignment
+          ? Date.parse(assignment.at)
+          : Date.now()
+        : Number(o["enqueued-at"]));
+    ensure(
+      Number.isSafeInteger(enqueuedAt) &&
+        enqueuedAt >= 0 &&
+        enqueuedAt <= Date.now(),
+      "Enqueue time must be a nonfuture epoch millisecond integer",
+    );
+    ensure(
+      !prior ||
+        o["enqueued-at"] === undefined ||
+        Number(o["enqueued-at"]) === prior.enqueuedAt,
+      "Existing enqueue time is immutable",
+    );
+    const dependsOn = schedulingDependencies(
+      o["dependencies-json"] === undefined
+        ? (prior?.dependsOn ?? [])
+        : JSON.parse(o["dependencies-json"]),
+      id,
+    );
+    const metadata = {
+      version: 1,
+      priority: o.priority,
+      dependsOn,
+      reviewOf: null,
+      enqueuedAt,
+      updatedBy: "A",
+    };
+    await put(taskPath(ctx, id, "metadata.json"), metadata);
+    return metadata;
+  }
   if (command === "scope") {
     ensure(agent === "A", "Only coordinator A publishes scope");
     const paths = scopePaths(JSON.parse(o["paths-json"]));
-    // Amendments cannot make existing same-lane pipelined submissions overlap.
+    // Known scopes are exclusive across lanes as well as pipelined submissions.
+    // Unknown legacy cross-lane scopes remain governed by the engineering protocol.
     const entries = await taskEntries(ctx);
     const own = entries.find((entry) => entry.id === id);
-    if (own && !own.accepted) {
-      for (const entry of entries) {
-        if (
-          entry.id === id ||
-          entry.accepted ||
-          entry.assignment.owner !== own.assignment.owner
-        )
-          continue;
+    for (const entry of entries) {
+      if (entry.id === id || entry.accepted) continue;
+      const otherPaths =
+        own && !own.accepted && entry.assignment.owner === own.assignment.owner
+          ? await knownScope(ctx, entry.id)
+          : await optionalScope(ctx, entry.id);
+      if (otherPaths)
         ensure(
-          !overlaps(paths, await knownScope(ctx, entry.id)),
+          !overlaps(paths, otherPaths),
           `Coordinator scopes overlap with ${entry.id}`,
         );
-      }
     }
     const scope = {
       version: 1,
@@ -480,16 +632,25 @@ async function execute(command, o, ctx) {
       "Owner does not match the committed task card",
     );
     for (const entry of await taskEntries(ctx)) {
-      if (entry.id === id || entry.assignment.owner !== owner || entry.accepted)
-        continue;
-      ensure(
-        entry.status?.state === "ready",
-        `Lane ${owner} already has active task ${entry.id}`,
-      );
-      ensure(
-        !overlaps(await knownScope(ctx, id), await knownScope(ctx, entry.id)),
-        `Coordinator scopes overlap with ${entry.id}`,
-      );
+      if (entry.id === id || entry.accepted) continue;
+      if (entry.assignment.owner === owner) {
+        ensure(
+          entry.status?.state === "ready",
+          `Lane ${owner} already has active task ${entry.id}`,
+        );
+        ensure(
+          !overlaps(await knownScope(ctx, id), await knownScope(ctx, entry.id)),
+          `Coordinator scopes overlap with ${entry.id}`,
+        );
+      } else {
+        const mine = await optionalScope(ctx, id),
+          other = await optionalScope(ctx, entry.id);
+        if (mine && other)
+          ensure(
+            !overlaps(mine, other),
+            `Coordinator scopes overlap with ${entry.id}`,
+          );
+      }
     }
     const assignment = {
       task: id,
@@ -643,13 +804,37 @@ async function execute(command, o, ctx) {
     await put(taskPath(ctx, id, "accepted.json"), accepted, true);
     return accepted;
   }
-  ensure(command === "status", "Unknown task action");
+  ensure(["status", "checkpoint"].includes(command), "Unknown task action");
+  const checkpointing = command === "checkpoint";
+  if (checkpointing) {
+    ensure(
+      !o.state && !o.commit,
+      "Checkpoint records blocked state without a new submission SHA",
+    );
+    o.state = "blocked";
+  }
   await claimed(ctx, id, agent);
   ensure(
     ["working", "blocked", "ready"].includes(o.state),
     "State must be working, blocked or ready",
   );
-  if (o.state === "working") await executionGuard(ctx, id, agent);
+  const previous = await read(taskPath(ctx, id, "status.json"), null);
+  const revising = previous?.state === "ready" && o.state === "working";
+  if (o.state === "working") {
+    await executionGuard(ctx, id, agent, revising);
+    if (revising)
+      ensure(
+        await outstandingRevision(ctx, id, agent),
+        "Frozen submission requires an outstanding coordinator revision request",
+      );
+  }
+  if (checkpointing) {
+    ensure(
+      previous?.state !== "ready",
+      "Frozen submission requires an explicit working revision transition through its original claim",
+    );
+    await executionGuard(ctx, id, agent);
+  }
   let commit = null;
   if (o.state === "ready") {
     ensure(o.commit, "Ready requires --commit HEAD (or exact SHA)");
@@ -663,7 +848,6 @@ async function execute(command, o, ctx) {
       "Commit or remove task-local changes before ready",
     );
   }
-  const previous = await read(taskPath(ctx, id, "status.json"), null);
   if (
     previous?.state === "ready" &&
     (o.state !== "ready" || commit !== previous.commit)
@@ -678,6 +862,7 @@ async function execute(command, o, ctx) {
     agent,
     task: id,
     state: o.state,
+    ...(checkpointing ? { checkpointed: true } : {}),
     commit,
     at: new Date().toISOString(),
     text: await text(o),
@@ -690,6 +875,7 @@ async function execute(command, o, ctx) {
     replyTo: null,
     text: status.text,
     state: status.state,
+    ...(checkpointing ? { checkpointed: true } : {}),
     commit,
   });
   await put(taskPath(ctx, id, "status.json"), {

@@ -1,3 +1,7 @@
+# Current source contract
+
+Read [ORCHESTRATION.md](ORCHESTRATION.md) first. It supersedes the historical startup-only scheduling and one-unaccepted-task defaults below. Mutable authorized task/lane fields now hot-reload; runtime uses FAIR scheduling and explicit checkpointed task resumption. This audit branch is not activated automatically, and an intentional operator stop stays stopped.
+
 # Dedicated headless operation
 
 This overrides first-wave launch defaults. One Node supervisor runs approved harness CLI sessions (Codex default; restricted Pi support per HARNESSES.md) with explicit native thread IDs; no --last, bypass flags or parallel writer for a lane. The operator confirmed previous B/E/D/R harnesses stopped before replacement. Preserve all existing worktrees, dirty work and private services. Do not launch another supervisor/harness or change its config, task allowlist or budgets from an agent except the standing operator directive permits A to prepare plan/gate task allowlist changes and approved role support; runtime budgets remain unchanged and reload uses an operator-channel draining restart.

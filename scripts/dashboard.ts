@@ -11,6 +11,7 @@ import type { Config, State } from "./supervisor.ts";
 import { watchdogHealth } from "./watchdog/dashboard.ts";
 
 interface Message {
+  reviewCommit?: string;
   id: string;
   at: string;
   from: string;
@@ -21,6 +22,8 @@ interface Message {
   text: string;
 }
 interface LiveTask {
+  scope?: { version: 1; paths: string[] } | null;
+  scheduling?: import("./fair-scheduler.ts").Metadata | null;
   task: string;
   assignment: { owner: string; baseCommit: string; at: string; text: string };
   claim: { branch: string; worktree: string; at: string } | null;
@@ -29,8 +32,14 @@ interface LiveTask {
     text: string;
     at: string;
     commit: string | null;
+    checkpointed?: boolean;
   } | null;
-  accepted: { commit: string; at: string; text: string } | null;
+  accepted: {
+    commit: string;
+    sourceCommit?: string;
+    at: string;
+    text: string;
+  } | null;
 }
 interface Board {
   store: string;
@@ -154,6 +163,7 @@ export async function snapshot(root: string) {
       cwd: root,
       encoding: "utf8",
       maxBuffer: 16 * 1024 * 1024,
+      timeout: 10000,
     }),
   );
   const cards = (await readdir(join(root, "docs/tasks")))
@@ -208,7 +218,16 @@ export async function snapshot(root: string) {
       task: lane.task ?? task?.task ?? null,
       worktree,
       branch: worktrees.find((w) => w.path === worktree)?.branch ?? null,
-      taskStatus: task?.status?.state ?? (task ? "assigned" : null),
+      taskStatus: task?.accepted
+        ? "accepted"
+        : (task?.status?.state ?? (task ? "assigned" : null)),
+      reason:
+        task?.accepted && lane.status === "idle"
+          ? "Last task accepted; no active native run"
+          : lane.reason,
+      assignments: board.tasks
+        .filter((t) => t.assignment.owner === lane.lane && !t.accepted)
+        .map((t) => ({ task: t.task, state: t.status?.state ?? "assigned" })),
       acceptedCommit: task?.accepted?.commit ?? null,
     };
   });
@@ -223,7 +242,11 @@ export async function snapshot(root: string) {
           ? "accepted"
           : (t.live?.status?.state ?? "assigned"),
         accepted: Boolean(t.live?.accepted),
-        dependsOn: [],
+        dependsOn:
+          t.live?.scheduling?.dependsOn.map((dep) => ({
+            taskId: dep.taskId,
+            require: dep.require,
+          })) ?? [],
       })),
     lanes: agents.map((lane) => ({
       id: lane.lane,
@@ -266,7 +289,7 @@ export async function snapshot(root: string) {
     graphCoverage: {
       messagesTotal: board.messages.length,
       messagesIncluded: graphInput.messages.length,
-      dependencyMetadata: "unavailable (no structured board metadata yet)",
+      dependencyMetadata: `${tasks.filter((t) => t.live?.scheduling).length} structured schedules; legacy dependencies unavailable`,
     },
     updatedAt: new Date().toISOString(),
     monitor: await monitorStatus(board.store),

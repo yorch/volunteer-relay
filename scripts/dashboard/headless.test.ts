@@ -87,6 +87,17 @@ it("does not claim model/process activity from stale heartbeats, dead or inacces
   expect(projectHeadless(null, null, now).state).toBe("not-started");
 });
 
+it("keeps an intentionally stopped supervisor stopped after its final heartbeat ages", () => {
+  const stopped = { ...state, running: false, draining: true, records: {} };
+  for (const elapsed of [0, 60000, 86400000])
+    expect(projectHeadless(config, stopped, now + elapsed).state).toBe(
+      "stopped",
+    );
+  expect(
+    projectHeadless(config, { ...stopped, running: true }, now + 60000).state,
+  ).toBe("stale");
+});
+
 it("distinguishes absent supervisor state from unreadable or corrupt private state", async () => {
   const root = await mkdtemp(join(tmpdir(), "relay-sessions-"));
   try {
@@ -194,4 +205,46 @@ it("retains runtime reload errors while disk JSON is malformed and recovers", as
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+it("shows loaded budgets and a precise hourly wait instead of implying the configured limit is active", () => {
+  const now = Date.now();
+  const cfg = structuredClone(config);
+  const runtime = structuredClone(state);
+  runtime.checkedAt = new Date(now).toISOString();
+  runtime.held = [];
+  runtime.scheduling = {
+    fingerprint: "a".repeat(64),
+    allowedTasks: [],
+    enabledLanes: ["A"],
+    maxParallel: 4,
+    maxRunsPerHour: 2,
+    maxRunMinutes: 25,
+    intervalSeconds: 10,
+  };
+  const base = Object.values(runtime.records)[0];
+  if (!base) throw Error("Fixture");
+  runtime.records = {
+    A: {
+      ...base,
+      key: "A",
+      lane: "A",
+      status: "idle",
+      runs: [now - 20000, now - 10000],
+    },
+  };
+  const projected = projectHeadless(
+    { ...cfg, maxRunsPerHour: 60 },
+    runtime,
+    now,
+    () => false,
+  );
+  expect(projected.budgetsSource).toBe("loaded");
+  expect(projected.budgets?.maxRunsPerHour).toBe(2);
+  expect(projected.lanes.find((l) => l.lane === "A")?.scheduling).toMatchObject(
+    {
+      code: "RATE_LIMITED",
+      nextEligibleAt: new Date(now - 20000 + 3600000).toISOString(),
+    },
+  );
 });

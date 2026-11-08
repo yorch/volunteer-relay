@@ -83,3 +83,39 @@ it("never treats on-disk config as loaded or PID as productive work", () => {
   expect(r.code).toBe("scheduled");
   expect(r.label).toContain("productive work is not inferred");
 });
+
+it("canonicalizes equivalent config order and distinguishes submitted work from unscheduled execution", () => {
+  const a = { ...cfg, allowedTasks: ["P0-20", "P1-01"] };
+  const b = { ...cfg, allowedTasks: ["P1-01", "P0-20"] };
+  expect(loadedScheduling(a).fingerprint).toBe(loadedScheduling(b).fingerprint);
+  expect(
+    schedulingReason({ ...task, state: "review" }, state(), cfg, now).code,
+  ).toBe("coordinator-disposition");
+  const s = state();
+  s.queue = {
+    version: 1,
+    evaluatedAt: now,
+    selected: [],
+    queue: [
+      {
+        key: "F:task",
+        lane: "F",
+        taskId: "P0-20",
+        status: "blocked",
+        reason: "RATE_LIMITED",
+        position: null,
+        dependencyIds: [],
+        components: {
+          priority: 2,
+          aging: 0,
+          unblocks: 0,
+          review: false,
+          enqueue: now,
+        },
+      },
+    ],
+  };
+  expect(schedulingReason(task, s, cfg, now).code).toBe("rate-limited");
+  s.running = false;
+  expect(schedulingReason(task, s, cfg, now).code).toBe("draining");
+});
