@@ -102,6 +102,15 @@ it("serves fresh tasks/messages without exposing files or allowing mutations/cro
     const initial = await (await fetch(`${url}/api/snapshot`)).json();
     expect(initial.tasks).toHaveLength(1);
     expect(initial.messages).toEqual([]);
+    expect(initial.graphs.dependencies.version).toBe(1);
+    expect(initial.graphs.dependencies.edges).toEqual([]);
+    expect(initial.graphCoverage.dependencyMetadata).toContain("unavailable");
+    for (const asset of [
+      "graph-viewer.js",
+      "graph-renderer.js",
+      "graph-renderer.css",
+    ])
+      expect((await fetch(`${url}/${asset}`)).status).toBe(200);
     const traceId = "1794100000001-00000000-0000-4000-8000-000000000001";
     const traces = await createTraceStore(
       join(root, ".relay-coordination/operational-traces"),
@@ -168,6 +177,17 @@ it("serves fresh tasks/messages without exposing files or allowing mutations/cro
     expect(updated.tasks[0].state).toBe("completed");
     expect(updated.messages[0].text).toBe(hostile);
     expect(updated.unanswered).toHaveLength(1);
+    expect(updated.graphs.communication.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          from: "B",
+          to: "A",
+          kind: "awaiting-answer",
+          unanswered: true,
+        }),
+      ]),
+    );
+    expect(JSON.stringify(updated.graphs)).not.toContain(hostile);
     expect((await fetch(`${url}/dashboard.js`)).status).toBe(200);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));

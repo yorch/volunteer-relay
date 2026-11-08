@@ -100,6 +100,7 @@ function render() {
   $("headless-lanes").replaceChildren(
     ...(headless?.lanes ?? []).map((lane) => {
       const card = el("article", undefined, "agent-card");
+      card.dataset.lane = lane.lane;
       card.append(el("h3", `Agent ${lane.lane} · ${lane.status}`));
       const rows = [
         ["Harness", lane.harness],
@@ -141,6 +142,13 @@ function render() {
       card.append(list);
       return card;
     }),
+  );
+  window.relayGraphSnapshot = {
+    graphs: data.graphs,
+    coverage: data.graphCoverage,
+  };
+  window.dispatchEvent(
+    new CustomEvent("relay-graphs", { detail: window.relayGraphSnapshot }),
   );
   const monitor = data.monitor;
   $("monitor-status").textContent = monitor?.state ?? "not-started";
@@ -201,6 +209,7 @@ function render() {
       column.append(el("h3", `${name} · ${tasks.length}`));
       for (const task of tasks) {
         const card = el("article", undefined, "card");
+        card.dataset.taskId = task.id;
         const meta = el("div", undefined, "meta");
         meta.append(
           el("span", `Agent ${task.owner}`, "pill"),

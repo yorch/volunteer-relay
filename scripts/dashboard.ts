@@ -3,6 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildGraph, type GraphInput } from "./dashboard/graph-builder.ts";
 import { readHeadless } from "./dashboard/headless.ts";
 import { createTraceStore, traceIdPattern } from "./operational-traces.ts";
 import { schedulingFingerprint, schedulingReason } from "./scheduling.ts";
@@ -211,7 +212,62 @@ export async function snapshot(root: string) {
       acceptedCommit: task?.accepted?.commit ?? null,
     };
   });
+  const graphInput: GraphInput = {
+    version: 1,
+    tasks: tasks
+      .filter((t) => t.live?.assignment)
+      .map((t) => ({
+        id: t.id,
+        label: t.title.slice(0, 256),
+        status: t.live?.accepted
+          ? "accepted"
+          : (t.live?.status?.state ?? "assigned"),
+        accepted: Boolean(t.live?.accepted),
+        dependsOn: [],
+      })),
+    lanes: agents.map((lane) => ({
+      id: lane.lane,
+      role:
+        lane.lane === "A"
+          ? "Coordinator"
+          : lane.lane === "R"
+            ? "Code review"
+            : lane.lane === "V"
+              ? "Browser QA"
+              : "Implementation",
+      harness: lane.observedHarness,
+      observedModel: lane.observedModel,
+      taskId: lane.task,
+      processStatus: lane.status,
+      taskStatus: lane.taskStatus,
+      accepted: Boolean(lane.acceptedCommit),
+    })),
+    messages: board.messages
+      .slice(-1000)
+      .filter((m) =>
+        ["question", "request", "answer", "update", "handoff"].includes(m.kind),
+      )
+      .map((m) => ({
+        id: m.id,
+        from: m.from,
+        to: m.to,
+        kind: m.kind as GraphInput["messages"][number]["kind"],
+        task: m.task,
+        replyTo: m.replyTo,
+        at: m.at,
+      })),
+    unansweredIds: board.unanswered.slice(-1000).map((m) => m.id),
+  };
   return {
+    graphs: {
+      dependencies: buildGraph(graphInput, "dependencies"),
+      communication: buildGraph(graphInput, "communication"),
+    },
+    graphCoverage: {
+      messagesTotal: board.messages.length,
+      messagesIncluded: graphInput.messages.length,
+      dependencyMetadata: "unavailable (no structured board metadata yet)",
+    },
     updatedAt: new Date().toISOString(),
     monitor: await monitorStatus(board.store),
     watchdog: await watchdogHealth(board.store),
@@ -328,6 +384,9 @@ export function createDashboard(root: string) {
         "/": ["index.html", "text/html"],
         "/dashboard.js": ["dashboard.js", "text/javascript"],
         "/runs.js": ["run-viewer.js", "text/javascript"],
+        "/graph-viewer.js": ["graph-viewer.js", "text/javascript"],
+        "/graph-renderer.js": ["graph-renderer.js", "text/javascript"],
+        "/graph-renderer.css": ["graph-renderer.css", "text/css"],
         "/dashboard.css": ["dashboard.css", "text/css"],
       };
       const route = routes[request.url ?? ""];
