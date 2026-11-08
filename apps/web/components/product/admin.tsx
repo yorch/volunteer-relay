@@ -16,7 +16,7 @@ import {
 } from "react";
 import { type ApiResult, errorMessage, request } from "../api-client";
 import { Card, Live } from "../card";
-import { Button, Icon, Select, TextInput } from "../foundation";
+import { Button, Field, Icon, Select, TextInput } from "../foundation";
 import styles from "./admin.module.css";
 
 type Result<T> = ApiResult<T>;
@@ -61,6 +61,38 @@ function useWrite() {
     },
   };
 }
+const describedBy = (id: string, hint?: boolean, error?: string) =>
+  [hint ? `${id}-hint` : "", error ? `${id}-error` : ""]
+    .filter(Boolean)
+    .join(" ") || undefined;
+const wholeNumber = (
+  value: string,
+  label: string,
+  min: number,
+  max: number,
+) => {
+  const text = value.trim();
+  if (!text) return `Enter the ${label}.`;
+  const n = Number(text);
+  return Number.isInteger(n) && n >= min && n <= max
+    ? ""
+    : `Enter a whole number from ${min} to ${max}.`;
+};
+const timezoneError = (value: string) => {
+  if (!value.trim()) return "Enter an organization timezone.";
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: value.trim() });
+    return "";
+  } catch {
+    return "Use an IANA timezone such as America/Chicago.";
+  }
+};
+const fieldCheck: Record<string, (value: string) => string> = {
+  "policy-version": (v) => (v.trim() ? "" : "Enter a policy version."),
+  "ack-minutes": (v) => wholeNumber(v, "acknowledgment deadline", 1, 10080),
+  "org-timezone": timezoneError,
+  "source-retention": (v) => wholeNumber(v, "retention period", 1, 3650),
+};
 function Panel({
   children,
   className = "",
@@ -199,10 +231,94 @@ function SettingsForm({
   const [fallback, setFallback] = useState(initial.fallbackMembershipId ?? "");
   const [policy, setPolicy] = useState<string>(initial.automationPolicy);
   const [localError, setLocalError] = useState("");
+  const [values, setValues] = useState<Record<string, string>>({
+    "policy-version": initial.policyVersion,
+    "ack-minutes": String(initial.ackMinutes),
+    "org-timezone": initial.timezone,
+    "source-retention": String(initial.retentionDays),
+  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [routeErrors, setRouteErrors] = useState<Record<string, string>>({});
+  const [baseline] = useState(() =>
+    JSON.stringify([
+      initial.policyVersion,
+      String(initial.ackMinutes),
+      initial.timezone,
+      String(initial.retentionDays),
+      initial.automationPolicy,
+      initial.fallbackMembershipId ?? "",
+      Object.entries(initial.routing).map(([category, ids]) => [
+        category,
+        [...ids].sort(),
+      ]),
+    ]),
+  );
+  const dirty =
+    JSON.stringify([
+      values["policy-version"],
+      values["ack-minutes"],
+      values["org-timezone"],
+      values["source-retention"],
+      policy,
+      fallback,
+      routing.map((row) => [row.category, [...row.memberIds].sort()]),
+    ]) !== baseline;
+  const validateField = (id: string, value: string) =>
+    setErrors((current) => ({
+      ...current,
+      [id]: fieldCheck[id]?.(value) ?? "",
+    }));
+  const validateRoute = (key: string, value: string) =>
+    setRouteErrors((current) => ({
+      ...current,
+      [key]: value.trim() ? "" : "Enter a category name.",
+    }));
+  const fieldProps = (id: string) => ({
+    id,
+    required: true,
+    value: values[id] ?? "",
+    "aria-invalid": errors[id] ? (true as const) : undefined,
+    "aria-describedby": describedBy(id, true, errors[id]),
+    onChange: (event: { target: { value: string } }) => {
+      const next = event.target.value;
+      setValues((current) => ({ ...current, [id]: next }));
+      if (errors[id]) validateField(id, next);
+    },
+    onBlur: () => validateField(id, values[id] ?? ""),
+  });
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const f = new FormData(e.currentTarget);
     if (!membersReady) return;
+    const nextErrors: Record<string, string> = {};
+    for (const id of Object.keys(fieldCheck))
+      nextErrors[id] = fieldCheck[id]?.(values[id] ?? "") ?? "";
+    const nextRouteErrors: Record<string, string> = {};
+    for (const row of routing)
+      nextRouteErrors[row.key] = row.category.trim()
+        ? ""
+        : "Enter a category name.";
+    setErrors(nextErrors);
+    setRouteErrors(nextRouteErrors);
+    const firstInvalid = [
+      "policy-version",
+      ...routing.map((row) => `route-category-${row.key}`),
+      "ack-minutes",
+      "org-timezone",
+      "source-retention",
+    ].find((id) =>
+      id.startsWith("route-category-")
+        ? nextRouteErrors[id.slice("route-category-".length)]
+        : nextErrors[id],
+    );
+    if (firstInvalid) {
+      setLocalError(
+        Object.values(nextRouteErrors).some(Boolean)
+          ? "Give each route a different, nonempty category."
+          : "Check the highlighted settings fields before saving.",
+      );
+      document.getElementById(firstInvalid)?.focus();
+      return;
+    }
     if (
       fallback &&
       !members.some((member) => member.membershipId === fallback)
@@ -240,13 +356,13 @@ function SettingsForm({
     const draft = {
       expectedRevision: initial.revision,
       idempotencyKey: "placeholder",
-      timezone: String(f.get("timezone")),
+      timezone: values["org-timezone"] ?? "",
       automationPolicy: policy,
-      policyVersion: String(f.get("version")),
+      policyVersion: values["policy-version"] ?? "",
       routing: routes,
       fallbackMembershipId: fallback || null,
-      ackMinutes: Number(f.get("ack")),
-      retentionDays: Number(f.get("retention")),
+      ackMinutes: Number(values["ack-minutes"]),
+      retentionDays: Number(values["source-retention"]),
     };
     const parsed = updateOrganizationSettingsSchema.safeParse(draft);
     if (!parsed.success) {
@@ -269,6 +385,7 @@ function SettingsForm({
         <form
           onSubmit={save}
           onChange={writer.change}
+          noValidate
           className={styles.settingsForm}
         >
           <fieldset disabled={!owner || writer.busy || !membersReady}>
@@ -305,19 +422,21 @@ function SettingsForm({
                     pass. All other proposals wait for staff review.
                   </span>
                 </div>
-                <label className={styles.field} htmlFor="policy-version">
-                  Policy version
-                  <TextInput
+                <div className={styles.fieldWrap}>
+                  <Field
                     id="policy-version"
-                    name="version"
-                    defaultValue={initial.policyVersion}
+                    label="Policy version"
                     required
-                    maxLength={100}
-                  />
-                  <span className={styles.help}>
-                    A short reference used to identify the active review rules.
-                  </span>
-                </label>
+                    hint="A short reference used to identify the active review rules."
+                    error={errors["policy-version"] ?? ""}
+                  >
+                    <TextInput
+                      {...fieldProps("policy-version")}
+                      name="version"
+                      maxLength={100}
+                    />
+                  </Field>
+                </div>
                 <section
                   className={`${styles.spanTwo} ${styles.routingRules}`}
                   aria-labelledby="routing-rules-title"
@@ -339,28 +458,49 @@ function SettingsForm({
                   {routing.map((row, index) => (
                     <fieldset className={styles.routingRule} key={row.key}>
                       <legend>Route {index + 1}</legend>
-                      <label
-                        className={styles.field}
-                        htmlFor={`route-category-${row.key}`}
-                      >
-                        Category
+                      <div className={styles.field}>
+                        <label
+                          className={styles.requiredLabel}
+                          htmlFor={`route-category-${row.key}`}
+                        >
+                          Category
+                        </label>
                         <TextInput
                           id={`route-category-${row.key}`}
                           value={row.category}
                           maxLength={100}
                           required
                           placeholder="For example, transport"
-                          onChange={(event) =>
+                          aria-invalid={routeErrors[row.key] ? true : undefined}
+                          aria-describedby={
+                            routeErrors[row.key]
+                              ? `route-category-${row.key}-error`
+                              : undefined
+                          }
+                          onBlur={(event) =>
+                            validateRoute(row.key, event.target.value)
+                          }
+                          onChange={(event) => {
+                            if (routeErrors[row.key])
+                              validateRoute(row.key, event.target.value);
                             setRouting((rows) =>
                               rows.map((item) =>
                                 item.key === row.key
                                   ? { ...item, category: event.target.value }
                                   : item,
                               ),
-                            )
-                          }
+                            );
+                          }}
                         />
-                      </label>
+                        {routeErrors[row.key] && (
+                          <span
+                            className={styles.fieldError}
+                            id={`route-category-${row.key}-error`}
+                          >
+                            {routeErrors[row.key]}
+                          </span>
+                        )}
+                      </div>
                       <div className={styles.routingRecipients}>
                         {members.map((member) => (
                           <label
@@ -493,24 +633,26 @@ function SettingsForm({
                     Used when a category has no matching route.
                   </span>
                 </div>
-                <label className={styles.field} htmlFor="ack-minutes">
-                  Acknowledgment deadline
-                  <span className={styles.inputWithUnit}>
-                    <TextInput
-                      id="ack-minutes"
-                      name="ack"
-                      type="number"
-                      min="1"
-                      max="10080"
-                      defaultValue={initial.ackMinutes}
-                      required
-                    />
-                    <span>minutes</span>
-                  </span>
-                  <span className={styles.help}>
-                    Time allowed for a person to acknowledge an assigned need.
-                  </span>
-                </label>
+                <div className={styles.fieldWrap}>
+                  <Field
+                    id="ack-minutes"
+                    label="Acknowledgment deadline"
+                    required
+                    hint="Time allowed for a person to acknowledge an assigned need."
+                    error={errors["ack-minutes"] ?? ""}
+                  >
+                    <span className={styles.inputWithUnit}>
+                      <TextInput
+                        {...fieldProps("ack-minutes")}
+                        name="ack"
+                        type="number"
+                        min="1"
+                        max="10080"
+                      />
+                      <span>minutes</span>
+                    </span>
+                  </Field>
+                </div>
               </div>
             </section>
             <section
@@ -525,43 +667,51 @@ function SettingsForm({
                 </p>
               </div>
               <div className={styles.formGrid}>
-                <label className={styles.field} htmlFor="org-timezone">
-                  Organization timezone
-                  <TextInput
+                <div className={styles.fieldWrap}>
+                  <Field
                     id="org-timezone"
-                    name="timezone"
-                    defaultValue={initial.timezone}
+                    label="Organization timezone"
                     required
-                  />
-                  <span className={styles.help}>
-                    Use an IANA timezone such as America/Chicago.
-                  </span>
-                </label>
-                <label className={styles.field} htmlFor="source-retention">
-                  Source retention
-                  <span className={styles.inputWithUnit}>
+                    hint="Use an IANA timezone such as America/Chicago."
+                    error={errors["org-timezone"] ?? ""}
+                  >
                     <TextInput
-                      id="source-retention"
-                      name="retention"
-                      type="number"
-                      min="1"
-                      max="3650"
-                      defaultValue={initial.retentionDays}
-                      required
+                      {...fieldProps("org-timezone")}
+                      name="timezone"
                     />
-                    <span>days</span>
-                  </span>
-                  <span className={styles.help}>
-                    Expired evidence becomes eligible for review; it is not
-                    removed automatically from this screen.
-                  </span>
-                </label>
+                  </Field>
+                </div>
+                <div className={styles.fieldWrap}>
+                  <Field
+                    id="source-retention"
+                    label="Source retention"
+                    required
+                    hint="Expired evidence becomes eligible for review; it is not removed automatically from this screen."
+                    error={errors["source-retention"] ?? ""}
+                  >
+                    <span className={styles.inputWithUnit}>
+                      <TextInput
+                        {...fieldProps("source-retention")}
+                        name="retention"
+                        type="number"
+                        min="1"
+                        max="3650"
+                      />
+                      <span>days</span>
+                    </span>
+                  </Field>
+                </div>
               </div>
             </section>
             {owner && (
               <div className={styles.formFooter}>
-                <span>Saving creates a new settings revision.</span>
-                <Button type="submit" disabled={writer.busy}>
+                <div className={styles.saveState}>
+                  <strong className={dirty ? styles.dirty : styles.clean}>
+                    {dirty ? "Unsaved changes" : "All changes saved"}
+                  </strong>
+                  <span>Saving creates a new settings revision.</span>
+                </div>
+                <Button type="submit" disabled={writer.busy || !dirty}>
                   {writer.busy ? "Saving…" : "Save settings"}
                 </Button>
               </div>
@@ -939,10 +1089,25 @@ export function Members() {
   const list = useLoad<Member[]>("members");
   const writer = useWrite();
   const [inviteRole, setInviteRole] = useState("volunteer");
+  const [emailError, setEmailError] = useState("");
+  const checkEmail = (value: string) => {
+    const text = value.trim();
+    const problem = !text
+      ? "Enter an email address."
+      : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)
+        ? ""
+        : "Enter a valid email address, such as name@example.org.";
+    setEmailError(problem);
+    return !problem;
+  };
   async function invite(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
     const f = new FormData(form);
+    if (!checkEmail(String(f.get("email") ?? ""))) {
+      document.getElementById("invite-email")?.focus();
+      return;
+    }
     if (
       (
         await writer.write(
@@ -953,6 +1118,7 @@ export function Members() {
       ).ok
     ) {
       form.reset();
+      setEmailError("");
       setInviteRole("volunteer");
       await list.reload();
     }
@@ -1012,18 +1178,35 @@ export function Members() {
           onSubmit={invite}
           onChange={writer.change}
           className={styles.inviteForm}
+          noValidate
         >
-          <label className={styles.field} htmlFor="invite-email">
-            Email address
-            <TextInput
+          <div className={styles.fieldWrap}>
+            <Field
               id="invite-email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              placeholder="name@example.org"
+              label="Email address"
               required
-            />
-          </label>
+              error={emailError}
+            >
+              <TextInput
+                id="invite-email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                placeholder="name@example.org"
+                required
+                aria-invalid={emailError ? true : undefined}
+                aria-describedby={describedBy(
+                  "invite-email",
+                  false,
+                  emailError,
+                )}
+                onBlur={(event) => checkEmail(event.target.value)}
+                onChange={(event) => {
+                  if (emailError) checkEmail(event.target.value);
+                }}
+              />
+            </Field>
+          </div>
           <div className={styles.field}>
             <label htmlFor="invite-role">Workspace role</label>
             <Select

@@ -343,7 +343,15 @@ export function Overview({
             </ul>
           )}
           {!snapshot.queue.length && !failed && !urgent && (
-            <EmptyState icon="check" title="All caught up">
+            <EmptyState
+              icon="check"
+              title="All caught up"
+              action={
+                <Link className={styles.primaryLink} href="/workspace/import">
+                  Add updates from a file to keep things flowing
+                </Link>
+              }
+            >
               No urgent work right now.
             </EmptyState>
           )}
@@ -384,7 +392,15 @@ export function Overview({
               ))}
             </ul>
           ) : (
-            <EmptyState icon="needs" title="Nothing open">
+            <EmptyState
+              icon="needs"
+              title="Nothing open"
+              action={
+                <Link className={styles.primaryLink} href="/workspace/needs">
+                  Add a need to the board
+                </Link>
+              }
+            >
               No open needs.
             </EmptyState>
           )}

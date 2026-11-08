@@ -271,6 +271,21 @@
     border: 1px solid CanvasText;
   }
 }
+.fieldWrap {
+  min-width: 0;
+}
+.fieldWrap > div {
+  margin-bottom: 0;
+}
+.form [aria-invalid="true"] {
+  border-color: var(--relay-danger, #8b3427);
+  box-shadow: 0 0 0 1px var(--relay-danger, #8b3427);
+}
+@media (forced-colors: active) {
+  .form [aria-invalid="true"] {
+    outline: 2px solid Mark;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .form input,
   .form textarea,

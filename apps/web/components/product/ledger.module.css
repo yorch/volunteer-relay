@@ -210,3 +210,15 @@
     width: 100%;
   }
 }
+
+.emptyLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--relay-teal, #196c5b);
+  font-weight: 700;
+}
+.emptyLink:focus-visible {
+  outline: 3px solid var(--relay-focus, #895311);
+  outline-offset: 4px;
+}

@@ -394,3 +394,106 @@
     transform: none;
   }
 }
+
+/* Provenance: marks in the source text */
+.mark {
+  padding: 0 2px;
+  border-radius: var(--relay-radius-sm, 6px);
+  background-color: #f7dfae;
+  color: var(--relay-ink, #172b26);
+  text-decoration: underline dotted 2px;
+  text-underline-offset: 4px;
+  transition: background-color var(--relay-duration, 140ms) ease;
+}
+.mark[data-active="true"] {
+  background-color: var(--relay-accent, #e8a33d);
+  text-decoration: underline solid 3px;
+  box-shadow: 0 0 0 2px var(--relay-accent-ink, #7a4a06);
+}
+.mark:focus-visible {
+  outline: 3px solid var(--relay-focus, #895311);
+  outline-offset: 4px;
+}
+.provenance {
+  margin: var(--relay-space-2, 8px) 0 0;
+  color: var(--relay-muted, #4d6058);
+  font-size: var(--relay-text-sm, 0.875rem);
+  white-space: normal;
+}
+.showInSource {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--relay-space-2, 8px);
+  min-height: 44px;
+  justify-self: start;
+  padding: 0 var(--relay-space-3, 12px);
+  border: 1px solid var(--relay-line-strong, #c2cfc4);
+  border-radius: var(--relay-radius-md, 10px);
+  background-color: var(--relay-paper, #fff);
+  color: var(--relay-teal, #196c5b);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.showInSource[aria-pressed="true"] {
+  border-color: var(--relay-teal, #196c5b);
+  box-shadow: var(--relay-ring-select, 0 0 0 3px rgb(25 108 91 / 18%));
+}
+.showInSource:focus-visible {
+  outline: 3px solid var(--relay-focus, #895311);
+  outline-offset: 4px;
+}
+.shortcuts {
+  margin: 0 0 var(--relay-space-3, 12px);
+  color: var(--relay-ink, #172b26);
+  font-size: var(--relay-text-sm, 0.875rem);
+}
+.shortcuts summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 700;
+}
+.shortcuts summary:focus-visible {
+  outline: 3px solid var(--relay-focus, #895311);
+  outline-offset: 4px;
+}
+.shortcuts dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--relay-space-2, 8px) var(--relay-space-3, 12px);
+  margin: 0;
+}
+.shortcuts dt,
+.shortcuts dd {
+  margin: 0;
+}
+.shortcuts kbd {
+  padding: 0 var(--relay-space-2, 8px);
+  border: 1px solid var(--relay-line-strong, #c2cfc4);
+  border-radius: var(--relay-radius-sm, 6px);
+  background-color: var(--relay-paper, #fff);
+  font: inherit;
+  font-weight: 700;
+}
+@media (forced-colors: active) {
+  .mark {
+    background-color: Mark;
+    color: MarkText;
+    forced-color-adjust: none;
+  }
+  .mark[data-active="true"] {
+    outline: 3px solid Highlight;
+    outline-offset: 2px;
+    box-shadow: none;
+  }
+  .showInSource[aria-pressed="true"] {
+    border: 2px solid Highlight;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mark {
+    transition: none;
+  }
+}

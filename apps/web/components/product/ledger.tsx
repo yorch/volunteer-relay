@@ -7,10 +7,18 @@ import {
   type WorkspaceSnapshot,
 } from "@relay/contracts";
 import type { Route } from "next";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { Card as BaseCard } from "../card";
-import { Badge, Button, Icon, Select, TextInput } from "../foundation";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Icon,
+  Select,
+  TextInput,
+} from "../foundation";
 import styles from "./ledger.module.css";
 import { key, type Mutate, PendingSource } from "./shared";
 
@@ -226,7 +234,18 @@ export function Activities({
           ))}
         </div>
       ) : (
-        <p>No contributions yet.</p>
+        <EmptyState
+          icon="clock"
+          title="No contributions yet."
+          action={
+            <Link className={styles.emptyLink} href="/workspace/inbox">
+              Go to the inbox to approve updates
+            </Link>
+          }
+        >
+          Approve a source update or record an activity below to start the
+          ledger.
+        </EmptyState>
       )}
       <details className={styles.utilityDisclosure}>
         <summary>Record an activity</summary>
