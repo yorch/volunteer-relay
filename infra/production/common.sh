@@ -8,9 +8,9 @@ script_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 compose() { docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RELAY_ENV_FILE" -f "$script_root/compose.production.yaml" "$@"; }
 require_quiesced() {
   running=$(compose ps --status running --services)
-  for service in web worker caddy; do
+  for service in web worker; do
     if printf '%s\n' "$running" | grep -Fxq "$service"; then
-      echo "Stop web, worker and caddy before backup or restore" >&2; exit 1
+      echo "Stop web and worker before backup or restore" >&2; exit 1
     fi
   done
   if ! printf '%s\n' "$running" | grep -Fxq postgres; then

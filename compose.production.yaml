@@ -23,12 +23,10 @@ services:
       [
         "sh",
         "-c",
-        "chown 1000:1000 /vol/attachments /vol/caddy-data /vol/caddy-config && chmod 700 /vol/attachments /vol/caddy-data /vol/caddy-config",
+        "chown 1000:1000 /vol/attachments && chmod 700 /vol/attachments",
       ]
     volumes:
       - attachments:/vol/attachments
-      - caddy-data:/vol/caddy-data
-      - caddy-config:/vol/caddy-config
     restart: "no"
   migrate:
     image: ${RELAY_WORKER_IMAGE:?Set RELAY_WORKER_IMAGE}
@@ -81,7 +79,22 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     volumes: ["attachments:/data/attachments"]
-    networks: [private, edge]
+    # egress: outbound internet for the app itself. traefik: the external
+    # network the host reverse proxy watches, so it can reach this container.
+    networks: [private, egress, traefik]
+    # Routing is declared here and nowhere else. The host Traefik already owns
+    # 80/443, TLS and certificate state, so this stack publishes no ports.
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      - "traefik.http.services.${TRAEFIK_NAME:-relay}.loadbalancer.server.port=3000"
+      - "traefik.http.routers.${TRAEFIK_NAME:-relay}.rule=Host(`${RELAY_DOMAIN:?Set RELAY_DOMAIN}`)"
+      - "traefik.http.routers.${TRAEFIK_NAME:-relay}.entrypoints=websecure"
+      - "traefik.http.routers.${TRAEFIK_NAME:-relay}.tls=true"
+      - "traefik.http.routers.${TRAEFIK_NAME:-relay}.tls.certResolver=webcert"
+      - "traefik.http.routers.${TRAEFIK_NAME:-relay}.service=${TRAEFIK_NAME:-relay}"
+      - "traefik.http.routers.${TRAEFIK_NAME:-relay}.middlewares=${TRAEFIK_NAME:-relay}-compress"
+      - "traefik.http.middlewares.${TRAEFIK_NAME:-relay}-compress.compress=true"
     depends_on:
       runtime-grants: { condition: service_completed_successfully }
       volume-init: { condition: service_completed_successfully }
@@ -106,31 +119,13 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     volumes: ["attachments:/data/attachments"]
-    networks: [private, edge]
+    # No traefik: the worker never accepts inbound traffic and must stay off
+    # the network shared with every other app on the host.
+    networks: [private, egress]
     depends_on:
       runtime-grants: { condition: service_completed_successfully }
       volume-init: { condition: service_completed_successfully }
     stop_grace_period: 60s
-  caddy:
-    image: caddy:2.10.2-alpine
-    user: "1000:1000"
-    restart: unless-stopped
-    environment:
-      RELAY_DOMAIN: ${RELAY_DOMAIN:?Set RELAY_DOMAIN}
-    ports: ["80:80", "443:443", "443:443/udp"]
-    volumes:
-      - ./infra/production/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    read_only: true
-    tmpfs: ["/tmp"]
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    networks: [edge]
-    depends_on:
-      web: { condition: service_healthy }
-      volume-init: { condition: service_completed_successfully }
-    stop_grace_period: 30s
   tools:
     image: postgres:18.1-bookworm
     profiles: [tools]
@@ -148,10 +143,12 @@ services:
     security_opt: [no-new-privileges:true]
     entrypoint: []
 networks:
+  # internal: no outbound path. Everything that touches the database lives here.
   private: { internal: true }
-  edge: {}
+  # Bridged project network for outbound traffic (SMTP, provider APIs).
+  egress: {}
+  # Created on the host once: docker network create traefik
+  traefik: { external: true }
 volumes:
   postgres-data: {}
   attachments: {}
-  caddy-data: {}
-  caddy-config: {}
