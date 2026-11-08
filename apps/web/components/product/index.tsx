@@ -21,6 +21,7 @@ import {
 } from "react";
 import { loadOrganizations, mutateAuth } from "../auth/transport";
 import { StaffShell, VolunteerShell } from "../layout";
+import { Members, Notifications, Settings } from "./admin";
 import styles from "./product.module.css";
 
 type Page =
@@ -29,7 +30,10 @@ type Page =
   | "activities"
   | "needs"
   | "reports"
-  | "import";
+  | "import"
+  | "settings"
+  | "members"
+  | "notifications";
 type ResponseResult<T> =
   | { ok: true; value: T }
   | { ok: false; error: { code: string } };
@@ -199,11 +203,15 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
           : "reports"
       : page;
   const allowed =
-    activePage === "volunteer"
-      ? role === "volunteer"
-      : activePage === "reports"
-        ? role === "report-reader" || staff
-        : staff;
+    activePage === "notifications"
+      ? true
+      : activePage === "members"
+        ? role === "owner"
+        : activePage === "volunteer"
+          ? role === "volunteer"
+          : activePage === "reports"
+            ? role === "report-reader" || staff
+            : staff;
   const nav = staff
     ? [
         { href: "/workspace/inbox", label: "Source inbox" },
@@ -211,8 +219,16 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
         { href: "/workspace/needs", label: "Needs" },
         { href: "/workspace/import", label: "Import" },
         { href: "/workspace/reports", label: "Summary" },
+        { href: "/workspace/settings", label: "Settings" },
+        ...(role === "owner"
+          ? [{ href: "/workspace/members", label: "Members" }]
+          : []),
+        { href: "/workspace/notifications", label: "Notifications" },
       ]
-    : [{ href: "/workspace/reports", label: "Summary" }];
+    : [
+        { href: "/workspace/reports", label: "Summary" },
+        { href: "/workspace/notifications", label: "Notifications" },
+      ];
   const content = (
     <div
       onChangeCapture={() => {
@@ -243,6 +259,12 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
         <Activities snapshot={snapshot} mutate={mutate} />
       ) : activePage === "needs" ? (
         <Needs snapshot={snapshot} mutate={mutate} />
+      ) : activePage === "settings" ? (
+        <Settings snapshot={snapshot} />
+      ) : activePage === "members" ? (
+        <Members />
+      ) : activePage === "notifications" ? (
+        <Notifications />
       ) : activePage === "import" ? (
         <Import members={snapshot.members} />
       ) : (
@@ -254,7 +276,15 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
     <VolunteerShell
       organization={snapshot.organization.name}
       mainId="workspace-main"
-      account={<Organization />}
+      account={
+        <>
+          <a href="/workspace/volunteer">My updates</a>
+          {" · "}
+          <a href="/workspace/notifications">Notifications</a>
+          {" · "}
+          <Organization />
+        </>
+      }
     >
       {content}
     </VolunteerShell>
@@ -512,6 +542,31 @@ function ReviewEditor({
   const [reason, setReason] = useState("");
   const [items, setItems] = useState(entry.proposal.items);
   const [pending, setPending] = useState(false);
+  const [candidates, setCandidates] = useState<Array<{
+    activityId: string;
+    revision: number;
+    reason: string;
+  }> | null>(null);
+  const [candidateError, setCandidateError] = useState("");
+  const [links, setLinks] = useState<
+    Record<string, { activityId: string; expectedRevision: number }>
+  >({});
+  useEffect(() => {
+    let active = true;
+    void request<
+      Array<{ activityId: string; revision: number; reason: string }>
+    >(
+      `/api/product/candidates?sourceId=${encodeURIComponent(entry.source.sourceId)}`,
+    ).then((result) => {
+      if (!active) return;
+      if (result.ok) setCandidates(result.value);
+      else setCandidateError(errorMessage(result.error.code));
+    });
+    return () => {
+      active = false;
+    };
+  }, [entry.source.sourceId]);
+  const linked = Object.keys(links).length > 0;
   const changed =
     JSON.stringify(items) !== JSON.stringify(entry.proposal.items);
   function update(index: number, patch: object) {
@@ -528,6 +583,7 @@ function ReviewEditor({
       decision,
       reason,
       ...(decision === "accept" && changed ? { replacementItems: items } : {}),
+      ...(decision === "accept" && linked ? { activityLinks: links } : {}),
     };
     if (
       await mutate(
@@ -608,6 +664,50 @@ function ReviewEditor({
                   />
                 </label>
               </>
+            )}
+            {item.kind === "activity" && (
+              <div>
+                <p>
+                  Possible existing activities are suggestions; choose one only
+                  after confirming it is the same activity.
+                </p>
+                {candidateError ? (
+                  <p role="alert">{candidateError}</p>
+                ) : candidates === null ? (
+                  <p>Loading possible matches…</p>
+                ) : candidates.length === 0 ? (
+                  <p>No possible matches.</p>
+                ) : (
+                  <label>
+                    Link existing activity for {item.key}
+                    <select
+                      value={links[item.key]?.activityId ?? ""}
+                      onChange={(e) => {
+                        const match = candidates.find(
+                          (c) => c.activityId === e.target.value,
+                        );
+                        setLinks((previous) => {
+                          const next = { ...previous };
+                          if (match)
+                            next[item.key] = {
+                              activityId: match.activityId,
+                              expectedRevision: match.revision,
+                            };
+                          else delete next[item.key];
+                          return next;
+                        });
+                      }}
+                    >
+                      <option value="">Do not link</option>
+                      {candidates.map((c) => (
+                        <option key={c.activityId} value={c.activityId}>
+                          {c.activityId} · revision {c.revision} · {c.reason}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
             )}
             {item.kind === "activity" && (
               <label>
@@ -696,7 +796,7 @@ function ReviewEditor({
         </>
       )}
       <label htmlFor="review-reason">
-        Review reason {changed && "(required for edits)"}
+        Review reason {(changed || linked) && "(required for edits or links)"}
       </label>
       <textarea
         id="review-reason"
@@ -709,7 +809,7 @@ function ReviewEditor({
       </p>
       <div className={styles.actions}>
         <button
-          disabled={pending || (changed && !reason.trim())}
+          disabled={pending || ((changed || linked) && !reason.trim())}
           type="button"
           onClick={() => void decide("accept")}
         >
