@@ -45,12 +45,12 @@ jobs:
           -e DATABASE_URL=postgres://relay:relay@postgres:5432/relay
           -e BETTER_AUTH_SECRET="$(openssl rand -hex 32)"
           relay-web:ci
-      - run: curl --fail --retry 10 --retry-delay 3 --retry-connrefused http://127.0.0.1:3300/api/health
+      - run: curl --fail --retry 10 --retry-delay 3 --retry-all-errors http://127.0.0.1:3300/api/health
       - run: >-
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3300/dev/foundation)" = "404"
       - if: always()
         run: >-
-          docker rm -f relay-web-ci >/dev/null 2>&1 || true;
+          docker logs relay-web-ci || true; docker rm -f relay-web-ci >/dev/null 2>&1 || true;
           docker compose logs && docker compose down
 
   browser:
