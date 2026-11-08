@@ -12,6 +12,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { loadOrganizations, mutateAuth } from "../auth/transport";
@@ -104,6 +105,9 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const attempts = useRef<Record<string, { signature: string; key: string }>>(
+    {},
+  );
   const refresh = useCallback(async () => {
     const result = await request<WorkspaceSnapshot>(productEndpoints.workspace);
     if (result.ok) {
@@ -126,11 +130,26 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
   ) => {
     setError("");
     setNotice("");
-    const result = await request<unknown>(endpoint, body);
+    const { idempotencyKey: _ignored, ...draft } = body as Record<
+      string,
+      unknown
+    >;
+    const signature = JSON.stringify(draft);
+    let attempt = attempts.current[endpoint];
+    if (!attempt || attempt.signature !== signature) {
+      attempt = { signature, key: key() };
+      attempts.current[endpoint] = attempt;
+    }
+    const result = await request<unknown>(endpoint, {
+      ...draft,
+      idempotencyKey: attempt.key,
+    });
     if (!result.ok) {
       setError(errorMessage(result.error.code));
       return false;
     }
+    if (attempts.current[endpoint] === attempt)
+      delete attempts.current[endpoint];
     onSuccess?.(result.value);
     setNotice(success);
     await refresh();
@@ -184,7 +203,11 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
       ]
     : [{ href: "/workspace/reports", label: "Summary" }];
   const content = (
-    <>
+    <div
+      onChangeCapture={() => {
+        attempts.current = {};
+      }}
+    >
       {error && (
         <p className={styles.error} role="alert">
           {error}
@@ -204,7 +227,7 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
       ) : activePage === "volunteer" ? (
         <Volunteer snapshot={snapshot} mutate={mutate} />
       ) : activePage === "inbox" ? (
-        <Inbox snapshot={snapshot} mutate={mutate} />
+        <Inbox snapshot={snapshot} mutate={mutate} refresh={refresh} />
       ) : activePage === "activities" ? (
         <Activities snapshot={snapshot} mutate={mutate} />
       ) : activePage === "needs" ? (
@@ -212,7 +235,7 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
       ) : (
         <Summary snapshot={snapshot} />
       )}
-    </>
+    </div>
   );
   return role === "volunteer" ? (
     <VolunteerShell
@@ -345,59 +368,34 @@ function ContributionList({
 function Inbox({
   snapshot,
   mutate,
+  refresh,
 }: {
   snapshot: WorkspaceSnapshot;
   mutate: Mutate;
+  refresh: () => Promise<void>;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
-  const [reason, setReason] = useState("");
-  const [pending, setPending] = useState(false);
-  const entry =
-    snapshot.queue.find((e) => e.proposal.runId === selected) ??
-    snapshot.queue[0];
-  async function decide(
-    entry: ReviewQueueEntry,
-    decision: "accept" | "reject",
-  ) {
-    setPending(true);
-    if (
-      await mutate(
-        productEndpoints.review,
-        {
-          runId: entry.proposal.runId,
-          expectedRevision: entry.revision,
-          idempotencyKey: key(),
-          decision,
-          reason,
-        },
-        `Proposal ${decision === "accept" ? "accepted" : "rejected"}.`,
-      )
-    ) {
-      setSelected(null);
-      setReason("");
-    }
-    setPending(false);
-  }
+  const entry = snapshot.queue.find((e) => e.proposal.runId === selected);
   return (
     <>
       <h1>Source inbox</h1>
       <p>Review the original update alongside its proposed fields.</p>
-      {!entry ? (
+      {snapshot.queue.length === 0 ? (
         <p>No sources awaiting review.</p>
       ) : (
         <div className={styles.columns}>
           <Card>
             <h2>Awaiting review</h2>
+            <button type="button" onClick={() => void refresh()}>
+              Refresh inbox
+            </button>
             <ul className={styles.list}>
               {snapshot.queue.map((item) => (
                 <li key={item.proposal.runId}>
                   <button
                     type="button"
-                    aria-pressed={entry.proposal.runId === item.proposal.runId}
-                    onClick={() => {
-                      setSelected(item.proposal.runId);
-                      setReason("");
-                    }}
+                    aria-pressed={entry?.proposal.runId === item.proposal.runId}
+                    onClick={() => setSelected(item.proposal.runId)}
                   >
                     Source {item.source.sourceId} · revision{" "}
                     {item.source.revision}
@@ -406,90 +404,253 @@ function Inbox({
               ))}
             </ul>
           </Card>
-          <Card>
-            <h2>Original update</h2>
-            <p className={styles.source}>
-              {entry.source.text || "No text provided."}
-            </p>
-            <p>
-              Channel: {entry.source.channel} · received{" "}
-              {date(entry.source.receivedAt)} · source revision{" "}
-              {entry.source.revision}
-            </p>
-            <h3>Proposed fields</h3>
-            {entry.proposal.items.length ? (
-              entry.proposal.items.map((item) => (
-                <div className={styles.item} key={item.key}>
-                  <strong>{item.kind}</strong>
-                  <dl>
-                    {Object.entries(item)
-                      .filter(
-                        ([name]) => !["kind", "key", "evidence"].includes(name),
-                      )
-                      .map(([name, value]) => (
-                        <div key={name}>
-                          <dt>{name}</dt>
-                          <dd>{value === null ? "Unknown" : String(value)}</dd>
-                        </div>
-                      ))}
-                  </dl>
-                  <p>Evidence:</p>
-                  <ul>
-                    {item.evidence.map((e) => (
-                      <li key={JSON.stringify(e)}>
-                        {e.field}:{" "}
-                        {e.kind === "text" ? `“${e.quote}”` : e.observation}{" "}
-                        (source revision {e.sourceRevision})
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))
-            ) : (
-              <p>No proposed fields.</p>
-            )}
-            {entry.proposal.unresolved.length > 0 && (
-              <>
-                <h3>Unresolved</h3>
-                <ul>
-                  {entry.proposal.unresolved.map((u) => (
-                    <li key={JSON.stringify(u)}>
-                      {u.field}: {u.reason}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-            <label htmlFor="review-reason">Review reason</label>
-            <textarea
-              id="review-reason"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
+          {entry ? (
+            <ReviewEditor
+              key={`${entry.proposal.runId}-${entry.revision}`}
+              entry={entry}
+              members={snapshot.members}
+              mutate={mutate}
+              clear={() => setSelected(null)}
             />
-            <div className={styles.actions}>
-              <button
-                disabled={pending}
-                type="button"
-                onClick={() => void decide(entry, "accept")}
-              >
-                Accept proposal
-              </button>
-              <button
-                disabled={pending || !reason.trim()}
-                type="button"
-                onClick={() => void decide(entry, "reject")}
-              >
-                Reject proposal
-              </button>
-            </div>
-            <p>
-              Rejecting a proposal does not automatically withdraw a provisional
-              need.
-            </p>
-          </Card>
+          ) : (
+            <Card>
+              <p>Select a source to review.</p>
+            </Card>
+          )}
         </div>
       )}
     </>
+  );
+}
+function ReviewEditor({
+  entry,
+  members,
+  mutate,
+  clear,
+}: {
+  entry: ReviewQueueEntry;
+  members: WorkspaceSnapshot["members"];
+  mutate: Mutate;
+  clear: () => void;
+}) {
+  const [reason, setReason] = useState("");
+  const [items, setItems] = useState(entry.proposal.items);
+  const [pending, setPending] = useState(false);
+  const changed =
+    JSON.stringify(items) !== JSON.stringify(entry.proposal.items);
+  function update(index: number, patch: object) {
+    setItems((current) =>
+      current.map((item, i) => (i === index ? { ...item, ...patch } : item)),
+    );
+  }
+  async function decide(decision: "accept" | "reject") {
+    setPending(true);
+    const body = {
+      runId: entry.proposal.runId,
+      expectedRevision: entry.revision,
+      idempotencyKey: key(),
+      decision,
+      reason,
+      ...(decision === "accept" && changed ? { replacementItems: items } : {}),
+    };
+    if (
+      await mutate(
+        productEndpoints.review,
+        body,
+        `Proposal ${decision === "accept" ? "accepted" : "rejected"}.`,
+      )
+    )
+      clear();
+    setPending(false);
+  }
+  return (
+    <Card>
+      <h2>Original update</h2>
+      <p className={styles.source}>
+        {entry.source.text || "No text provided."}
+      </p>
+      <p>
+        Channel: {entry.source.channel} · received{" "}
+        {date(entry.source.receivedAt)} · source revision{" "}
+        {entry.source.revision}
+      </p>
+      <h3>Proposed fields</h3>
+      {items.length ? (
+        items.map((item, index) => (
+          <div className={styles.item} key={item.key}>
+            <strong>{item.kind}</strong>
+            <dl>
+              {Object.entries(item)
+                .filter(([name]) => !["kind", "key", "evidence"].includes(name))
+                .map(([name, value]) => (
+                  <div key={name}>
+                    <dt>{name}</dt>
+                    <dd>{value === null ? "Unknown" : String(value)}</dd>
+                  </div>
+                ))}
+            </dl>
+            {item.kind === "contribution" && (
+              <>
+                <label>
+                  Volunteer for {item.key}
+                  <select
+                    value={item.membershipId ?? ""}
+                    onChange={(e) =>
+                      update(index, { membershipId: e.target.value || null })
+                    }
+                  >
+                    <option value="">Unknown</option>
+                    {item.membershipId &&
+                      !members.some(
+                        (m) => m.membershipId === item.membershipId,
+                      ) && (
+                        <option value={item.membershipId}>
+                          Current member
+                        </option>
+                      )}
+                    {members.map((m) => (
+                      <option key={m.membershipId} value={m.membershipId}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Duration in minutes for {item.key}
+                  <input
+                    type="number"
+                    min="1"
+                    max="1440"
+                    value={item.durationMinutes ?? ""}
+                    onChange={(e) =>
+                      update(index, {
+                        durationMinutes: e.target.value
+                          ? Number(e.target.value)
+                          : null,
+                      })
+                    }
+                  />
+                </label>
+              </>
+            )}
+            {item.kind === "activity" && (
+              <label>
+                Date for {item.key}
+                <input
+                  type="date"
+                  value={item.localDate ?? ""}
+                  onChange={(e) =>
+                    update(index, {
+                      localDate: e.target.value || null,
+                      datePrecision: e.target.value ? "day" : "unknown",
+                    })
+                  }
+                />
+              </label>
+            )}
+            {item.kind === "correction" && (
+              <>
+                <label>
+                  Target ID for {item.key}
+                  <input
+                    value={item.targetId ?? ""}
+                    onChange={(e) =>
+                      update(index, { targetId: e.target.value || null })
+                    }
+                  />
+                </label>
+                <label>
+                  Target revision for {item.key}
+                  <input
+                    type="number"
+                    min="1"
+                    value={item.expectedRevision ?? ""}
+                    onChange={(e) =>
+                      update(index, {
+                        expectedRevision: e.target.value
+                          ? Number(e.target.value)
+                          : null,
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  Duration in minutes for {item.key}
+                  <input
+                    type="number"
+                    min="1"
+                    max="1440"
+                    value={item.durationMinutes ?? ""}
+                    onChange={(e) =>
+                      update(index, {
+                        durationMinutes: e.target.value
+                          ? Number(e.target.value)
+                          : null,
+                      })
+                    }
+                  />
+                </label>
+              </>
+            )}
+            <p>Original evidence:</p>
+            <ul>
+              {item.evidence.map((e) => (
+                <li key={JSON.stringify(e)}>
+                  {e.field}:{" "}
+                  {e.kind === "text" ? `“${e.quote}”` : e.observation} (source
+                  revision {e.sourceRevision})
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))
+      ) : (
+        <p>No proposed fields.</p>
+      )}
+      {entry.proposal.unresolved.length > 0 && (
+        <>
+          <h3>Unresolved in original proposal</h3>
+          <ul>
+            {entry.proposal.unresolved.map((u) => (
+              <li key={JSON.stringify(u)}>
+                {u.field}: {u.reason}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      <label htmlFor="review-reason">
+        Review reason {changed && "(required for edits)"}
+      </label>
+      <textarea
+        id="review-reason"
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      <p>
+        Incomplete contributions remain pending when accepted. Staff edits
+        retain the original evidence and require a reason.
+      </p>
+      <div className={styles.actions}>
+        <button
+          disabled={pending || (changed && !reason.trim())}
+          type="button"
+          onClick={() => void decide("accept")}
+        >
+          Accept proposal
+        </button>
+        <button
+          disabled={pending || !reason.trim()}
+          type="button"
+          onClick={() => void decide("reject")}
+        >
+          Reject proposal
+        </button>
+      </div>
+      <p>
+        Rejecting a proposal does not automatically withdraw a provisional need.
+      </p>
+    </Card>
   );
 }
 function Activities({

@@ -165,6 +165,9 @@ test("staff reviews preserved source with optimistic revision", async ({
     await route.fulfill({ json: { ok: true, value: { revision: 4 } } });
   });
   await page.goto("/workspace/inbox");
+  await page
+    .getByRole("button", { name: "Source source-1 · revision 2" })
+    .click();
   await expect(page.getByText("Helped for 90 minutes")).toBeVisible();
   await expect(
     page.getByText("durationMinutes: “90 minutes”", { exact: false }),
@@ -180,4 +183,140 @@ test("staff reviews preserved source with optimistic revision", async ({
     reason: "Confirmed with team",
   });
   expect(body).not.toHaveProperty("organizationId");
+});
+
+test("staff edits preserve evidence and retries reuse the key", async ({
+  page,
+}) => {
+  const evidence = [
+    {
+      kind: "text",
+      field: "durationMinutes",
+      quote: "90 minutes",
+      sourceRevision: 2,
+    },
+  ];
+  const entry = {
+    source: {
+      sourceId: "source-1",
+      revision: 2,
+      text: "Helped for 90 minutes",
+      channel: "web",
+      receivedAt: "2026-01-01T00:00:00Z",
+    },
+    revision: 3,
+    proposal: {
+      runId: "run-1",
+      items: [
+        {
+          kind: "contribution",
+          key: "item-1",
+          activityKey: "activity-1",
+          membershipId: null,
+          durationMinutes: 90,
+          evidence,
+        },
+      ],
+      unresolved: [],
+    },
+  };
+  let queue = [entry];
+  await page.route("**/api/product/workspace", (route) =>
+    route.fulfill({
+      json: {
+        ok: true,
+        value: {
+          ...snapshot,
+          organization: { ...organization, role: "coordinator" },
+          members: [{ membershipId: "member-1", name: "Alex" }],
+          queue,
+        },
+      },
+    }),
+  );
+  await page.route("**/api/auth/organizations", (route) =>
+    route.fulfill({ status: 503, json: { ok: false } }),
+  );
+  const bodies: Record<string, unknown>[] = [];
+  await page.route("**/api/product/review", async (route) => {
+    bodies.push(route.request().postDataJSON());
+    if (bodies.length === 1) await route.abort();
+    else {
+      queue = [];
+      await route.fulfill({ json: { ok: true, value: { revision: 4 } } });
+    }
+  });
+  await page.goto("/workspace/inbox");
+  await page
+    .getByRole("button", { name: "Source source-1 · revision 2" })
+    .click();
+  await page.getByLabel("Volunteer for item-1").selectOption("member-1");
+  await page.getByLabel("Duration in minutes for item-1").fill("120");
+  await expect(
+    page.getByRole("button", { name: "Accept proposal" }),
+  ).toBeDisabled();
+  await page
+    .getByLabel("Review reason", { exact: false })
+    .fill("Confirmed with volunteer");
+  await page.getByRole("button", { name: "Accept proposal" }).click();
+  await expect(
+    page.getByText("The service is unavailable. Please try again."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Accept proposal" }).click();
+  await expect(page.getByText("No sources awaiting review.")).toBeVisible();
+  expect(bodies).toHaveLength(2);
+  expect(bodies[1]).toEqual(bodies[0]);
+  expect(bodies[0]).toMatchObject({
+    replacementItems: [
+      { membershipId: "member-1", durationMinutes: 120, evidence },
+    ],
+    reason: "Confirmed with volunteer",
+  });
+});
+
+test("removing a selected source never carries its reason to another", async ({
+  page,
+}) => {
+  const entry = (id: string) => ({
+    source: {
+      sourceId: id,
+      revision: 1,
+      text: `Text ${id}`,
+      channel: "web",
+      receivedAt: "2026-01-01T00:00:00Z",
+    },
+    revision: 1,
+    proposal: { runId: id, items: [], unresolved: [] },
+  });
+  let queue = [entry("one"), entry("two")];
+  await page.route("**/api/product/workspace", (route) =>
+    route.fulfill({
+      json: {
+        ok: true,
+        value: {
+          ...snapshot,
+          organization: { ...organization, role: "coordinator" },
+          queue,
+        },
+      },
+    }),
+  );
+  await page.route("**/api/auth/organizations", (route) =>
+    route.fulfill({ status: 503, json: { ok: false } }),
+  );
+  await page.goto("/workspace/inbox");
+  await page.getByRole("button", { name: "Source one · revision 1" }).click();
+  await page
+    .getByLabel("Review reason", { exact: false })
+    .fill("Reason for one");
+  queue = [entry("two")];
+  await page.getByRole("button", { name: "Refresh inbox" }).click();
+  await expect(page.getByText("Select a source to review.")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Accept proposal" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Source two · revision 1" }).click();
+  await expect(page.getByLabel("Review reason", { exact: false })).toHaveValue(
+    "",
+  );
 });
