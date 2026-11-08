@@ -141,6 +141,70 @@ test("synthetic graph: bounded fanout, cycles, hostile text, missing references,
     await page.locator("details").evaluate((element) => {
       (element as HTMLDetailsElement).open = true;
     });
+    // Both reorder paths must retain the same focused DOM control and scroll.
+    await page.locator("#host").evaluate((element) => {
+      const host = element as HTMLElement;
+      host.style.height = "240px";
+      host.style.overflow = "auto";
+      host.style.marginTop = "1000px";
+    });
+    for (const target of ["node", "thread"]) {
+      const result = await page.evaluate(
+        ({ data, target }) => {
+          const runtime = window as unknown as {
+            graph: { update: (value: unknown) => void };
+          };
+          runtime.graph.update(data);
+          const control = document.querySelector<HTMLButtonElement>(
+            target === "node"
+              ? ".relay-graph-nodes button:nth-child(2)"
+              : "tbody tr:nth-child(2) button",
+          );
+          const host = document.querySelector<HTMLElement>("#host");
+          if (!control || !host) throw new Error("Missing synthetic control");
+          control.focus({ preventScroll: true });
+          host.scrollTop = 75;
+          window.scrollTo(0, 200);
+          const before = { hostTop: host.scrollTop, pageTop: window.scrollY };
+          runtime.graph.update({
+            ...data,
+            nodes: [data.nodes[1], data.nodes[0], data.nodes[2]],
+            edges: [data.edges[1], data.edges[0], ...data.edges.slice(2)],
+          });
+          return {
+            focused: document.activeElement === control,
+            sameControl:
+              control ===
+              document.querySelector(
+                target === "node"
+                  ? ".relay-graph-nodes button"
+                  : "tbody tr button",
+              ),
+            before,
+            after: { hostTop: host.scrollTop, pageTop: window.scrollY },
+          };
+        },
+        { data: snapshot, target },
+      );
+      expect(result.focused).toBe(true);
+      expect(result.sameControl).toBe(true);
+      expect(result.after).toEqual(result.before);
+      await page.keyboard.press("Enter");
+      expect(await page.evaluate("window.selected")).toEqual(
+        target === "node"
+          ? { kind: "lane", id: "A" }
+          : { kind: "thread", id: "opaque:cycle" },
+      );
+    }
+    await page
+      .locator("#host")
+      .evaluate((element) => element.removeAttribute("style"));
+    await page.evaluate((data) => {
+      (
+        window as unknown as { graph: { update: (value: unknown) => void } }
+      ).graph.update(data);
+      window.scrollTo(0, 0);
+    }, snapshot);
     for (const width of [1440, 1024, 390, 320]) {
       await page.setViewportSize({ width, height: 900 });
       expect(

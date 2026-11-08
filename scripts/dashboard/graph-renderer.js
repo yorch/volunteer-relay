@@ -78,6 +78,9 @@ export function renderGraph(document, host, initialSnapshot, options = {}) {
   };
   function update(next) {
     snapshot = next;
+    const activeControl = root.contains(document.activeElement)
+      ? document.activeElement
+      : null;
     const scrollTop = host.scrollTop;
     const scrollLeft = host.scrollLeft;
     title.textContent =
@@ -183,6 +186,9 @@ export function renderGraph(document, host, initialSnapshot, options = {}) {
       (edge) => !known.has(edge.from) || !known.has(edge.to),
     ).length;
     summary.textContent = `${visible.length} nodes; ${edges.length} relationships. Archived/hidden upstream: ${next.hidden.nodes} nodes, ${next.hidden.edges} edges. Truncated: ${Math.max(0, next.nodes.length - 50)} nodes, ${Math.max(0, next.edges.length - 100)} edges. Filtered/view hidden: ${suppliedNodes.length - visible.length} nodes, ${suppliedEdges.length - edges.length} edges. Missing-reference relationships: ${missing}.${visible.length === 0 ? " No matching nodes." : ""}`;
+    if (activeControl?.isConnected && root.contains(activeControl)) {
+      activeControl.focus({ preventScroll: true });
+    }
     host.scrollTop = scrollTop;
     host.scrollLeft = scrollLeft;
   }
