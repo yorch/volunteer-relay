@@ -18,7 +18,14 @@ for (const signal of ["SIGINT", "SIGTERM"] as const)
 const extraction =
   env.OPENAI_API_KEY && env.OPENAI_MODEL && env.OPENAI_MONTHLY_BUDGET_CENTS > 0
     ? createExtractionService({
-        provider: createOpenAIProvider({ apiKey: env.OPENAI_API_KEY }),
+        provider: createOpenAIProvider({
+          apiKey: env.OPENAI_API_KEY,
+          readAttachment: async (key) => {
+            const bytes = await readPrivateBlob(env.ATTACHMENT_ROOT, key);
+            if (!bytes) throw new Error("Image unavailable");
+            return bytes;
+          },
+        }),
         maxAttempts: 1,
       })
     : null;
