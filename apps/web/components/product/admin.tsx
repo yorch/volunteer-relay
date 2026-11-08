@@ -288,6 +288,9 @@ function SettingsForm({
 }
 export function Notifications() {
   const list = useLoad<ProductNotification[]>("notifications");
+  const prefs = useLoad<{ email: boolean; telegram: boolean }>(
+    "notification-preferences",
+  );
   const writer = useWrite();
   const [copyMessage, setCopyMessage] = useState("");
   const [link, setLink] = useState<{
@@ -310,11 +313,12 @@ export function Notifications() {
   async function preferences(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
-    await writer.write(
+    const result = await writer.write(
       "notification-preferences",
       { email: f.get("email") === "on", telegram: f.get("telegram") === "on" },
       false,
     );
+    if (result.ok) await prefs.reload();
   }
   async function linkTelegram() {
     expiry.current ??= new Date(Date.now() + 10 * 60 * 1000).toISOString();
@@ -365,20 +369,42 @@ export function Notifications() {
       </Panel>
       <Panel>
         <h2>Delivery preferences</h2>
-        <p>
-          Choose and save both settings. Current preferences are not shown here.
-        </p>
-        <form onSubmit={preferences} onChange={writer.change}>
-          <label>
-            <input type="checkbox" name="email" /> Email
-          </label>
-          <label>
-            <input type="checkbox" name="telegram" /> Telegram
-          </label>
-          <button type="submit" disabled={writer.busy}>
-            Save preferences
-          </button>
-        </form>
+        {prefs.loading ? (
+          <p aria-live="polite">Loading preferences…</p>
+        ) : prefs.value ? (
+          <form
+            key={`${prefs.value.email}-${prefs.value.telegram}`}
+            onSubmit={preferences}
+            onChange={writer.change}
+          >
+            <label style={{ display: "flex", alignItems: "center" }}>
+              <input
+                type="checkbox"
+                name="email"
+                defaultChecked={prefs.value.email}
+              />{" "}
+              Email
+            </label>
+            <label style={{ display: "flex", alignItems: "center" }}>
+              <input
+                type="checkbox"
+                name="telegram"
+                defaultChecked={prefs.value.telegram}
+              />{" "}
+              Telegram
+            </label>
+            <button type="submit" disabled={writer.busy}>
+              Save preferences
+            </button>
+          </form>
+        ) : (
+          <>
+            <Status error={prefs.error} />
+            <button type="button" onClick={() => void prefs.reload()}>
+              Try loading preferences again
+            </button>
+          </>
+        )}
       </Panel>
       <Panel>
         <h2>Telegram account</h2>

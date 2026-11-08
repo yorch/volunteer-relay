@@ -187,3 +187,28 @@ test("staff must deliberately select and explain a candidate link", async ({
     activityLinks: { a1: { activityId: "existing", expectedRevision: 4 } },
   });
 });
+
+test("changing Telegram preserves saved email preference", async ({ page }) => {
+  await page.route("**/api/product/notifications", (route) =>
+    route.fulfill({ json: { ok: true, value: [] } }),
+  );
+  let saved = { email: true, telegram: false };
+  let submitted: typeof saved | null = null;
+  await page.route("**/api/product/notification-preferences", (route) => {
+    if (route.request().method() === "GET")
+      return route.fulfill({ json: { ok: true, value: saved } });
+    submitted = route.request().postDataJSON();
+    saved = submitted as typeof saved;
+    return route.fulfill({ json: { ok: true, value: saved } });
+  });
+  await page.goto("/workspace/notifications");
+  await expect(page.getByLabel("Email", { exact: true })).toBeChecked();
+  await page.getByLabel("Telegram", { exact: true }).check();
+  await page.getByRole("button", { name: "Save preferences" }).click();
+  await expect.poll(() => submitted).toEqual({ email: true, telegram: true });
+  await expect(page.getByLabel("Email", { exact: true })).toBeChecked();
+  await expect(page.getByLabel("Telegram", { exact: true })).toBeChecked();
+  await page.reload();
+  await expect(page.getByLabel("Email", { exact: true })).toBeChecked();
+  await expect(page.getByLabel("Telegram", { exact: true })).toBeChecked();
+});
