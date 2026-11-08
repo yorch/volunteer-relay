@@ -16,12 +16,41 @@ import {
 } from "@relay/db";
 import { createNeedService, createSourceRepository } from "@relay/domain/core";
 import {
-  createTelegramIngress,
-  createTelegramPhotoLoader,
+  createPhotoTransform,
+  createTelegramRuntime,
+  type TelegramTransactionalDependencies,
   verifyTelegramSecret,
 } from "@relay/intake";
 import sharp from "sharp";
 import { createTenantAuthorization } from "../auth/index.ts";
+
+/** Ingress services built from one transaction so every read shares it. */
+function transactionalDependencies(
+  db: Database,
+): TelegramTransactionalDependencies {
+  const authorization = createTenantAuthorization({ db });
+  const links = createFollowThroughRepository(db),
+    sources = createSourceRepository({
+      authorization,
+      store: createSourceStore(db),
+    });
+  return {
+    links,
+    authorization,
+    sources,
+    needs: createNeedService({ authorization, store: createDomainStore(db) }),
+    timezone: async (org) => (await links.getSettingsInternal(org)).timezone,
+    replaySource: async (context, key) => {
+      const rows = await db.execute(
+        sql`select source_id,revision from source_revision where organization_id=${context.organizationId} and channel='telegram' and idempotency_key=${key}`,
+      );
+      const row = rows.rows[0];
+      return row
+        ? sources.get(context, String(row.source_id), Number(row.revision))
+        : { ok: true as const, value: null };
+    },
+  };
+}
 
 let opened: ReturnType<typeof createDatabase> | undefined;
 let blobs: PrivateBlobStore | undefined;
@@ -45,78 +74,46 @@ export async function telegramWebhook(request: Request) {
     blobs ??= createBlobStore(env);
     const database = opened.db;
     const store = blobs;
-    return await withTrackedBlobWrites(
+    const runtime = createTelegramRuntime({
+      secret: env.TELEGRAM_WEBHOOK_SECRET,
+      botToken: env.TELEGRAM_BOT_TOKEN,
+      maxBytes: env.ATTACHMENT_MAX_BYTES,
       store,
-      async (note) =>
-        database.transaction(async (tx) => {
-          const db = tx as unknown as Database,
-            authorization = createTenantAuthorization({ db });
-          const links = createFollowThroughRepository(db),
-            sources = createSourceRepository({
-              authorization,
-              store: createSourceStore(db),
-            });
-          const handler = createTelegramIngress({
-            secret: env.TELEGRAM_WEBHOOK_SECRET ?? "",
-            links,
-            authorization,
-            sources,
-            needs: createNeedService({
-              authorization,
-              store: createDomainStore(db),
+      transform: createPhotoTransform(sharp),
+      linked: async (identity) =>
+        (
+          await transactionalDependencies(
+            database,
+          ).links.resolveTelegramIdentity(identity)
+        ).ok,
+      // Photo download/decoding already happened; the transaction holds only
+      // the blob lock, the blob put and source acceptance.
+      transaction: (work) =>
+        withTrackedBlobWrites(
+          store,
+          async (note) =>
+            database.transaction(async (tx) => {
+              const db = tx as unknown as Database;
+              return work({
+                deps: transactionalDependencies(db),
+                lockBlob: async (storageKey, sha256) => {
+                  await db.execute(
+                    sql`select pg_advisory_xact_lock(hashtextextended(${`blob:${storageKey}`},0))`,
+                  );
+                  await note({ storageKey, sha256 });
+                },
+              });
             }),
-            timezone: async (org) =>
-              (await links.getSettingsInternal(org)).timezone,
-            replaySource: async (context, key) => {
-              const rows = await db.execute(
-                sql`select source_id,revision from source_revision where organization_id=${context.organizationId} and channel='telegram' and idempotency_key=${key}`,
-              );
-              const row = rows.rows[0];
-              return row
-                ? sources.get(
-                    context,
-                    String(row.source_id),
-                    Number(row.revision),
-                  )
-                : { ok: true as const, value: null };
-            },
-            photo: createTelegramPhotoLoader({
-              botToken: env.TELEGRAM_BOT_TOKEN ?? "",
-              store,
-              maxBytes: env.ATTACHMENT_MAX_BYTES,
-              withBlobLock: async (key, put) => {
-                await db.execute(
-                  sql`select pg_advisory_xact_lock(hashtextextended(${`blob:${key}`},0))`,
-                );
-                await note({ storageKey: key, sha256: key.slice(3) });
-                return put();
-              },
-              transform: async (bytes) =>
-                sharp(Buffer.from(bytes), {
-                  limitInputPixels: 40000000,
-                  failOn: "warning",
-                })
-                  .rotate()
-                  .resize({
-                    width: 2000,
-                    height: 2000,
-                    fit: "inside",
-                    withoutEnlargement: true,
-                  })
-                  .png()
-                  .toBuffer(),
-            }),
-          });
-          return handler(request);
-        }),
-      (identity, done) =>
-        pruneUnreferencedBlob(
-          database,
-          identity,
-          (key, sha) => store.erase(key, sha),
-          done,
+          (identity, done) =>
+            pruneUnreferencedBlob(
+              database,
+              identity,
+              (key, sha) => store.erase(key, sha),
+              done,
+            ),
         ),
-    );
+    });
+    return await runtime.handleRequest(request);
   } catch {
     return Response.json(
       { ok: false, correlationId: randomUUID() },

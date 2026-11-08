@@ -91,8 +91,12 @@ export function productFailure(
   };
 }
 export async function readProductJson(request: Request): Promise<unknown> {
-  if (request.headers.get("content-type")?.split(";")[0] !== "application/json")
-    throw new Error("body");
+  const mediaType = request.headers
+    .get("content-type")
+    ?.split(";")[0]
+    ?.trim()
+    .toLowerCase();
+  if (mediaType !== "application/json") throw new Error("body");
   const reader = request.body?.getReader();
   if (!reader) throw new Error("body");
   let size = 0;
@@ -102,7 +106,10 @@ export async function readProductJson(request: Request): Promise<unknown> {
       const part = await reader.read();
       if (part.done) break;
       size += part.value.byteLength;
-      if (size > 65536) throw new Error("body");
+      if (size > 65536) {
+        await reader.cancel();
+        throw new Error("body");
+      }
       chunks.push(part.value);
     }
   } finally {

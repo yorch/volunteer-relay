@@ -283,7 +283,7 @@ one prefix; multi-host clock skew; credential expiry mid-run; fallback
 resurrection; copy vs retention race.
 
 Fake + MinIO parity does not certify AWS/R2/B2 — the certified provider gets a
-one-off opt-in live check (`scripts/s3-smoke.ts`), never part of `verify`.
+one-off opt-in live check (`node scripts/s3-bootstrap.ts --smoke`), never part of `verify`.
 Contract-test **implementation** belongs to the implementation owner; R reviews
 it (v1 wrongly assigned writing them to R, which has no implementation
 ownership).

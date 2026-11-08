@@ -11,7 +11,7 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const lanes = ["A", "B", "C", "D", "E", "F", "R", "V"];
@@ -84,9 +84,18 @@ async function text(options) {
     Boolean(options.text) !== Boolean(options.file),
     "Provide exactly one of --text or --file",
   );
-  const value = options.file
-    ? await readFile(resolve(options.file), "utf8")
-    : options.text;
+  let value = options.text;
+  if (options.file) {
+    // Board text is shared with every lane, so --file may only read from the
+    // current worktree; arbitrary local paths could leak into coordination.
+    const root = await realpath(git(["rev-parse", "--show-toplevel"]));
+    const file = await realpath(resolve(options.file));
+    ensure(
+      file.startsWith(`${root}${sep}`),
+      "--file must be inside the current worktree",
+    );
+    value = await readFile(file, "utf8");
+  }
   ensure(
     value.trim().length > 0 && value.length <= 32768,
     "Text must contain 1–32768 characters",
@@ -266,6 +275,8 @@ function schedulingDependencies(value, ownTask) {
   });
 }
 function overlaps(left, right) {
+  // scopePaths() rejects backslashes and normalizes to "/" separators, so the
+  // scope comparison is always "/"-based.
   return left.some((a) =>
     right.some(
       (b) => a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`),

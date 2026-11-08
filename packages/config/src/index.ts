@@ -4,6 +4,8 @@ export const environmentSchema = z
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
+    // The default is a development convenience; parseEnvironment refuses to
+    // apply it in production.
     DATABASE_URL: z
       .url()
       .default("postgres://relay:relay@localhost:5432/relay"),
@@ -42,7 +44,9 @@ export const environmentSchema = z
       .nonnegative()
       .default(0),
     TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
-    TELEGRAM_WEBHOOK_SECRET: z.string().min(1).optional(),
+    // Telegram accepts at most 256 characters; production also requires at
+    // least 32 (see superRefine).
+    TELEGRAM_WEBHOOK_SECRET: z.string().min(1).max(256).optional(),
     TELEGRAM_TRANSPORT: z
       .enum(["replay", "polling", "webhook"])
       .default("replay"),
@@ -76,6 +80,11 @@ export const environmentSchema = z
      */
     BLOB_FALLBACK_ROOT: z.string().min(1).optional(),
     ATTACHMENT_MAX_BYTES: z.coerce.number().int().positive().default(10485760),
+    /**
+     * Signs the retention/redaction ledger. Optional: without it, ledger
+     * export and redaction answer DEPENDENCY_UNAVAILABLE.
+     */
+    RETENTION_LEDGER_KEY: z.string().min(32).optional(),
   })
   .superRefine((env, ctx) => {
     if (
@@ -85,6 +94,17 @@ export const environmentSchema = z
       ctx.addIssue({
         code: "custom",
         message: "Production requires an auth secret and disabled demo mode",
+      });
+    if (
+      env.NODE_ENV === "production" &&
+      env.TELEGRAM_WEBHOOK_SECRET !== undefined &&
+      env.TELEGRAM_WEBHOOK_SECRET.length < 32
+    )
+      ctx.addIssue({
+        code: "custom",
+        path: ["TELEGRAM_WEBHOOK_SECRET"],
+        message:
+          "Production requires a TELEGRAM_WEBHOOK_SECRET of at least 32 characters",
       });
     if (env.BLOB_FALLBACK_ROOT !== undefined) {
       if (env.BLOB_STORE !== "s3")
@@ -128,5 +148,20 @@ export const environmentSchema = z
 
 /** Parsed environment shared by web, worker and scripts. */
 export type Environment = z.infer<typeof environmentSchema>;
-export const parseEnvironment = (env: Record<string, string | undefined>) =>
-  environmentSchema.parse(env);
+export function parseEnvironment(
+  env: Record<string, string | undefined>,
+): Environment {
+  const parsed = environmentSchema.safeParse(env);
+  const issues = parsed.success ? [] : [...parsed.error.issues];
+  // The schema cannot tell a supplied DATABASE_URL from its development
+  // default, so production presence is checked on the raw input.
+  if (env.NODE_ENV === "production" && !env.DATABASE_URL)
+    issues.push({
+      code: "custom",
+      path: ["DATABASE_URL"],
+      message: "Production requires DATABASE_URL",
+      input: env.DATABASE_URL,
+    });
+  if (issues.length > 0 || !parsed.success) throw new z.ZodError(issues);
+  return parsed.data;
+}

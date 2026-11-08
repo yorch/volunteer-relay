@@ -274,7 +274,7 @@ function ReviewDetail({
       return;
     }
     const prior = previousCommand.current;
-    const command = reviewDecisionSchema.parse(
+    const parsed = reviewDecisionSchema.safeParse(
       prior && prior.decision === decision && prior.reason === reason
         ? prior
         : {
@@ -285,6 +285,11 @@ function ReviewDetail({
             reason,
           },
     );
+    if (!parsed.success) {
+      setError("Check the review reason and try again.");
+      return;
+    }
+    const command = parsed.data;
     previousCommand.current = command;
     locked.current = true;
     setPending(true);

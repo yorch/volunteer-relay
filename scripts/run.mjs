@@ -1,21 +1,25 @@
 import { spawn } from "node:child_process";
-import { cp, mkdir } from "node:fs/promises";
 
 if (process.versions.node !== "26.11.1")
   throw new Error(`Use Node 26.11.1; got ${process.versions.node}`);
-const run = (args, extraEnv = {}) =>
-  new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, args, {
-      stdio: "inherit",
-      env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1", ...extraEnv },
-    });
-    child.on("error", reject);
-    child.on("exit", (code) =>
-      code === 0 ? resolve() : reject(new Error(`Exit ${code}`)),
-    );
-    for (const signal of ["SIGINT", "SIGTERM"])
-      process.once(signal, () => child.kill(signal));
+// Starts a child with inherited stdio and forwards interrupts to it. `done`
+// settles when the child exits; a non-zero exit rejects.
+const start = (args, extraEnv = {}) => {
+  const child = spawn(process.execPath, args, {
+    stdio: "inherit",
+    env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1", ...extraEnv },
   });
+  for (const signal of ["SIGINT", "SIGTERM"])
+    process.once(signal, () => child.kill(signal));
+  const done = new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code, signal) =>
+      code === 0 ? resolve() : reject(new Error(`Exit ${code ?? signal}`)),
+    );
+  });
+  return { child, done };
+};
+const run = (args, extraEnv) => start(args, extraEnv).done;
 const next = ["apps/web/node_modules/next/dist/bin/next"];
 const mode = process.argv[2];
 if (mode === "e2e:web") {
@@ -37,16 +41,17 @@ if (mode === "e2e:web") {
     { RELAY_NEXT_DIST_DIR: ".next-e2e" },
   );
 } else if (mode === "web") await run([...next, "dev", "apps/web"]);
-else if (mode === "dev")
-  await Promise.all([
-    run([...next, "dev", "apps/web"]),
-    run(["--watch", "apps/worker/src/index.ts"]),
-  ]);
-else if (mode === "build") {
-  await run([...next, "build", "apps/web"]);
-  await mkdir("apps/worker/dist", { recursive: true });
-  await cp("apps/worker/src", "apps/worker/dist", { recursive: true });
-} else if (mode === "typecheck") {
+else if (mode === "dev") {
+  const web = start([...next, "dev", "apps/web"]);
+  const worker = start(["--watch", "apps/worker/src/index.ts"]);
+  // One failing child must not leave its sibling running unattended.
+  await Promise.all([web.done, worker.done]).catch((error) => {
+    web.child.kill("SIGTERM");
+    worker.child.kill("SIGTERM");
+    throw error;
+  });
+} else if (mode === "build") await run([...next, "build", "apps/web"]);
+else if (mode === "typecheck") {
   await run([...next, "typegen", "apps/web"]);
   await run(["node_modules/typescript/bin/tsc", "--noEmit"]);
   await run([

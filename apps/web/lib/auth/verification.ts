@@ -1,6 +1,12 @@
 import { createHash, randomBytes } from "node:crypto";
 import { type Database, sql } from "@relay/db";
+import { recordMailDeliveryFailure } from "./delivery.ts";
 import type { AuthMailCallbacks } from "./mail.ts";
+
+// Pending verification and reset tokens kept per account. A request beyond the
+// cap invalidates the oldest pending token, so repeated requests cannot grow
+// the verification table without bound.
+export const maxOutstandingTokensPerUser = 3;
 
 const prefix = "email-verification:v1:";
 function identity(token: string): string {
@@ -29,6 +35,16 @@ export function createEmailVerification(
         insert into verification (id, identifier, value, expires_at, created_at, updated_at)
         values (${id}, ${prefix + user.id}, ${JSON.stringify({ userId: user.id, email: user.email })}, now() + interval '1 hour', now(), now())
       `);
+      await db.execute(sql`
+        delete from verification
+        where identifier = ${prefix + user.id}
+          and id not in (
+            select id from verification
+            where identifier = ${prefix + user.id} and expires_at > now()
+            order by created_at desc, id desc
+            limit ${maxOutstandingTokensPerUser}
+          )
+      `);
       const url = new URL("/verify-email", appUrl);
       url.searchParams.set("token", token);
       try {
@@ -45,6 +61,7 @@ export function createEmailVerification(
         // The error object is deliberately not inspected — `name` and `message`
         // are mutable transport strings, not a trusted category. The pending row
         // survives, so /verify-email can send a fresh link.
+        recordMailDeliveryFailure("verification");
         console.warn("auth.verification.delivery_failed");
       }
     },

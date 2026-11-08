@@ -348,7 +348,7 @@ it("provides all six full prompts and supports multiline files without shell int
       expect(prompt.output).toContain("Shared agent operating prompt");
       expect(prompt.output).toContain(`Lane ${agent}`);
     }
-    const note = join(dir, "note.md");
+    const note = join(root, "note.md");
     writeFileSync(note, "Line one\nLiteral `command` and $(substitution)\n");
     const result = ok(
       root,
@@ -363,8 +363,25 @@ it("provides all six full prompts and supports multiline files without shell int
       note,
     );
     expect(result.text).toBe(readFileSync(note, "utf8"));
+    const outside = join(dir, "outside.md");
+    writeFileSync(outside, "Outside the worktree\n");
+    expect(
+      cli(
+        root,
+        "send",
+        "--agent",
+        "A",
+        "--to",
+        "all",
+        "--kind",
+        "update",
+        "--file",
+        outside,
+      ).code,
+    ).toBe(1);
     expect(cli(root, "claim", "--agent", "B", "--task", "../bad").code).toBe(1);
     unlinkSync(note);
+    unlinkSync(outside);
   });
 });
 

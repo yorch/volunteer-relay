@@ -696,7 +696,26 @@ export {
 } from "@relay/blob";
 export {
   createTelegramIngress,
+  createTelegramRuntime,
+  createTelegramUpdateAttempts,
+  handleTelegramUpdate,
+  MAX_TELEGRAM_UPDATE_ATTEMPTS,
+  readTelegramRequest,
+  TELEGRAM_REPLIES,
   type TelegramIngressDependencies,
+  type TelegramTransactionalDependencies,
+  type TelegramTransactionScope,
+  telegramPhotoFileId,
   verifyTelegramSecret,
 } from "./telegram-ingress.ts";
-export { createTelegramPhotoLoader } from "./telegram-photo.ts";
+export {
+  createPhotoTransform,
+  createTelegramPhotoDownloader,
+  createTelegramPhotoLoader,
+  isPermanentPhotoFailure,
+  type PhotoDecoder,
+  type PhotoPipeline,
+  type PreparedTelegramPhoto,
+  storeTelegramPhoto,
+  TelegramPhotoError,
+} from "./telegram-photo.ts";

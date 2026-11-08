@@ -61,6 +61,7 @@ it("validates S3 settings even while the deployment runs on filesystem", () => {
   const insecure = parseEnvironment({
     NODE_ENV: "production",
     BETTER_AUTH_SECRET: secret,
+    DATABASE_URL: "postgres://app:synthetic@db.example.invalid:5432/relay",
     BLOB_STORE: "filesystem",
     S3_BUCKET: "relay",
     S3_DEPLOYMENT_ID: "deployment-a",

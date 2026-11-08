@@ -19,7 +19,9 @@ import {
   useRef,
   useState,
 } from "react";
+import { errorMessage, request } from "../api-client";
 import { loadOrganizations, mutateAuth } from "../auth/transport";
+import { Card as BaseCard, Live } from "../card";
 import { StaffShell, VolunteerShell } from "../layout";
 import { Members, Notifications, Settings } from "./admin";
 import { Delivery, History } from "./operations";
@@ -40,9 +42,6 @@ type Page =
   | "history"
   | "delivery"
   | "retention";
-type ResponseResult<T> =
-  | { ok: true; value: T }
-  | { ok: false; error: { code: string } };
 const key = () => crypto.randomUUID();
 const date = (value: string | null) =>
   value ? new Date(value).toLocaleString() : "Not set";
@@ -58,52 +57,25 @@ const fieldLabel = (value: string) =>
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .toLowerCase()
     .replace(/^./, (letter) => letter.toUpperCase());
-const instant = (value: FormDataEntryValue | null) =>
-  value ? new Date(String(value)).toISOString() : null;
-async function request<T>(
-  path: string,
-  body?: object,
-): Promise<ResponseResult<T>> {
-  try {
-    const response = await fetch(path, {
-      method: body ? "POST" : "GET",
-      credentials: "same-origin",
-      cache: "no-store",
-      headers: {
-        Accept: "application/json",
-        ...(body ? { "Content-Type": "application/json" } : {}),
-      },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    });
-    const data = (await response.json()) as ResponseResult<T>;
-    if (
-      data &&
-      typeof data === "object" &&
-      (data.ok === true || data.ok === false)
-    )
-      return data;
-  } catch {
-    /* network or invalid response */
-  }
-  return { ok: false, error: { code: "DEPENDENCY_UNAVAILABLE" } };
-}
-function errorMessage(code: string) {
-  if (code === "UNAUTHENTICATED")
-    return "Please sign in to access your workspace.";
-  if (code === "FORBIDDEN")
-    return "You do not have permission to access this workspace.";
-  if (code === "CONFLICT")
-    return "This record changed. Refresh the workspace and try again.";
-  if (code === "VALIDATION") return "Please check the fields and try again.";
-  return "The service is unavailable. Please try again.";
-}
+const instant = (value: FormDataEntryValue | null) => {
+  if (!value) return null;
+  const parsed = new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+};
 function Organization() {
   const [choices, setChoices] = useState<Awaited<
     ReturnType<typeof loadOrganizations>
   > | null>(null);
   const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
   useEffect(() => {
-    void loadOrganizations().then(setChoices);
+    let live = true;
+    void loadOrganizations().then((result) => {
+      if (live) setChoices(result);
+    });
+    return () => {
+      live = false;
+    };
   }, []);
   if (!choices?.ok || choices.value.options.length < 2)
     return <a href="/account">Account</a>;
@@ -113,12 +85,21 @@ function Organization() {
       <select
         id="organization"
         value={choices.value.currentOrganizationId ?? ""}
+        disabled={pending}
+        aria-busy={pending}
         onChange={async (e) => {
+          if (pending) return;
+          const organizationId = e.target.value;
+          setPending(true);
+          setError("");
           const result = await mutateAuth("organizations/select", {
-            organizationId: e.target.value,
+            organizationId,
           });
           if (result.ok) window.location.href = "/workspace";
-          else setError(errorMessage(result.error.code));
+          else {
+            setError(errorMessage(result.error.code));
+            setPending(false);
+          }
         }}
       >
         {choices.value.options.map((option) => (
@@ -127,7 +108,7 @@ function Organization() {
           </option>
         ))}
       </select>
-      {error && <p role="alert">{error}</p>}
+      <p role="alert">{error}</p>
       <a href="/account">Account</a>
     </div>
   );
@@ -261,26 +242,42 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
             : staff;
   const nav = staff
     ? [
-        { href: "/workspace", label: "Overview" },
-        { href: "/workspace/inbox", label: "Source inbox" },
-        { href: "/workspace/activities", label: "Activities" },
-        { href: "/workspace/needs", label: "Needs" },
-        { href: "/workspace/import", label: "Import" },
-        { href: "/workspace/reports", label: "Summary" },
-        { href: "/workspace/settings", label: "Settings" },
-        { href: "/workspace/history", label: "History" },
-        { href: "/workspace/delivery", label: "Delivery" },
+        { href: "/workspace", icon: "workspace", label: "Overview" },
+        { href: "/workspace/inbox", icon: "inbox", label: "Source inbox" },
+        {
+          href: "/workspace/activities",
+          icon: "activities",
+          label: "Activities",
+        },
+        { href: "/workspace/needs", icon: "needs", label: "Needs" },
+        { href: "/workspace/import", icon: "import", label: "Import" },
+        { href: "/workspace/reports", icon: "reports", label: "Summary" },
+        { href: "/workspace/settings", icon: "settings", label: "Settings" },
+        { href: "/workspace/history", icon: "history", label: "History" },
+        { href: "/workspace/delivery", icon: "delivery", label: "Delivery" },
         ...(role === "owner"
           ? [
-              { href: "/workspace/members", label: "Members" },
-              { href: "/workspace/retention", label: "Retention" },
+              { href: "/workspace/members", icon: "members", label: "Members" },
+              {
+                href: "/workspace/retention",
+                icon: "retention",
+                label: "Retention",
+              },
             ]
           : []),
-        { href: "/workspace/notifications", label: "Notifications" },
+        {
+          href: "/workspace/notifications",
+          icon: "notifications",
+          label: "Notifications",
+        },
       ]
     : [
-        { href: "/workspace/reports", label: "Summary" },
-        { href: "/workspace/notifications", label: "Notifications" },
+        { href: "/workspace/reports", icon: "reports", label: "Summary" },
+        {
+          href: "/workspace/notifications",
+          icon: "notifications",
+          label: "Notifications",
+        },
       ];
   const content = (
     <div
@@ -288,16 +285,12 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
         attempts.current = {};
       }}
     >
-      {error && (
-        <p className={styles.error} role="alert">
-          {error}
-        </p>
-      )}
-      {notice && (
-        <p className={styles.notice} role="status">
-          {notice}
-        </p>
-      )}
+      <Live kind="alert" className={styles.error}>
+        {error}
+      </Live>
+      <Live kind="status" className={styles.notice}>
+        {notice}
+      </Live>
       {!allowed ? (
         <>
           <h1>Permission denied</h1>
@@ -387,7 +380,7 @@ type Mutate = (
   onSuccess?: (value: unknown) => void,
 ) => Promise<boolean>;
 function Card({ children }: { children: ReactNode }) {
-  return <section className={styles.card}>{children}</section>;
+  return <BaseCard className={styles.card}>{children}</BaseCard>;
 }
 function Overview({ snapshot }: { snapshot: WorkspaceSnapshot }) {
   const [report, setReport] = useState<ProductReport | null>(null);
@@ -557,27 +550,18 @@ function Volunteer({
       form.set("text", text);
       form.set("file", photo);
       form.set("idempotencyKey", photoKey.current);
-      try {
-        const response = await fetch("/api/product/source-photo", {
-          method: "POST",
-          credentials: "same-origin",
-          body: form,
-        });
-        const result = (await response.json()) as ResponseResult<Receipt>;
-        if (!result.ok) setPhotoError(errorMessage(result.error.code));
-        else {
-          setReceipt(
-            `Receipt: ${result.value.sourceId} · revision ${result.value.revision} · received`,
-          );
-          setText("");
-          setPhoto(null);
-          if (photoInput.current) photoInput.current.value = "";
-          photoKey.current = null;
-          setPhotoError("");
-          await refresh();
-        }
-      } catch {
-        setPhotoError("The service is unavailable. Please try again.");
+      const result = await request<Receipt>("/api/product/source-photo", form);
+      if (!result.ok) setPhotoError(errorMessage(result.error.code));
+      else {
+        setReceipt(
+          `Receipt: ${result.value.sourceId} · revision ${result.value.revision} · received`,
+        );
+        setText("");
+        setPhoto(null);
+        if (photoInput.current) photoInput.current.value = "";
+        photoKey.current = null;
+        setPhotoError("");
+        await refresh();
       }
       setPending(false);
       return;
@@ -634,16 +618,14 @@ function Volunteer({
                 setPhotoError("");
               }}
             />
-            {photoError && <p role="alert">{photoError}</p>}
+            <Live kind="alert">{photoError}</Live>
             <button disabled={pending} type="submit">
               {pending ? "Sending…" : "Send update"}
             </button>
           </form>
-          {receipt && (
-            <p className={styles.notice} role="status">
-              {receipt}
-            </p>
-          )}
+          <Live kind="polite" className={styles.notice}>
+            {receipt}
+          </Live>
         </Card>
       </div>
       <Card>
@@ -1088,9 +1070,8 @@ function PendingSource({
       <button type="button" onClick={close}>
         Close evidence
       </button>
-      {error ? (
-        <p role="alert">{error}</p>
-      ) : source ? (
+      <Live kind="alert">{error}</Live>
+      {error ? null : source ? (
         <>
           <p>
             Source revision {source.revision} · {source.channel} · received{" "}
@@ -1122,9 +1103,10 @@ function PendingSource({
               : "Read-only evidence. Review actions are available when a proposal is ready."}
           </p>
         </>
-      ) : (
-        <p aria-live="polite">Loading source evidence…</p>
-      )}
+      ) : null}
+      <Live kind="polite">
+        {!error && !source ? "Loading source evidence…" : ""}
+      </Live>
     </Card>
   );
 }
@@ -1302,11 +1284,14 @@ function ReviewEditor({
                     Possible existing activities are suggestions; choose one
                     only after confirming it is the same activity.
                   </p>
-                  {candidateError ? (
-                    <p role="alert">{candidateError}</p>
-                  ) : candidates === null ? (
-                    <p>Loading possible matches…</p>
-                  ) : candidates.length === 0 ? (
+                  <Live kind="alert">{candidateError}</Live>
+                  <Live kind="polite">
+                    {!candidateError && candidates === null
+                      ? "Loading possible matches…"
+                      : ""}
+                  </Live>
+                  {candidateError ||
+                  candidates === null ? null : candidates.length === 0 ? (
                     <p>No possible matches.</p>
                   ) : (
                     <label>
@@ -1407,7 +1392,9 @@ function ReviewEditor({
               <p>Original evidence:</p>
               <ul>
                 {item.evidence.map((e) => (
-                  <li key={JSON.stringify(e)}>
+                  <li
+                    key={`${e.field}:${e.sourceRevision}:${e.kind === "text" ? e.quote : e.observation}`}
+                  >
                     {fieldLabel(e.field)}:{" "}
                     {e.kind === "text" ? `“${e.quote}”` : e.observation} (source
                     revision {e.sourceRevision})
@@ -1424,7 +1411,7 @@ function ReviewEditor({
             <h3>Unresolved in original proposal</h3>
             <ul>
               {entry.proposal.unresolved.map((u) => (
-                <li key={JSON.stringify(u)}>
+                <li key={`${u.field}:${u.reason}`}>
                   {fieldLabel(u.field)}: {u.reason}
                 </li>
               ))}
@@ -1686,10 +1673,18 @@ function Needs({
   snapshot: WorkspaceSnapshot;
   mutate: Mutate;
 }) {
+  const [formError, setFormError] = useState("");
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
     const f = new FormData(form);
+    const dueAt = instant(f.get("due"));
+    const acknowledgeBy = instant(f.get("acknowledgeBy"));
+    if (dueAt === undefined || acknowledgeBy === undefined) {
+      setFormError("Enter a valid date and time.");
+      return;
+    }
+    setFormError("");
     if (
       await mutate(
         productEndpoints.need,
@@ -1700,8 +1695,8 @@ function Needs({
           urgency: String(f.get("urgency")),
           summary: String(f.get("summary")),
           provisional: f.get("provisional") === "on",
-          dueAt: instant(f.get("due")),
-          acknowledgeBy: instant(f.get("acknowledgeBy")),
+          dueAt,
+          acknowledgeBy,
           origin: { kind: "staff", reason: String(f.get("reason")) },
         },
         "Need created.",
@@ -1748,6 +1743,7 @@ function Needs({
               Reason for staff entry
               <input name="reason" required maxLength={2000} />
             </label>
+            <p role="alert">{formError}</p>
             <button type="submit">Create need</button>
           </form>
         </Card>
@@ -1819,12 +1815,19 @@ function Need({
   members: WorkspaceSnapshot["members"];
   mutate: Mutate;
 }) {
+  const [formError, setFormError] = useState("");
   const [action, setAction] = useState(
     n.status === "resolved" || n.status === "cancelled" ? "reopen" : "assign",
   );
   async function transition(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
+    const acknowledgeBy = instant(f.get("acknowledgeBy"));
+    if (action === "assign" && acknowledgeBy === undefined) {
+      setFormError("Enter a valid date and time.");
+      return;
+    }
+    setFormError("");
     const base = {
       schemaVersion: 1,
       idempotencyKey: key(),
@@ -1837,7 +1840,7 @@ function Need({
         ? {
             ...base,
             ownerMembershipId: String(f.get("owner")),
-            acknowledgeBy: instant(f.get("acknowledgeBy")),
+            acknowledgeBy,
           }
         : action === "resolve"
           ? { ...base, resolution: String(f.get("reason")) }
@@ -1918,6 +1921,7 @@ function Need({
               <textarea name="reason" required maxLength={2000} />
             </label>
           )}
+          <p role="alert">{formError}</p>
           <button type="submit">Update need</button>
         </form>
       </details>
@@ -1937,27 +1941,12 @@ type ImportPreview = {
   errors: Array<{ row: number; code: string; message: string }>;
   ambiguousDuplicates: Array<{ sourceIds: string[]; rows: number[] }>;
 };
-async function importRequest<T>(
-  path: string,
-  data: object,
-  files: File[],
-): Promise<ResponseResult<T>> {
+function importRequest<T>(path: string, data: object, files: File[]) {
   if (!files.length) return request<T>(path, data);
-  try {
-    const form = new FormData();
-    form.set("data", JSON.stringify(data));
-    for (const file of files) form.append("files", file, file.name);
-    const response = await fetch(path, {
-      method: "POST",
-      credentials: "same-origin",
-      body: form,
-    });
-    const result = (await response.json()) as ResponseResult<T>;
-    if (result && typeof result.ok === "boolean") return result;
-  } catch {
-    /* network or invalid response */
-  }
-  return { ok: false, error: { code: "DEPENDENCY_UNAVAILABLE" } };
+  const form = new FormData();
+  form.set("data", JSON.stringify(data));
+  for (const file of files) form.append("files", file, file.name);
+  return request<T>(path, form);
 }
 function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
   const [format, setFormat] = useState<ImportDraft["format"]>("csv");
@@ -2311,7 +2300,7 @@ function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
           </button>
         </form>
       </Card>
-      {error && <p role="alert">{error}</p>}
+      <Live kind="alert">{error}</Live>
       {preview && (
         <Card>
           <h2>Preview</h2>
@@ -2329,7 +2318,7 @@ function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
               <h3>Errors</h3>
               <ul>
                 {preview.errors.map((e) => (
-                  <li key={`${e.row}-${e.code}-${e.message}`}>
+                  <li key={`${e.row}:${e.code}`}>
                     Row {e.row}: {e.message} ({e.code})
                   </li>
                 ))}
@@ -2342,7 +2331,7 @@ function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
               <h3>Possible duplicates</h3>
               <ul>
                 {preview.ambiguousDuplicates.map((d) => (
-                  <li key={JSON.stringify(d)}>
+                  <li key={`${d.rows.join(",")}:${d.sourceIds.join(",")}`}>
                     Rows {d.rows.join(", ")} · sources {d.sourceIds.join(", ")}
                   </li>
                 ))}
@@ -2473,10 +2462,9 @@ function Summary({ snapshot }: { snapshot: WorkspaceSnapshot }) {
           <button type="submit">Apply filters</button>
         </form>
       </Card>
-      {error && <p role="alert">{error}</p>}
-      {loading ? (
-        <p aria-live="polite">Loading report…</p>
-      ) : report && s ? (
+      <Live kind="alert">{error}</Live>
+      <Live kind="polite">{loading ? "Loading report…" : ""}</Live>
+      {loading ? null : report && s ? (
         <>
           <div className={styles.sectionHeading}>
             <p>Timezone: {report.timezone}</p>

@@ -1,17 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import {
-  lstat,
-  mkdir,
-  open,
-  readdir,
-  rename,
-  unlink,
-  writeFile,
-} from "node:fs/promises";
+import { lstat, mkdir, open, readdir } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { atomicJson } from "../atomic-json.ts";
 import { schedulingFingerprint } from "../scheduling.ts";
 import { type Config, validateConfig } from "../supervisor.ts";
 import type { Liveness, WatchdogInput, WatchdogSettings } from "./policy.ts";
@@ -414,22 +407,9 @@ export async function deliverNotice(
     if (!st.isDirectory() || st.isSymbolicLink())
       throw Error("Unsafe notice directory");
   };
-  const atomicNotice = async (path: string, value: unknown) => {
-    const temp = `${path}.${randomUUID()}.tmp`;
-    try {
-      await writeFile(temp, JSON.stringify(value), {
-        mode: 0o600,
-        flag: "wx",
-        flush: true,
-      });
-      await rename(temp, path);
-    } finally {
-      await unlink(temp).catch(() => {});
-    }
-  };
   const directory = join(store, "watchdog");
   await safeDirectory(directory);
-  await atomicNotice(join(directory, "notice.json"), {
+  await atomicJson(join(directory, "notice.json"), {
     version: 1,
     at: new Date().toISOString(),
     key: codes.join(","),
@@ -443,15 +423,12 @@ export async function deliverNotice(
   if (intent?.desiredRunning !== true) return;
   await safeDirectory(join(store, "supervisor"));
   await safeDirectory(join(store, "supervisor/commands"));
-  await atomicNotice(
-    join(store, "supervisor/commands", `${randomUUID()}.json`),
-    {
-      action: "nudge",
-      lane: "A",
-      at: new Date().toISOString(),
-      text: "Watchdog reports an orchestration condition. Read private watchdog status and the task/operation queue. Preserve operator holds, failure pauses, phase gates and runtime budgets.",
-    },
-  );
+  await atomicJson(join(store, "supervisor/commands", `${randomUUID()}.json`), {
+    action: "nudge",
+    lane: "A",
+    at: new Date().toISOString(),
+    text: "Watchdog reports an orchestration condition. Read private watchdog status and the task/operation queue. Preserve operator holds, failure pauses, phase gates and runtime budgets.",
+  });
 }
 async function main() {
   if (process.versions.node !== "26.11.1") throw Error("Use Node26.11.1");

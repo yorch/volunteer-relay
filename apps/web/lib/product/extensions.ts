@@ -22,6 +22,7 @@ import {
 } from "@relay/db";
 import { canonicalDigest, createSourceRepository } from "@relay/domain/core";
 import {
+  createPhotoTransform,
   type ImportPreview,
   parseCsvImport,
   parseJsonImport,
@@ -30,6 +31,8 @@ import {
 import sharp from "sharp";
 import { type ProductProcessing, productFailure } from "./http.ts";
 import { prepareImportPhotos, readImportInput } from "./import-photos.ts";
+
+const photoTransform = createPhotoTransform(sharp);
 
 async function bodyBytes(request: Request, limit: number) {
   const reader = request.body?.getReader();
@@ -52,6 +55,11 @@ async function bodyBytes(request: Request, limit: number) {
   }
   return Buffer.concat(chunks);
 }
+export type TransactionalServices = {
+  authorization?: AuthorizationService;
+  processing?: Pick<ProductProcessing, "getSource">;
+  timezone?: (organizationId: string) => Promise<string>;
+};
 function csvCell(value: unknown) {
   const raw = String(value ?? "");
   const text = /^[=+@\-\t\r]/.test(raw) ? `'${raw}` : raw;
@@ -66,7 +74,25 @@ export function createProductExtensions(options: {
   store: PrivateBlobStore;
   maxBytes: number;
   timezone?: (organizationId: string) => Promise<string>;
+  /**
+   * Builds the services used inside a write transaction from that
+   * transaction, so reads share its connection and snapshot instead of
+   * borrowing a second pool connection. Omitted fields fall back to the
+   * root-scoped options.
+   */
+  transactional?: (tx: Database) => TransactionalServices;
 }) {
+  const scoped = (tx: Database): Required<TransactionalServices> => {
+    const built = options.transactional?.(tx) ?? {};
+    return {
+      authorization: built.authorization ?? options.authorization,
+      processing: built.processing ?? options.processing,
+      timezone:
+        built.timezone ??
+        (async (organizationId: string) =>
+          (await options.timezone?.(organizationId)) ?? "UTC"),
+    };
+  };
   return async (
     context: TenantContext,
     path: string,
@@ -164,10 +190,18 @@ export function createProductExtensions(options: {
     if (path.startsWith("attachments/") && request.method === "GET") {
       const parts = path.split("/");
       if (parts.length !== 3) return denied("NOT_FOUND");
+      let sourceId: string, attachmentId: string;
+      try {
+        sourceId = decodeURIComponent(parts[1] ?? "");
+        attachmentId = decodeURIComponent(parts[2] ?? "");
+      } catch {
+        // Malformed percent-encoding is a client error, not an outage.
+        return denied("VALIDATION");
+      }
       const result = await options.attachments.read(
         context,
-        decodeURIComponent(parts[1] ?? ""),
-        decodeURIComponent(parts[2] ?? ""),
+        sourceId,
+        attachmentId,
       );
       if (!result.ok) return result;
       return new Response(Buffer.from(result.value.bytes), {
@@ -225,19 +259,7 @@ export function createProductExtensions(options: {
         try {
           const raw = Buffer.from(await file.arrayBuffer());
           if (!detectedImageMime(raw)) return denied("VALIDATION");
-          pixels = await sharp(raw, {
-            limitInputPixels: 40000000,
-            failOn: "warning",
-          })
-            .rotate()
-            .resize({
-              width: 2000,
-              height: 2000,
-              fit: "inside",
-              withoutEnlargement: true,
-            })
-            .png()
-            .toBuffer();
+          pixels = await photoTransform(raw);
         } catch {
           return denied("VALIDATION");
         }
@@ -248,6 +270,7 @@ export function createProductExtensions(options: {
           options.store,
           async (note) =>
             options.db.transaction(async (tx) => {
+              const services = scoped(tx as unknown as Database);
               await tx.execute(
                 sql`select pg_advisory_xact_lock(hashtextextended(${`blob:${storageKey}`},0))`,
               );
@@ -256,12 +279,15 @@ export function createProductExtensions(options: {
               );
               if (tombstone.rows.length) return denied("NOT_FOUND");
               const repository = createSourceRepository({
-                authorization: options.authorization,
+                authorization: services.authorization,
                 store: createSourceStore(tx as unknown as Database),
               });
               await note({ storageKey, sha256: digest });
               const blob = await options.store.put(pixels);
-              const old = await options.processing.getSource(context, sourceId);
+              const old = await services.processing.getSource(
+                context,
+                sourceId,
+              );
               if (old.ok) {
                 if (
                   old.value.text !== text ||
@@ -286,8 +312,7 @@ export function createProductExtensions(options: {
                 },
                 occurredAt: null,
                 receivedAt: new Date().toISOString(),
-                timezone:
-                  (await options.timezone?.(context.organizationId)) ?? "UTC",
+                timezone: await services.timezone(context.organizationId),
                 text,
                 attachments: [
                   {
@@ -409,8 +434,9 @@ export function createProductExtensions(options: {
           options.store,
           async (note) =>
             options.db.transaction(async (tx) => {
+              const services = scoped(tx as unknown as Database);
               const repository = createSourceRepository({
-                authorization: options.authorization,
+                authorization: services.authorization,
                 store: createSourceStore(tx as unknown as Database),
               });
               const receipts: Receipt[] = [];
@@ -433,7 +459,7 @@ export function createProductExtensions(options: {
                 await options.store.put(blob.content);
               }
               for (const source of preview.sources) {
-                const old = await options.processing.getSource(
+                const old = await services.processing.getSource(
                   context,
                   source.sourceId,
                 );

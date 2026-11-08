@@ -6,12 +6,12 @@ import {
   mkdir,
   readdir,
   readFile,
-  rename,
   unlink,
   writeFile,
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { atomicJson } from "./atomic-json.ts";
 import { evaluateSchedulingReload } from "./config-reload.ts";
 import { control, validState } from "./control-policy.ts";
 import { snapshot } from "./dashboard.ts";
@@ -114,6 +114,46 @@ export interface Work {
   events: string[];
   reason: string;
 }
+// Harness children receive an explicit allowlist, never the operator's full
+// environment (database, object-storage and provider secrets stay out).
+const HARNESS_ENV_ALLOWLIST = [
+  "PATH",
+  "HOME",
+  "USER",
+  "LOGNAME",
+  "SHELL",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "TERM",
+  "TMPDIR",
+  "TZ",
+  "SSL_CERT_FILE",
+  "NODE_EXTRA_CA_CERTS",
+  "HTTPS_PROXY",
+  "HTTP_PROXY",
+  "NO_PROXY",
+  "https_proxy",
+  "http_proxy",
+  "no_proxy",
+  "CODEX_HOME",
+  "PI_CODING_AGENT_DIR",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+  "XDG_CACHE_HOME",
+  "XDG_STATE_HOME",
+];
+export function harnessEnv(
+  source: NodeJS.ProcessEnv,
+  extra: Record<string, string>,
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const key of HARNESS_ENV_ALLOWLIST) {
+    const value = source[key];
+    if (value !== undefined) env[key] = value;
+  }
+  return { ...env, ...extra };
+}
 const hash = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const taskId = (value: string) => /^P\d-\d{2}$/.test(value);
@@ -130,22 +170,6 @@ async function read<T>(path: string, fallback: T): Promise<T> {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return fallback;
     throw error;
-  }
-}
-async function atomic(path: string, value: unknown) {
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const temp = `${path}.${randomUUID()}.tmp`;
-  try {
-    await writeFile(temp, `${JSON.stringify(value, null, 2)}\n`, {
-      flag: "wx",
-      mode: 0o600,
-      flush: true,
-    });
-    await rename(temp, path);
-  } finally {
-    await unlink(temp).catch((e: NodeJS.ErrnoException) => {
-      if (e.code !== "ENOENT") throw e;
-    });
   }
 }
 export function validateConfig(value: Config) {
@@ -365,7 +389,7 @@ export async function serve(
   const save = () => {
     state.checkedAt = new Date().toISOString();
     const copy = JSON.parse(JSON.stringify(state));
-    saving = saving.then(() => atomic(statePath, copy));
+    saving = saving.then(() => atomicJson(statePath, copy));
     return saving;
   };
   try {
@@ -405,7 +429,7 @@ export async function serve(
     }
     await traces.reconcile([]);
     state.scheduling = loadedScheduling(config);
-    await atomic(join(directory, "desired.json"), {
+    await atomicJson(join(directory, "desired.json"), {
       version: 1,
       desiredRunning: true,
       reason: "start",
@@ -417,7 +441,7 @@ export async function serve(
     const commandsDir = join(directory, "commands");
     await mkdir(commandsDir, { recursive: true, mode: 0o700 });
     const schema = join(directory, "result-schema.json");
-    await atomic(schema, {
+    await atomicJson(schema, {
       type: "object",
       properties: {
         state: {
@@ -435,7 +459,7 @@ export async function serve(
     await save();
     while (!state.draining || children.size) {
       if (signal.aborted && !state.draining) {
-        await atomic(join(directory, "desired.json"), {
+        await atomicJson(join(directory, "desired.json"), {
           version: 1,
           desiredRunning: false,
           reason: "intentional-stop",
@@ -465,7 +489,7 @@ export async function serve(
       );
       for (const { file, value: c } of pendingCommands) {
         if (["stop", "rollout"].includes(c.action)) {
-          await atomic(join(directory, "desired.json"), {
+          await atomicJson(join(directory, "desired.json"), {
             version: 1,
             desiredRunning: c.action === "rollout",
             reason:
@@ -713,11 +737,10 @@ export async function serve(
           try {
             child = spawn(invocation.binary, invocation.args, {
               cwd,
-              env: {
-                ...process.env,
+              env: harnessEnv(process.env, {
                 RELAY_COORD_DIR: dirname(directory),
                 RELAY_HEADLESS_LANE: work.lane,
-              },
+              }),
               stdio: ["pipe", "pipe", "pipe"],
               detached: process.platform !== "win32",
             });
@@ -833,7 +856,7 @@ export async function serve(
             const valid =
               validFinal(final) && !stream.invalid && !!stream.sessionId;
             if (invocation.harness === "pi" && valid)
-              await atomic(output, final);
+              await atomicJson(output, final);
             const completedBoard = await readBoard(config.root);
             const after = await progress(completedBoard, cwd, work);
             const explicitWait =
@@ -1031,7 +1054,7 @@ if (
       )
         throw new Error("Specify --lane A|B|C|D|E|F|R|V");
       const textIndex = args.indexOf("--text");
-      await atomic(join(directory, "commands", `${randomUUID()}.json`), {
+      await atomicJson(join(directory, "commands", `${randomUUID()}.json`), {
         action,
         at: new Date().toISOString(),
         lane: ["stop", "rollout"].includes(action) ? undefined : lane,

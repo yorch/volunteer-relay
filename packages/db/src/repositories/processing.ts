@@ -104,8 +104,16 @@ function validEvidence(
   return true;
 }
 
+/**
+ * Source acceptance inserts its own work row atomically, so the cross-tenant
+ * backfill of missing work rows is only a recovery sweep: it runs on the first
+ * lease call of a repository and then at most once per interval.
+ */
+const RECOVERY_SWEEP_INTERVAL_MS = 10 * 60 * 1000;
+
 /** Durable processing and human review. Worker-only methods are internal server APIs. */
 export function createProcessingRepository(db: Database) {
+  let nextRecoverySweepAt = 0;
   async function executeDecision(
     context: TenantContext,
     command: ReviewDecision,
@@ -792,14 +800,17 @@ export function createProcessingRepository(db: Database) {
     > {
       if (!Number.isInteger(limit) || limit < 1 || limit > 100)
         throw new Error("Invalid processing limit");
+      const startedAt = Date.now();
+      const sweep = startedAt >= nextRecoverySweepAt;
       return db
         .transaction(async (tx) => {
           await tx.execute(
             sql`update processing_work set failed=true,lease_until=null,lease_token=null where attempts=3 and lease_until<=now()`,
           );
-          await tx.execute(
-            sql`insert into processing_work (organization_id,source_id,source_revision) select s.organization_id,s.source_id,s.revision from source_revision s where not exists (select 1 from source_redaction z where z.organization_id=s.organization_id and z.source_id=s.source_id) and not exists (select 1 from source_revision n where n.organization_id=s.organization_id and n.source_id=s.source_id and n.revision>s.revision) and not exists (select 1 from extraction_run r where r.organization_id=s.organization_id and r.source_id=s.source_id and r.source_revision=s.revision) on conflict do nothing`,
-          );
+          if (sweep)
+            await tx.execute(
+              sql`insert into processing_work (organization_id,source_id,source_revision) select s.organization_id,s.source_id,s.revision from source_revision s where not exists (select 1 from source_redaction z where z.organization_id=s.organization_id and z.source_id=s.source_id) and not exists (select 1 from source_revision n where n.organization_id=s.organization_id and n.source_id=s.source_id and n.revision>s.revision) and not exists (select 1 from extraction_run r where r.organization_id=s.organization_id and r.source_id=s.source_id and r.source_revision=s.revision) on conflict do nothing`,
+            );
           const rows = await tx.execute(
             sql`with picked as (select w.organization_id,w.source_id,w.source_revision from processing_work w where not exists (select 1 from source_redaction z where z.organization_id=w.organization_id and z.source_id=w.source_id) and w.attempts<3 and (w.lease_until is null or w.lease_until<=now()) and (w.retry_after is null or w.retry_after<=now()) and not exists (select 1 from source_revision n where n.organization_id=w.organization_id and n.source_id=w.source_id and n.revision>w.source_revision) order by w.source_id for update skip locked limit ${limit}), leased as (update processing_work w set attempts=w.attempts+1,lease_token=gen_random_uuid()::text,lease_until=now()+interval '5 minutes',failed=false from picked p where (w.organization_id,w.source_id,w.source_revision)=(p.organization_id,p.source_id,p.source_revision) returning w.*) select s.envelope,w.lease_token,w.generation,p.automation_policy,p.policy_version from leased w join source_revision s on (s.organization_id,s.source_id,s.revision)=(w.organization_id,w.source_id,w.source_revision) join processing_policy_snapshot p on (p.organization_id,p.source_id,p.source_revision,p.generation)=(w.organization_id,w.source_id,w.source_revision,w.generation)`,
           );
@@ -814,6 +825,12 @@ export function createProcessingRepository(db: Database) {
               policyVersion: row.policy_version as string,
             },
           }));
+        })
+        .then((leases) => {
+          // Schedule the next sweep only after this one committed.
+          if (sweep)
+            nextRecoverySweepAt = startedAt + RECOVERY_SWEEP_INTERVAL_MS;
+          return leases;
         })
         .catch(() => {
           throw new Error("Processing storage unavailable");

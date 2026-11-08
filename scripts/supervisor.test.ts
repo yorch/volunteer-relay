@@ -4,6 +4,7 @@ import type { snapshot } from "./dashboard.ts";
 import {
   type Config,
   command,
+  harnessEnv,
   plan,
   type RecordState,
   type State,
@@ -488,4 +489,24 @@ it("waits without repeat wake, wakes for fresh answer, preserves failure pause a
   r.status = "idle";
   s.held = ["B"];
   expect(plan(b, s, config).some((item) => item.lane === "B")).toBe(false);
+});
+
+it("passes harness children only allowlisted environment", () => {
+  const env = harnessEnv(
+    {
+      PATH: "/usr/bin",
+      HOME: "/home/synthetic",
+      DATABASE_URL: "postgres://synthetic.invalid/db",
+      AWS_SECRET_ACCESS_KEY: "synthetic-secret",
+      OPENAI_API_KEY: "synthetic-key",
+      BETTER_AUTH_SECRET: "synthetic-secret",
+    },
+    { RELAY_COORD_DIR: "/tmp/synthetic-coord", RELAY_HEADLESS_LANE: "A" },
+  );
+  expect(env).toEqual({
+    PATH: "/usr/bin",
+    HOME: "/home/synthetic",
+    RELAY_COORD_DIR: "/tmp/synthetic-coord",
+    RELAY_HEADLESS_LANE: "A",
+  });
 });

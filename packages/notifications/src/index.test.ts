@@ -117,6 +117,38 @@ describe("notification adapters and routing", () => {
     expect(send).toHaveBeenCalledTimes(2);
   });
 
+  it("bounds in-process replay memory by age and entry count", async () => {
+    let clock = 1_000;
+    const send = vi.fn(async (_c: TenantContext, m: { deliveryKey: string }) =>
+      Promise.resolve(`p-${m.deliveryKey}`),
+    );
+    const adapter = createSafeTestTransport(send, {
+      maxEntries: 2,
+      ttlMs: 100,
+      now: () => clock,
+    });
+    const message = (deliveryKey: string) => ({
+      deliveryKey,
+      recipientId: "m",
+      template: "urgent",
+      appPath: "/workspace/inbox",
+    });
+    await adapter.deliver(context, message("a"));
+    await adapter.deliver(context, message("a"));
+    expect(send).toHaveBeenCalledTimes(1);
+    // Two newer keys push "a" out of a two-entry cache.
+    await adapter.deliver(context, message("b"));
+    await adapter.deliver(context, message("c"));
+    await adapter.deliver(context, message("a"));
+    expect(send).toHaveBeenCalledTimes(4);
+    // "c" is still cached; after the TTL it is forgotten and resent.
+    await adapter.deliver(context, message("c"));
+    expect(send).toHaveBeenCalledTimes(4);
+    clock += 101;
+    await adapter.deliver(context, message("c"));
+    expect(send).toHaveBeenCalledTimes(5);
+  });
+
   it("resolves SMTP recipients within their organization", async () => {
     const sendMail = vi.fn().mockResolvedValue({ messageId: "mail" });
     const create = vi

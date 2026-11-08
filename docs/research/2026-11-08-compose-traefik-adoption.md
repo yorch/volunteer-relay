@@ -1,6 +1,9 @@
 # Compose + shared-Traefik deployment pattern (survey)
 
 Status: research note for discussion. Not an accepted decision, not an ADR.
+Historical: the survey describes the pre-adoption baseline. The current
+`compose.production.yaml` already uses the shared host Traefik pattern and has
+no `caddy` service; the Caddy description below is retained only as history.
 Surveyed: 2026-11-08, read-only over `~/code`.
 Adversarially reviewed by codex `gpt-6.1-sol`; dispositions in §10.
 

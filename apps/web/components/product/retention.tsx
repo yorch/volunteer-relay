@@ -1,5 +1,7 @@
 "use client";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { request } from "../api-client";
+import { Card, Live } from "../card";
 import styles from "./admin.module.css";
 
 type Preview = {
@@ -12,9 +14,6 @@ type Preview = {
     attachmentCount: number;
   }>;
 };
-type Result<T> =
-  | { ok: true; value: T }
-  | { ok: false; error: { code: string } };
 type Mutate = (
   endpoint: string,
   body: object,
@@ -30,27 +29,17 @@ export function Retention({ mutate }: { mutate: Mutate }) {
   const [ack, setAck] = useState(false);
   const refresh = useCallback(async () => {
     setLoading(true);
-    try {
-      const response = await fetch("/api/product/retention-preview", {
-        credentials: "same-origin",
-        cache: "no-store",
-        headers: { Accept: "application/json" },
-      });
-      const result = (await response.json()) as Result<Preview>;
-      if (result.ok) {
-        setPreview(result.value);
-        setError("");
-      } else {
-        setPreview(null);
-        setError(
-          result.error.code === "FORBIDDEN"
-            ? "You do not have permission to view retention."
-            : "Unable to load retention preview.",
-        );
-      }
-    } catch {
+    const result = await request<Preview>("/api/product/retention-preview");
+    if (result.ok) {
+      setPreview(result.value);
+      setError("");
+    } else {
       setPreview(null);
-      setError("Unable to load retention preview.");
+      setError(
+        result.error.code === "FORBIDDEN"
+          ? "You do not have permission to view retention."
+          : "Unable to load retention preview.",
+      );
     }
     setLoading(false);
   }, []);
@@ -114,19 +103,18 @@ export function Retention({ mutate }: { mutate: Mutate }) {
           review.
         </p>
       </div>
-      {loading ? (
-        <p aria-live="polite" className={styles.loading}>
-          Loading eligible evidence…
-        </p>
-      ) : error ? (
-        <section className={styles.card}>
-          <p role="alert" className={styles.error}>
-            {error}
-          </p>
+      <Live kind="polite" className={styles.loading}>
+        {loading ? "Loading eligible evidence…" : ""}
+      </Live>
+      <Live kind="alert" className={styles.error}>
+        {loading ? "" : error}
+      </Live>
+      {loading ? null : error ? (
+        <Card className={styles.card}>
           <button type="button" onClick={() => void refresh()}>
             Try again
           </button>
-        </section>
+        </Card>
       ) : (
         preview && (
           <>
@@ -146,7 +134,7 @@ export function Retention({ mutate }: { mutate: Mutate }) {
                 </strong>
               </div>
               {preview.truncated && (
-                <p role="status" className={styles.truncationNote}>
+                <p className={styles.truncationNote}>
                   This preview is limited. Additional sources may be eligible.
                 </p>
               )}

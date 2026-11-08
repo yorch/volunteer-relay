@@ -14,39 +14,14 @@ import {
   useRef,
   useState,
 } from "react";
+import { type ApiResult, errorMessage, request } from "../api-client";
+import { Card, Live } from "../card";
 import styles from "./admin.module.css";
 
-type Result<T> =
-  | { ok: true; value: T }
-  | { ok: false; error: { code: string } };
-async function api<T>(path: string, body?: object): Promise<Result<T>> {
-  try {
-    const response = await fetch(`/api/product/${path}`, {
-      method: body === undefined ? "GET" : "POST",
-      credentials: "same-origin",
-      cache: "no-store",
-      headers: {
-        Accept: "application/json",
-        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-    const value = (await response.json()) as Result<T>;
-    if (value && typeof value.ok === "boolean") return value;
-  } catch {}
-  return { ok: false, error: { code: "DEPENDENCY_UNAVAILABLE" } };
-}
-function message(code: string) {
-  return code === "FORBIDDEN"
-    ? "You do not have permission for this action."
-    : code === "UNAUTHENTICATED"
-      ? "Please sign in."
-      : code === "CONFLICT"
-        ? "This record changed. Reload and try again."
-        : code === "VALIDATION"
-          ? "Check the fields and try again."
-          : "The service is unavailable. Please try again.";
-}
+type Result<T> = ApiResult<T>;
+const api = <T,>(path: string, body?: object) =>
+  request<T>(`/api/product/${path}`, body);
+const message = errorMessage;
 function useWrite() {
   const attempt = useRef<{ signature: string; key: string } | null>(null);
   const [error, setError] = useState("");
@@ -92,23 +67,17 @@ function Panel({
   children: ReactNode;
   className?: string | undefined;
 }) {
-  return (
-    <section className={`${styles.card} ${className}`}>{children}</section>
-  );
+  return <Card className={`${styles.card} ${className}`}>{children}</Card>;
 }
 function Status({ error, notice }: { error: string; notice?: string }) {
   return (
     <>
-      {error && (
-        <p role="alert" className={styles.error}>
-          {error}
-        </p>
-      )}
-      {notice && (
-        <p role="status" className={styles.notice}>
-          {notice}
-        </p>
-      )}
+      <Live kind="alert" className={styles.error}>
+        {error}
+      </Live>
+      <Live kind="status" className={styles.notice}>
+        {notice}
+      </Live>
     </>
   );
 }
@@ -170,19 +139,22 @@ export function Settings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
           </span>
         )}
       </header>
-      {owner && staffError && (
-        <div role="alert" className={styles.error}>
-          <p>{staffError}</p>
-          <button type="button" onClick={() => void reloadStaff()}>
-            Retry team members
-          </button>
-        </div>
-      )}
-      {data.loading ? (
-        <p aria-live="polite" className={styles.loading}>
-          Loading settings…
-        </p>
-      ) : data.value ? (
+      <Live kind="alert" className={styles.error}>
+        {owner && staffError ? (
+          <>
+            <p>{staffError}</p>
+            <button type="button" onClick={() => void reloadStaff()}>
+              Retry team members
+            </button>
+          </>
+        ) : (
+          ""
+        )}
+      </Live>
+      <Live kind="polite" className={styles.loading}>
+        {data.loading ? "Loading settings…" : ""}
+      </Live>
+      {data.loading ? null : data.value ? (
         <SettingsForm
           key={data.value.revision}
           initial={data.value}
@@ -344,9 +316,9 @@ function SettingsForm({
                     Choose the people responsible for each category. Only owners
                     and coordinators can receive routed needs.
                   </p>
-                  {owner && !membersReady && (
-                    <p role="status">Loading team members…</p>
-                  )}
+                  <Live kind="polite">
+                    {owner && !membersReady ? "Loading team members…" : ""}
+                  </Live>
                   {routing.length === 0 && (
                     <p>
                       No category routes yet. Unmatched needs use the fallback
@@ -648,11 +620,10 @@ export function Notifications() {
                   : `${list.value?.filter((n) => !n.readAt).length ?? 0} unread`}
             </span>
           </div>
-          {list.loading ? (
-            <p aria-live="polite" className={styles.loading}>
-              Loading notifications…
-            </p>
-          ) : list.value?.length ? (
+          <Live kind="polite" className={styles.loading}>
+            {list.loading ? "Loading notifications…" : ""}
+          </Live>
+          {list.loading ? null : list.value?.length ? (
             <ul className={styles.notificationList}>
               {list.value.map((n) => (
                 <li
@@ -706,11 +677,10 @@ export function Notifications() {
               Choose the channels where you want to receive organization
               notifications.
             </p>
-            {prefs.loading ? (
-              <p aria-live="polite" className={styles.loading}>
-                Loading preferences…
-              </p>
-            ) : prefs.value ? (
+            <Live kind="polite" className={styles.loading}>
+              {prefs.loading ? "Loading preferences…" : ""}
+            </Live>
+            {prefs.loading ? null : prefs.value ? (
               <form
                 className={styles.preferenceForm}
                 key={`${prefs.value.email}-${prefs.value.telegram}`}
@@ -825,7 +795,7 @@ export function Notifications() {
                       Copy
                     </button>
                   </div>
-                  {copyMessage && <p role="status">{copyMessage}</p>}
+                  <Live kind="polite">{copyMessage}</Live>
                   <p>Expires {new Date(link.expiresAt).toLocaleString()}</p>
                 </div>
               ) : (
@@ -946,11 +916,10 @@ export function Members() {
             <h2>Current members</h2>
           </div>
         </div>
-        {list.loading ? (
-          <p aria-live="polite" className={styles.loading}>
-            Loading members…
-          </p>
-        ) : list.value?.length ? (
+        <Live kind="polite" className={styles.loading}>
+          {list.loading ? "Loading members…" : ""}
+        </Live>
+        {list.loading ? null : list.value?.length ? (
           <div className={styles.roster}>
             {list.value.map((m) => (
               <article className={styles.memberRow} key={m.membershipId}>

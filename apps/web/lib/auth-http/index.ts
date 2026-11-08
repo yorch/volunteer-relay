@@ -13,6 +13,13 @@ import {
   type Result,
 } from "@relay/contracts";
 import type { Auth, SessionResolver } from "../auth/index.ts";
+import {
+  accountKey,
+  createRateLimiter,
+  clientAddress as forwardedClientAddress,
+  type RateLimiter,
+  type RateRule,
+} from "./rate-limit.ts";
 
 type Code = ApiError["error"]["code"];
 export interface AuthHttpDependencies {
@@ -33,7 +40,31 @@ export interface AuthHttpDependencies {
     | "switchOrganization"
     | "listAvailableOrganizations"
   >;
+  // Defaults to one in-memory limiter per handler set; see rate-limit.ts for
+  // the single-replica and trusted-proxy assumptions.
+  rateLimiter?: RateLimiter;
+  clientAddress?: (request: Request) => string;
+  rateRules?: Partial<AuthRateRules>;
 }
+
+const minute = 60_000;
+/**
+ * Application-level limits. Routes call Better Auth through `auth.api`, which
+ * bypasses the library's own HTTP rate limiter, so these are the only limits.
+ * Sign-in and token confirmation count attempts and refund successes, so a
+ * burst cannot outrun failure counting; mail-sending requests count every
+ * attempt because each one may deliver a message.
+ */
+export const defaultAuthRateRules = {
+  signInPerAccount: { limit: 10, windowMs: 15 * minute },
+  signInPerAddress: { limit: 50, windowMs: 15 * minute },
+  signUpPerAccount: { limit: 5, windowMs: 60 * minute },
+  signUpPerAddress: { limit: 20, windowMs: 60 * minute },
+  mailRequestPerAccount: { limit: 5, windowMs: 60 * minute },
+  mailRequestPerAddress: { limit: 30, windowMs: 60 * minute },
+  tokenConfirmPerAddress: { limit: 30, windowMs: 15 * minute },
+} satisfies Record<string, RateRule>;
+export type AuthRateRules = typeof defaultAuthRateRules;
 const status: Record<Code, number> = {
   UNAUTHENTICATED: 401,
   FORBIDDEN: 403,
@@ -134,9 +165,43 @@ export function createAuthHttpHandlers({
   appUrl,
   auth,
   sessions,
+  rateLimiter = createRateLimiter(),
+  clientAddress = forwardedClientAddress,
+  rateRules,
 }: AuthHttpDependencies) {
   const origin = new URL(appUrl).origin;
+  const rules: AuthRateRules = { ...defaultAuthRateRules, ...rateRules };
   type Call = { request: Request; headers: Headers; correlationId: string };
+  type Limit = { key: string; rule: RateRule };
+  // Checks every limit before counting any, so a denied request does not
+  // extend its own lockout; refunds apply only to a successful result.
+  async function limited(
+    call: Call,
+    limits: Limit[],
+    refundOnSuccess: boolean,
+    run: () => Promise<Result<unknown>>,
+  ): Promise<Result<unknown>> {
+    for (const { key, rule } of limits) {
+      const retryAfter = rateLimiter.blocked(key, rule);
+      if (retryAfter !== null) {
+        call.headers.set("retry-after", String(retryAfter));
+        return failure("RATE_LIMITED", call.correlationId);
+      }
+    }
+    for (const { key, rule } of limits) rateLimiter.hit(key, rule);
+    const result = await run();
+    if (result.ok && refundOnSuccess)
+      for (const { key } of limits) rateLimiter.release(key);
+    return result;
+  }
+  const byAddress = (scope: string, call: Call, rule: RateRule): Limit => ({
+    key: `${scope}:address:${clientAddress(call.request)}`,
+    rule,
+  });
+  const byAccount = (scope: string, email: string, rule: RateRule): Limit => ({
+    key: `${scope}:account:${accountKey(email)}`,
+    rule,
+  });
   function handler(
     method: "GET" | "POST",
     run: (call: Call) => Promise<Result<unknown>>,
@@ -209,43 +274,63 @@ export function createAuthHttpHandlers({
   });
   return {
     signIn: mutation(authSignInCommandSchema, (input, call) =>
-      sdk(
-        auth.api.signInEmail({
-          body: input,
-          headers: call.request.headers,
-          asResponse: true,
-        }),
+      limited(
         call,
+        [
+          byAccount("sign-in", input.email, rules.signInPerAccount),
+          byAddress("sign-in", call, rules.signInPerAddress),
+        ],
+        true,
+        () =>
+          sdk(
+            auth.api.signInEmail({
+              body: input,
+              headers: call.request.headers,
+              asResponse: true,
+            }),
+            call,
+          ),
       ),
     ),
-    signUp: mutation(authSignUpCommandSchema, async (input, call) => {
-      const created = await sdk(
-        auth.api.signUpEmail({
-          body: input,
-          headers: call.request.headers,
-          asResponse: true,
-        }),
+    signUp: mutation(authSignUpCommandSchema, (input, call) =>
+      limited(
         call,
-      );
-      if (!created.ok) return created;
-      // The account exists whether or not this send succeeds, so the failure is
-      // never surfaced and never turns a created account into a failed sign-up:
-      // the recipient can request a fresh link at /verify-email. Without this
-      // call nothing is sent at all, because the SDK has no sendOnSignUp wiring.
-      const verification = await sessions.requestEmailVerification({
-        email: input.email,
-        ...helper(call),
-      });
-      // A missing mail callback and a failed token insert both return here and
-      // never reach the delivery warning, which would leave an account with no
-      // verification row and no operator signal — the exact symptom that made
-      // this bug hard to diagnose. `code` is a closed union, not transport text.
-      if (!verification.ok)
-        console.warn("auth.signup.verification_unavailable", {
-          code: verification.error.code,
-        });
-      return created;
-    }),
+        [
+          byAccount("sign-up", input.email, rules.signUpPerAccount),
+          byAddress("sign-up", call, rules.signUpPerAddress),
+        ],
+        false,
+        async () => {
+          const created = await sdk(
+            auth.api.signUpEmail({
+              body: input,
+              headers: call.request.headers,
+              asResponse: true,
+            }),
+            call,
+          );
+          if (!created.ok) return created;
+          // The account exists whether or not this send succeeds, so the
+          // failure is never surfaced and never turns a created account into a
+          // failed sign-up: the recipient can request a fresh link at
+          // /verify-email. Without this call nothing is sent at all, because
+          // the SDK has no sendOnSignUp wiring.
+          const verification = await sessions.requestEmailVerification({
+            email: input.email,
+            ...helper(call),
+          });
+          // A missing mail callback and a failed token insert both return here
+          // and never reach the delivery warning, which would leave an account
+          // with no verification row and no operator signal. `code` is a
+          // closed union, not transport text.
+          if (!verification.ok)
+            console.warn("auth.signup.verification_unavailable", {
+              code: verification.error.code,
+            });
+          return created;
+        },
+      ),
+    ),
     signOut: mutation(
       {
         safeParse: (v: unknown) =>
@@ -262,25 +347,61 @@ export function createAuthHttpHandlers({
           call,
         ),
     ),
+    // Reset and verification requests share one per-account budget: both
+    // send mail to the same address. The denial is identical for known and
+    // unknown accounts, so it does not enumerate.
     requestReset: mutation(authResetRequestSchema, (input, call) =>
-      sessions.requestPasswordReset({
-        ...input,
-        ...helper(call),
-        redirectTo: new URL("/reset-password", origin).toString(),
-      }),
+      limited(
+        call,
+        [
+          byAccount("mail", input.email, rules.mailRequestPerAccount),
+          byAddress("mail", call, rules.mailRequestPerAddress),
+        ],
+        false,
+        () =>
+          sessions.requestPasswordReset({
+            ...input,
+            ...helper(call),
+            redirectTo: new URL("/reset-password", origin).toString(),
+          }),
+      ),
     ),
     confirmReset: mutation(authResetConfirmSchema, (input, call) =>
-      sessions.resetPassword({ ...input, correlationId: call.correlationId }),
+      limited(
+        call,
+        [byAddress("token", call, rules.tokenConfirmPerAddress)],
+        true,
+        () =>
+          sessions.resetPassword({
+            ...input,
+            correlationId: call.correlationId,
+          }),
+      ),
     ),
     requestVerification: mutation(
       authVerificationRequestSchema,
       (input, call) =>
-        sessions.requestEmailVerification({ ...input, ...helper(call) }),
+        limited(
+          call,
+          [
+            byAccount("mail", input.email, rules.mailRequestPerAccount),
+            byAddress("mail", call, rules.mailRequestPerAddress),
+          ],
+          false,
+          () =>
+            sessions.requestEmailVerification({ ...input, ...helper(call) }),
+        ),
     ),
     confirmVerification: mutation(
       authVerificationConfirmSchema,
       (input, call) =>
-        sessions.confirmEmailVerification({ ...input, ...helper(call) }),
+        limited(
+          call,
+          [byAddress("token", call, rules.tokenConfirmPerAddress)],
+          true,
+          () =>
+            sessions.confirmEmailVerification({ ...input, ...helper(call) }),
+        ),
     ),
     acceptInvitation: mutation(authInvitationAcceptanceSchema, (input, call) =>
       sessions.acceptInvitation({ ...input, ...helper(call) }),
