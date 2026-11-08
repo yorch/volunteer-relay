@@ -1,4 +1,6 @@
 import { readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { chromium } from "@playwright/test";
 import { expect, test } from "vitest";
 
@@ -213,7 +215,7 @@ test("synthetic graph: bounded fanout, cycles, hostile text, missing references,
         ),
       ).toBe(true);
       await page.screenshot({
-        path: `/private/tmp/relay-D-P0-21-${width}.png`,
+        path: join(tmpdir(), `relay-D-P0-21-${width}.png`),
         fullPage: true,
       });
     }
