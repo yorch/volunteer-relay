@@ -44,8 +44,6 @@ FROM runtime AS worker
 COPY --from=worker-deps /app/node_modules /app/node_modules
 COPY --from=worker-deps /app/package.json /app/package.json
 COPY --from=worker-deps /app/apps/worker /app/apps/worker
-COPY --from=worker-deps /app/packages/config /app/packages/config
-COPY --from=worker-deps /app/packages/contracts /app/packages/contracts
-COPY --from=worker-deps /app/packages/db /app/packages/db
+COPY --from=worker-deps /app/packages /app/packages
 USER node
 CMD ["node", "apps/worker/src/index.ts"]
