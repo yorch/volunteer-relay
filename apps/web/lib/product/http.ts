@@ -36,6 +36,7 @@ export interface ProductProcessing {
 }
 export interface ProductHttpDependencies {
   appUrl: string;
+  timezone?(context: TenantContext): Promise<string>;
   resolve(
     request: Request,
     responseHeaders: Headers,
@@ -85,7 +86,7 @@ export function productFailure(
     },
   };
 }
-async function readJson(request: Request): Promise<unknown> {
+export async function readProductJson(request: Request): Promise<unknown> {
   if (request.headers.get("content-type")?.split(";")[0] !== "application/json")
     throw new Error("body");
   const reader = request.body?.getReader();
@@ -180,7 +181,7 @@ export function createProductHandler(deps: ProductHttpDependencies) {
         return reply(productFailure("NOT_FOUND", correlationId));
       let body: unknown;
       try {
-        body = await readJson(request);
+        body = await readProductJson(request);
       } catch {
         return reply(productFailure("VALIDATION", correlationId));
       }
@@ -230,7 +231,7 @@ export function createProductHandler(deps: ProductHttpDependencies) {
             },
             occurredAt: null,
             receivedAt: now,
-            timezone: "UTC",
+            timezone: (await deps.timezone?.(context)) ?? "UTC",
             text: input.text,
             attachments: [],
             replyToSourceId: null,

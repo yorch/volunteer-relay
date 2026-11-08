@@ -5,6 +5,7 @@ import {
   createAttachmentMetadataStore,
   createDatabase,
   createDomainStore,
+  createFollowThroughRepository,
   createMembershipReader,
   createProcessingRepository,
   createSourceStore,
@@ -23,6 +24,7 @@ import {
 } from "../auth/index.ts";
 import { createProductionAuth } from "../mail/production.ts";
 import { createProductExtensions, readPrivateBlob } from "./extensions.ts";
+import { createFollowThroughHttp } from "./follow-through.ts";
 import { createProductHandler, productFailure } from "./http.ts";
 
 let handler: ReturnType<typeof createProductHandler> | undefined;
@@ -51,17 +53,30 @@ export async function productHandler(request: Request) {
         metadata: createAttachmentMetadataStore(db),
         blobs: { read: (key) => readPrivateBlob(env.ATTACHMENT_ROOT, key) },
       });
+      const extended = createProductExtensions({
+        db,
+        authorization,
+        sources,
+        processing,
+        attachments,
+        root: env.ATTACHMENT_ROOT,
+        maxBytes: env.ATTACHMENT_MAX_BYTES,
+        timezone: async (org) =>
+          (await createFollowThroughRepository(db).getSettingsInternal(org))
+            .timezone,
+      });
+      const followHttp = createFollowThroughHttp(db, auth, sessions);
       handler = createProductHandler({
-        extensions: createProductExtensions({
-          db,
-          authorization,
-          sources,
-          processing,
-          attachments,
-          root: env.ATTACHMENT_ROOT,
-          maxBytes: env.ATTACHMENT_MAX_BYTES,
-        }),
+        extensions: async (context, path, request) =>
+          (await followHttp(context, path, request)) ??
+          extended(context, path, request),
         appUrl: env.APP_URL,
+        timezone: async (context) =>
+          (
+            await createFollowThroughRepository(db).getSettingsInternal(
+              context.organizationId,
+            )
+          ).timezone,
         authorization,
         sources: createSourceRepository({
           authorization,

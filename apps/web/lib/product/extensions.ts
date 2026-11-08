@@ -57,6 +57,7 @@ export function createProductExtensions(options: {
   attachments: AttachmentStore;
   root: string;
   maxBytes: number;
+  timezone?: (organizationId: string) => Promise<string>;
 }) {
   return async (
     context: TenantContext,
@@ -77,6 +78,8 @@ export function createProductExtensions(options: {
       );
       if (!parsed.success) return denied("VALIDATION");
       const q = parsed.data;
+      const timezone =
+        (await options.timezone?.(context.organizationId)) ?? "UTC";
       const result = await options.db.execute(sql`
         select coalesce(sum(c.duration_minutes) filter(where c.status='approved'),0)::int as minutes,
           count(*) filter(where c.status='approved')::int as approved,
@@ -92,7 +95,7 @@ export function createProductExtensions(options: {
           and (${q.membershipId ?? null}::text is null or c.membership_id=${q.membershipId ?? null})`);
       const r = result.rows[0] ?? {};
       const needs = await options.db.execute(
-        sql`select count(*) filter(where status not in ('resolved','cancelled'))::int as open, count(*) filter(where status='resolved')::int as resolved, avg(extract(epoch from (acknowledged_at-created_at))/60) filter(where acknowledged_at is not null) as ack from need where organization_id=${context.organizationId} and (${q.from ?? null}::date is null or (created_at AT TIME ZONE 'UTC')::date >= ${q.from ?? null}::date) and (${q.to ?? null}::date is null or (created_at AT TIME ZONE 'UTC')::date <= ${q.to ?? null}::date)`,
+        sql`select count(*) filter(where status not in ('resolved','cancelled'))::int as open, count(*) filter(where status='resolved')::int as resolved, avg(extract(epoch from (acknowledged_at-created_at))/60) filter(where acknowledged_at is not null) as ack from need where organization_id=${context.organizationId} and (${q.from ?? null}::date is null or (created_at AT TIME ZONE ${timezone})::date >= ${q.from ?? null}::date) and (${q.to ?? null}::date is null or (created_at AT TIME ZONE ${timezone})::date <= ${q.to ?? null}::date)`,
       );
       const unknown = await options.db.execute(
         sql`select count(*)::int as count from contribution c join activity a on a.organization_id=c.organization_id and a.id=c.activity_id where c.organization_id=${context.organizationId} and c.status='approved' and a.local_date is null and (${q.program ?? null}::text is null or a.kind=${q.program ?? null}) and (${q.membershipId ?? null}::text is null or c.membership_id=${q.membershipId ?? null})`,
@@ -100,7 +103,7 @@ export function createProductExtensions(options: {
       const n = needs.rows[0] ?? {};
       const value: ProductReport = {
         query: q,
-        timezone: "UTC",
+        timezone,
         ledger: {
           approvedMinutes: Number(r.minutes ?? 0),
           approvedContributions: Number(r.approved ?? 0),
@@ -253,7 +256,7 @@ export function createProductExtensions(options: {
           },
           occurredAt: null,
           receivedAt: new Date().toISOString(),
-          timezone: "UTC",
+          timezone: (await options.timezone?.(context.organizationId)) ?? "UTC",
           text,
           attachments: [
             {
