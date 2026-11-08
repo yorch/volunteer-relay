@@ -123,7 +123,7 @@ async function liveTotals(
   db: ReturnType<typeof createDatabase>["db"],
 ): Promise<{ live: number; bytes: number }> {
   const rows = await db.execute(sql`
-    select count(*)::int as live, coalesce(sum(t.bytes), 0)::bigint as bytes
+    select count(*)::bigint as live, coalesce(sum(t.bytes), 0)::bigint as bytes
       from (
         select distinct on (a.storage_key) a.storage_key, a.bytes
           from source_attachment_identity a
@@ -305,11 +305,24 @@ async function main() {
           await tx.execute(
             sql`select pg_advisory_xact_lock(hashtextextended('blob:' || ${key.storageKey},0))`,
           );
-          const live = await tx.execute(sql`
-            select 1 from source_attachment_identity a
-             where a.storage_key = ${key.storageKey} and ${livePredicate}
-             limit 1`);
-          return live.rows.length === 0 ? "excluded" : work();
+          const isLive = async () =>
+            (
+              await tx.execute(sql`
+                select 1 from source_attachment_identity a
+                 where a.storage_key = ${key.storageKey} and ${livePredicate}
+                 limit 1`)
+            ).rows.length > 0;
+          if (!(await isLive())) return "excluded";
+          const outcome = await work();
+          if (outcome !== "copied") return outcome;
+          // The lock serialises against redaction, but a redaction that
+          // committed while we copied is only visible on a fresh read. The
+          // erasure it queued will run against the still-active filesystem
+          // store, so the target copy we just wrote would outlive the
+          // completed erasure. Revert it while the lock is still held.
+          if (await isLive()) return outcome;
+          await target.erase(key.storageKey, key.sha256);
+          return "reverted";
         }),
       onProgress: ({ processed }) => {
         if (processed % 500 === 0)
@@ -319,7 +332,23 @@ async function main() {
       },
     });
 
-    const complete = isMigrationComplete(summary);
+    // A copy pass proves the keys it saw. It cannot prove the *set* it saw is
+    // still the live set, so re-read the live set and verify the target against
+    // that fresh snapshot before claiming success. Counts alone do not
+    // establish coverage: a key inserted behind the cursor would be invisible.
+    const verification =
+      mode === "copy"
+        ? await runMigration({
+            keys: liveKeys(db, args.pageSize),
+            source,
+            target,
+            mode: "verify",
+            concurrency: args.concurrency,
+          })
+        : undefined;
+    const complete =
+      isMigrationComplete(summary) &&
+      (verification === undefined || isMigrationComplete(verification));
     console.info(
       JSON.stringify({
         event: "blob-migrate",
@@ -328,10 +357,11 @@ async function main() {
         to: to.kind === "s3" ? "s3" : "filesystem",
         expectedLive: totals.live,
         summary,
+        ...(verification ? { verification } : {}),
         complete,
       }),
     );
-    if (!complete || summary.live !== totals.live)
+    if (!complete)
       throw new Error(
         "Migration incomplete: some live attachments are missing, corrupt or failed; do not remove the fallback or switch storage",
       );

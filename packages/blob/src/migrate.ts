@@ -20,7 +20,12 @@ export type KeyOutcome =
   | "missing"
   | "corrupt"
   | "failed"
-  | "excluded";
+  | "excluded"
+  /**
+   * Copied, then found no longer live while the fence still held the lock, so
+   * the target copy was erased again. Not a failure: the key stopped being live.
+   */
+  | "reverted";
 
 export type MigrationMode = "copy" | "verify";
 
@@ -33,6 +38,7 @@ export interface MigrationSummary {
   corrupt: number;
   failed: number;
   excluded: number;
+  reverted: number;
   bytesCopied: number;
 }
 
@@ -130,6 +136,7 @@ function emptySummary(): MigrationSummary {
     corrupt: 0,
     failed: 0,
     excluded: 0,
+    reverted: 0,
     bytesCopied: 0,
   };
 }
@@ -162,6 +169,9 @@ function record(
     case "excluded":
       summary.excluded++;
       break;
+    case "reverted":
+      summary.reverted++;
+      break;
   }
 }
 
@@ -183,13 +193,19 @@ export async function runMigration(
 ): Promise<MigrationSummary> {
   const summary = emptySummary();
   const concurrency = Math.min(Math.max(options.concurrency ?? 4, 1), 16);
-  // Async generators serialise concurrent `next()` calls, so a single iterator
-  // is safe; keys are consumed at pool rate and never buffered.
   const iterator = options.keys[Symbol.asyncIterator]();
+  // Serialise pulls so any AsyncIterable works, not only async generators.
+  let pull: Promise<unknown> = Promise.resolve();
+  const nextKey = async (): Promise<IteratorResult<LiveKey>> => {
+    const result = pull.then(() => iterator.next());
+    pull = result.catch(() => undefined);
+    return result;
+  };
 
+  let processed = 0;
   const worker = async () => {
     for (;;) {
-      const next = await iterator.next();
+      const next = await nextKey();
       if (next.done) return;
       const key = next.value;
       summary.live++;
@@ -202,7 +218,13 @@ export async function runMigration(
         outcome = "failed";
       }
       record(summary, outcome, key);
-      options.onProgress?.({ processed: summary.live });
+      processed++;
+      // Progress reporting must never fail a data migration.
+      try {
+        options.onProgress?.({ processed });
+      } catch {
+        /* ignore a broken progress sink */
+      }
     }
   };
 

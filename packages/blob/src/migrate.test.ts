@@ -192,7 +192,23 @@ it("rejects a key whose recorded length disagrees with the database", async () =
   expect(await migrateKey(live, source, target, "copy")).toBe("corrupt");
 });
 
-it("rejects malformed live-key metadata before touching either store", () => {
+it("touches neither store for malformed live-key metadata", async () => {
+  const touched: string[] = [];
+  const guard = stubStore({
+    async read() {
+      touched.push("read");
+      return null;
+    },
+    async put() {
+      touched.push("put");
+      throw new Error("unreachable");
+    },
+  });
+  expect(
+    await migrateKey({ ...liveOf(png), bytes: 0 }, guard, guard, "copy"),
+  ).toBe("corrupt");
+  expect(touched).toEqual([]);
+
   const valid = liveOf(png);
   expect(isValidLiveKey(valid)).toBe(true);
   expect(isValidLiveKey({ ...valid, bytes: 0 })).toBe(false);
@@ -278,25 +294,90 @@ it("runs a bounded pool over many keys and accounts for every one", async () => 
     Buffer.concat([png, Buffer.from([index])]),
   );
   for (const blob of blobs) await source.put(blob);
-  let maxInFlight = 0;
+  // Wrap the target so in-flight writes are actually observable, and slow
+  // enough for overlap to happen at all.
   let inFlight = 0;
+  let peak = 0;
+  const wrapped: PrivateBlobStore = {
+    backend: target.backend,
+    lifecycle: target.lifecycle,
+    async put(bytes) {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      try {
+        return await target.put(bytes);
+      } finally {
+        inFlight--;
+      }
+    },
+    read: (key) => target.read(key),
+    erase: (key, sha256) => target.erase(key, sha256),
+    capacity: () => target.capacity(),
+    probe: () => target.probe(),
+  };
   const summary = await runMigration({
     keys: iterable(blobs.map(liveOf)),
     source,
-    target,
+    target: wrapped,
     mode: "copy",
     concurrency: 4,
-    onProgress: () => {
-      inFlight++;
-      maxInFlight = Math.max(maxInFlight, inFlight);
-      inFlight--;
-    },
   });
   expect(summary.live).toBe(12);
   expect(summary.copied).toBe(12);
   expect(summary.bytesCopied).toBe(blobs.reduce((sum, b) => sum + b.length, 0));
-  expect(maxInFlight).toBeGreaterThan(0);
+  expect(peak).toBeGreaterThan(1);
+  expect(peak).toBeLessThanOrEqual(4);
   expect(isMigrationComplete(summary)).toBe(true);
+});
+
+it("counts a key the fence reverted because it stopped being live", async () => {
+  const { targetGateway, source, target } = pair();
+  const live = liveOf(png);
+  await source.put(png);
+  const summary = await runMigration({
+    keys: iterable([live]),
+    source,
+    target,
+    mode: "copy",
+    fence: async (_key, work) => {
+      expect(await work()).toBe("copied");
+      // The CLI erases its own fresh copy in this case.
+      await target.erase(live.storageKey, live.sha256);
+      return "reverted";
+    },
+  });
+  expect(summary).toMatchObject({ live: 1, copied: 0, reverted: 1 });
+  expect(targetGateway.objects.has(live.storageKey)).toBe(false);
+  expect(isMigrationComplete(summary)).toBe(true);
+});
+
+it("does not let a throwing progress sink fail the migration", async () => {
+  const { source, target } = pair();
+  await source.put(png);
+  const summary = await runMigration({
+    keys: iterable([liveOf(png)]),
+    source,
+    target,
+    mode: "copy",
+    onProgress: () => {
+      throw new Error("sink down");
+    },
+  });
+  expect(summary.copied).toBe(1);
+  expect(isMigrationComplete(summary)).toBe(true);
+});
+
+it("reports an iterator failure instead of a partial success", async () => {
+  const { source, target } = pair();
+  await source.put(png);
+  const broken = async function* () {
+    yield liveOf(png);
+    throw new Error("database went away");
+  };
+  await expect(
+    runMigration({ keys: broken(), source, target, mode: "copy" }),
+  ).rejects.toThrow("database went away");
 });
 
 it("verify mode counts absent and unverifiable targets as missing", async () => {
