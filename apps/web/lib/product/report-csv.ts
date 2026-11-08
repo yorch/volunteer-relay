@@ -1,8 +1,10 @@
 import {
   type ProductReport,
   REPORT_TOP_CONTRIBUTORS_LIMIT,
+  REPORT_VOLUNTEERS_LIMIT,
   type ReportContributor,
   type ReportQuery,
+  type ReportVolunteer,
   type ReportWeekRange,
 } from "@relay/contracts";
 
@@ -63,10 +65,61 @@ export function topContributors(
     .slice(0, Math.max(0, limit));
 }
 
+const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * Maps per-member roster rows (`membership_id`, `minutes`, `approved`,
+ * `pending`, `unknown`, `week_minutes`) to the staff volunteer roster. Rows
+ * without a resolved member or without any contribution in scope are
+ * dropped. Pending rows contribute counts only, never minutes. The week
+ * figure is null when the report week is unknown, never a guessed zero.
+ * Ordered by approved minutes descending, then membership id by code unit
+ * (matching the SQL `collate "C"` order), and cut at `limit`.
+ */
+export function volunteerRoster(
+  rows: readonly ReportRow[],
+  options: { weekKnown: boolean; limit?: number },
+): { volunteers: ReportVolunteer[]; volunteersTruncated: boolean } {
+  const limit = Math.max(0, options.limit ?? REPORT_VOLUNTEERS_LIMIT);
+  const all = rows
+    .flatMap((row): ReportVolunteer[] => {
+      const membershipId = row.membership_id;
+      if (typeof membershipId !== "string" || !membershipId) return [];
+      const approvedContributions = count(row.approved);
+      const pendingContributions = count(row.pending);
+      if (approvedContributions + pendingContributions === 0) return [];
+      return [
+        {
+          membershipId,
+          approvedMinutes: approvedContributions ? count(row.minutes) : 0,
+          weekApprovedMinutes: options.weekKnown
+            ? count(row.week_minutes)
+            : null,
+          approvedContributions,
+          pendingContributions,
+          pendingUnknownDuration: Math.min(
+            count(row.unknown),
+            pendingContributions,
+          ),
+        },
+      ];
+    })
+    .sort(
+      (a, b) =>
+        b.approvedMinutes - a.approvedMinutes ||
+        byCodeUnit(a.membershipId, b.membershipId),
+    );
+  return {
+    volunteers: all.slice(0, limit),
+    volunteersTruncated: all.length > limit,
+  };
+}
+
 /**
  * Builds the report projection from aggregate rows. Staff-only inputs
- * (`contributors`, `oldestQueued`) are passed as null for aggregate-only
- * readers, and the corresponding fields are then omitted entirely.
+ * (`contributors`, `oldestQueued`, `volunteers`) are passed as null for
+ * aggregate-only readers, and the corresponding fields are then omitted
+ * entirely.
  */
 export function buildProductReport(input: {
   query: ReportQuery;
@@ -78,6 +131,7 @@ export function buildProductReport(input: {
   week: ReportRow | null;
   contributors: readonly ReportRow[] | null;
   oldestQueued: ReportRow | null;
+  volunteers?: readonly ReportRow[] | null;
 }): ProductReport {
   const { query: q, totals: r, needs: n } = input;
   const minutes = count(r.minutes);
@@ -110,14 +164,17 @@ export function buildProductReport(input: {
     ...(input.oldestQueued
       ? { oldestQueuedReviewAt: instant(input.oldestQueued.oldest) }
       : {}),
+    ...(input.volunteers
+      ? volunteerRoster(input.volunteers, { weekKnown: weekMinutes !== null })
+      : {}),
   };
 }
 
 /**
  * The aggregate CSV export. Columns are the original aggregate set followed by
  * additive week and needs columns. Per-member and staff-only fields
- * (topContributors, oldestQueuedReviewAt) and any evidence identifiers are
- * deliberately excluded.
+ * (topContributors, oldestQueuedReviewAt, volunteers) and any evidence
+ * identifiers are deliberately excluded: the export stays one aggregate row.
  */
 export function reportCsv(report: ProductReport) {
   const q = report.query;

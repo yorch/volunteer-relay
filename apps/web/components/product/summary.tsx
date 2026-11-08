@@ -2,9 +2,11 @@
 
 import {
   type ProductReport,
+  type ReportVolunteer,
   reportQuerySchema,
   type WorkspaceSnapshot,
 } from "@relay/contracts";
+import Link from "next/link";
 import {
   type FormEvent,
   type ReactNode,
@@ -15,6 +17,7 @@ import {
 import { errorMessage, request } from "../api-client";
 import { Card as BaseCard, Live } from "../card";
 import { Button, Icon, Meter, Select, TextInput } from "../foundation";
+import { ledgerHref } from "./ledger";
 import { duration } from "./shared";
 import styles from "./summary.module.css";
 
@@ -184,6 +187,127 @@ export function CompositionBar({ ledger }: { ledger?: Ledger | undefined }) {
         pending total.
       </p>
     </div>
+  );
+}
+/** Approved hours with a unit; a known zero is "0 h", unknown stays Unknown. */
+function hoursCell(minutes: number | null) {
+  return minutes === null ? (
+    <Value text="Unknown" />
+  ) : (
+    `${hours(minutes / 60)} h`
+  );
+}
+/**
+ * Staff-only volunteer hours roster, in the server's order (approved minutes
+ * descending). Pending is a count of contributions, never time.
+ */
+export function VolunteerRoster({
+  volunteers,
+  truncated,
+  members,
+  from,
+  to,
+}: {
+  volunteers: readonly ReportVolunteer[];
+  truncated: boolean;
+  members: WorkspaceSnapshot["members"];
+  from?: string | undefined;
+  to?: string | undefined;
+}) {
+  const names = new Map(members.map((m) => [m.membershipId, m.name]));
+  return (
+    <Card className={styles.rosterCard}>
+      <section aria-labelledby="volunteer-roster-title">
+        <div className={styles.sectionHeading}>
+          <div>
+            <span className={styles.eyebrow}>Approved time</span>
+            <h2 id="volunteer-roster-title">Volunteers</h2>
+          </div>
+          <span>
+            {volunteers.length}{" "}
+            {volunteers.length === 1 ? "volunteer" : "volunteers"} with
+            contributions
+          </span>
+        </div>
+        {truncated && (
+          <p className={styles.rosterNotice}>
+            <strong>Truncated:</strong> showing the first {volunteers.length}{" "}
+            volunteers by approved time. Narrow the filters to see the rest.
+          </p>
+        )}
+        {volunteers.length === 0 ? (
+          <p className={styles.compositionEmpty}>
+            No volunteer has contributions for these filters yet.
+          </p>
+        ) : (
+          <div className={`${styles.tableWrap} ${styles.rosterWrap}`}>
+            <table className={`${styles.reportTable} ${styles.rosterTable}`}>
+              <caption className={styles.visuallyHidden}>
+                Approved hours, this week's hours and pending contributions for
+                each volunteer, highest approved time first
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Volunteer</th>
+                  <th scope="col">Approved hours</th>
+                  <th scope="col">This week</th>
+                  <th scope="col">Approved contributions</th>
+                  <th scope="col">Pending</th>
+                  <th scope="col" className={styles.rosterLinkCol}>
+                    Details
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {volunteers.map((v) => {
+                  const name = names.get(v.membershipId) ?? "Former member";
+                  return (
+                    <tr key={v.membershipId}>
+                      <th scope="row">{name}</th>
+                      <td data-label="Approved hours">
+                        {hoursCell(v.approvedMinutes)}
+                      </td>
+                      <td data-label="This week">
+                        {hoursCell(v.weekApprovedMinutes)}
+                      </td>
+                      <td data-label="Approved contributions">
+                        {v.approvedContributions}
+                      </td>
+                      <td data-label="Pending">
+                        <span>
+                          {v.pendingContributions}
+                          {v.pendingUnknownDuration > 0 && (
+                            <span className={styles.rosterNote}>
+                              {v.pendingUnknownDuration} unknown duration
+                            </span>
+                          )}
+                        </span>
+                      </td>
+                      <td data-label="Details" className={styles.rosterLinkCol}>
+                        <Link
+                          className={styles.rosterLink}
+                          href={ledgerHref({
+                            membership: v.membershipId,
+                            ...(from ? { from } : {}),
+                            ...(to ? { to } : {}),
+                          })}
+                        >
+                          View contributions
+                          <span className={styles.visuallyHidden}>
+                            {" "}
+                            for {name}
+                          </span>
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </Card>
   );
 }
 function stamp(value: Date | null, timezone: string) {
@@ -497,37 +621,50 @@ export function Summary({
               </table>
             </div>
           </Card>
-          {report.topContributors && report.topContributors.length > 0 && (
-            <Card className={styles.avoidBreak}>
-              <div className={styles.sectionHeading}>
-                <div>
-                  <span className={styles.eyebrow}>Approved time</span>
-                  <h2>Top contributors</h2>
-                </div>
-                <span>For the filtered dates</span>
-              </div>
-              <div className={styles.tableWrap}>
-                <table className={styles.reportTable}>
-                  <thead>
-                    <tr>
-                      <th scope="col">Volunteer</th>
-                      <th scope="col">Approved hours</th>
-                      <th scope="col">Contributions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.topContributors.map((c) => (
-                      <tr key={c.membershipId}>
-                        <th scope="row">{memberName(c.membershipId)}</th>
-                        <td>{hours(c.approvedMinutes / 60)}</td>
-                        <td>{c.approvedContributions}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
+          {report.volunteers !== undefined && (
+            <VolunteerRoster
+              volunteers={report.volunteers}
+              truncated={report.volunteersTruncated === true}
+              members={snapshot.members}
+              from={q.from}
+              to={q.to}
+            />
           )}
+          {/* The roster lists every contributing member in the same order,
+              so the separate top-five list only remains for older servers. */}
+          {report.volunteers === undefined &&
+            report.topContributors &&
+            report.topContributors.length > 0 && (
+              <Card className={styles.avoidBreak}>
+                <div className={styles.sectionHeading}>
+                  <div>
+                    <span className={styles.eyebrow}>Approved time</span>
+                    <h2>Top contributors</h2>
+                  </div>
+                  <span>For the filtered dates</span>
+                </div>
+                <div className={styles.tableWrap}>
+                  <table className={styles.reportTable}>
+                    <thead>
+                      <tr>
+                        <th scope="col">Volunteer</th>
+                        <th scope="col">Approved hours</th>
+                        <th scope="col">Contributions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.topContributors.map((c) => (
+                        <tr key={c.membershipId}>
+                          <th scope="row">{memberName(c.membershipId)}</th>
+                          <td>{hours(c.approvedMinutes / 60)}</td>
+                          <td>{c.approvedContributions}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
         </>
       ) : null}
     </div>
