@@ -140,4 +140,4 @@ jobs:
       - run: bun run db:migrate
       - run: bun run db:seed
       - run: bun run db:migrate && bun run db:seed
-      - run: bun run test:integration
+      - run: bun run test:product:integration

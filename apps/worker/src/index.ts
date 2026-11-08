@@ -1,4 +1,8 @@
-import { createExtractionService, createOpenAIProvider } from "@relay/ai";
+import {
+  createExtractionService,
+  createOpenAIProvider,
+  OPENAI_PROMPT_VERSION,
+} from "@relay/ai";
 import { parseEnvironment } from "@relay/config";
 import {
   createDatabase,
@@ -204,7 +208,7 @@ try {
             };
             const result = await extraction.extract(context, source, {
               model: env.OPENAI_MODEL ?? "",
-              prompt: "volunteer-extraction-v1",
+              prompt: OPENAI_PROMPT_VERSION,
               policy: policy.policyVersion,
             });
             if (!result.ok) {

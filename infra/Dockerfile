@@ -54,6 +54,6 @@ COPY --from=worker-deps /app/node_modules /app/node_modules
 COPY --from=worker-deps /app/package.json /app/package.json
 COPY --from=worker-deps /app/apps/worker /app/apps/worker
 COPY --from=worker-deps /app/packages /app/packages
-COPY --from=worker-deps /app/scripts/retention.ts /app/scripts/provision-organization.ts /app/scripts/
+COPY --from=worker-deps /app/scripts/retention.ts /app/scripts/provision-organization.ts /app/scripts/live-provider-smoke.ts /app/scripts/
 USER node
 CMD ["node", "apps/worker/src/index.ts"]
