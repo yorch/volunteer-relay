@@ -5,7 +5,7 @@ test("review shows unknowns, field evidence, independent revision and safe state
 }, info) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto("/workspace/inbox");
+  await page.goto("/dev/review");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
     "Every update has a story.",
   );
@@ -106,7 +106,7 @@ test("review shows unknowns, field evidence, independent revision and safe state
 test("shared contribution candidates remain separate and unresolved; source text never runs", async ({
   page,
 }) => {
-  await page.goto("/workspace/inbox");
+  await page.goto("/dev/review");
   await page.getByRole("button", { name: /^Mira/ }).click();
   await expect(
     page.getByRole("heading", { name: "Contribution candidate", exact: true }),
@@ -138,7 +138,7 @@ test("shared contribution candidates remain separate and unresolved; source text
 test("rejection needs a reason, pending results stay with their source, conflict fails closed", async ({
   page,
 }) => {
-  await page.goto("/workspace/inbox");
+  await page.goto("/dev/review");
   await page.getByRole("button", { name: "Reject preview" }).click();
   const reason = page.getByRole("textbox", { name: "Review reason" });
   await expect(reason).toBeFocused();
@@ -195,7 +195,7 @@ test("rejection needs a reason, pending results stay with their source, conflict
 });
 
 test("unavailable and empty inbox states stay explicit", async ({ page }) => {
-  await page.goto("/workspace/inbox");
+  await page.goto("/dev/review");
   await page
     .getByRole("combobox", { name: "Preview response" })
     .selectOption("error");

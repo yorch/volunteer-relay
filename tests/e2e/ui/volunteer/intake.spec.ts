@@ -5,7 +5,7 @@ test("text preview validates, supports keyboard and presents only a simulated re
 }, info) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto("/workspace/volunteer");
+  await page.goto("/dev/intake");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
     "How did you help today?",
   );
@@ -80,7 +80,7 @@ test("text preview validates, supports keyboard and presents only a simulated re
 test("failed submission retains draft and same-key retry succeeds", async ({
   page,
 }) => {
-  await page.goto("/workspace/volunteer");
+  await page.goto("/dev/intake");
   await page
     .getByRole("combobox", { name: "Preview response" })
     .selectOption("retry");
@@ -113,7 +113,7 @@ test("failed submission retains draft and same-key retry succeeds", async ({
 test("oversized draft is rejected before the simulated callback", async ({
   page,
 }) => {
-  await page.goto("/workspace/volunteer");
+  await page.goto("/dev/intake");
   const text = page.getByRole("textbox", { name: "Your update" });
   await text.fill("x".repeat(20001));
   await page.getByRole("button", { name: "Send preview update" }).click();

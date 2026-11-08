@@ -411,7 +411,7 @@ test("report filters and CSV use the same query", async ({ page }) => {
   await page.getByLabel("Volunteer", { exact: false }).selectOption("member-1");
   await page.getByRole("button", { name: "Apply filters" }).click();
   await expect.poll(() => urls.length).toBe(1);
-  const expected = new URL(urls[0]).search;
+  const expected = new URL(urls[0] ?? "http://invalid.test").search;
   await expect(
     page.getByRole("link", { name: "Download aggregate CSV" }),
   ).toHaveAttribute("href", `/api/product/reports.csv${expected}`);
