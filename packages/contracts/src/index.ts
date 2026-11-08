@@ -27,6 +27,44 @@ export const roleSchema = z.enum([
   "volunteer",
   "report-reader",
 ]);
+export type ContractRole = z.infer<typeof roleSchema>;
+export const authOrganizationOptionSchema = z
+  .object({
+    organizationId: id,
+    name: id,
+    slug: id,
+    role: roleSchema,
+    membershipId: id,
+  })
+  .strict();
+export type AuthOrganizationOption = z.infer<
+  typeof authOrganizationOptionSchema
+>;
+
+// UI commands are inputs, never proof of session, membership or token validity.
+export const authSignInCommandSchema = z
+  .object({ email: z.email(), password: z.string().min(1) })
+  .strict();
+export type AuthSignInCommand = z.infer<typeof authSignInCommandSchema>;
+export const authResetRequestSchema = z.object({ email: z.email() }).strict();
+export type AuthResetRequest = z.infer<typeof authResetRequestSchema>;
+export const authResetConfirmSchema = z
+  .object({ token: id, newPassword: z.string().min(1) })
+  .strict();
+export type AuthResetConfirm = z.infer<typeof authResetConfirmSchema>;
+export const authOrganizationSelectionSchema = z
+  .object({ organizationId: id })
+  .strict();
+export type AuthOrganizationSelection = z.infer<
+  typeof authOrganizationSelectionSchema
+>;
+export const authInvitationAcceptanceSchema = z
+  .object({ invitationId: id })
+  .strict();
+export type AuthInvitationAcceptance = z.infer<
+  typeof authInvitationAcceptanceSchema
+>;
+
 export const tenantContextSchema = z
   .object({
     organizationId: id,

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { sources } from "../../../fixtures/sources.ts";
 import {
+  authInvitationAcceptanceSchema,
+  authOrganizationOptionSchema,
+  authOrganizationSelectionSchema,
+  authResetConfirmSchema,
+  authResetRequestSchema,
+  authSignInCommandSchema,
   extractionProposalSchema,
   reviewDecisionSchema,
   reviewOutcomeSchema,
@@ -178,4 +184,56 @@ describe("second-wave additive UI contracts", () => {
       reviewQueueEntrySchema.safeParse({ ...entry, revision: 0 }).success,
     ).toBe(false);
   });
+});
+
+it("freezes auth UI input/projection boundaries without client-supplied authority", () => {
+  const option = {
+    organizationId: "synthetic-org",
+    name: "Synthetic",
+    slug: "synthetic",
+    role: "volunteer",
+    membershipId: "synthetic-member",
+  };
+  expect(authOrganizationOptionSchema.parse(option)).toEqual(option);
+  expect(
+    authOrganizationOptionSchema.safeParse({ ...option, role: "admin" })
+      .success,
+  ).toBe(false);
+  expect(
+    authSignInCommandSchema.safeParse({
+      email: "synthetic@example.invalid",
+      password: "synthetic-password",
+    }).success,
+  ).toBe(true);
+  expect(
+    authSignInCommandSchema.safeParse({
+      email: "synthetic@example.invalid",
+      password: "synthetic-password",
+      role: "owner",
+    }).success,
+  ).toBe(false);
+  expect(
+    authResetRequestSchema.safeParse({
+      email: "synthetic@example.invalid",
+      userId: "victim",
+    }).success,
+  ).toBe(false);
+  expect(
+    authResetConfirmSchema.safeParse({
+      token: "synthetic-token",
+      newPassword: "synthetic-password",
+    }).success,
+  ).toBe(true);
+  expect(
+    authOrganizationSelectionSchema.safeParse({
+      organizationId: "org",
+      userId: "victim",
+    }).success,
+  ).toBe(false);
+  expect(
+    authInvitationAcceptanceSchema.safeParse({
+      invitationId: "invite",
+      role: "owner",
+    }).success,
+  ).toBe(false);
 });

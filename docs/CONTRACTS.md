@@ -29,3 +29,7 @@ Review disposition clarification: a currently authorized staff replay uses the s
 ## Integrated source implementation
 
 The accepted human-only SourceRepository implementation is `createSourceRepository` from `@relay/domain/core`, composed with the existing AuthorizationService and `createSourceStore(db)` from `@relay/db`. The public core subpath resolves to the existing domain source barrel; wire shapes and dependencies are unchanged. It provides durable source/revision/evidence reads and atomic source.received outbox acceptance, not queue dispatch, proposals, review decisions or reporting effects. Server adapters still resolve a verified session/current membership before use; system actors remain denied. No production source HTTP route is exposed yet.
+
+## Authentication composition boundaries
+
+Canonical ContractRole and AuthOrganizationOption (organizationId/name/slug/role/membershipId) are exported for B's live organization listing and E's switcher. AuthSignInCommand, AuthResetRequest, AuthResetConfirm, AuthOrganizationSelection and AuthInvitationAcceptance are strict input shapes; they grant no authority, membership or token validity. Password policy remains with Better Auth/server logic; no SDK session/user model is duplicated. E's callbacks use Result<void>; server/SDK/header mapping is A/B integration. P1-06 server logic and P1-07 reusable UI components may proceed independently, with real production routing still gated. ADR 0006 records approved lifecycle/mail/default policies.

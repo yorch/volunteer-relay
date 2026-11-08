@@ -506,3 +506,30 @@ it("supports a reusable reviewer inbox and threaded findings without implementat
   expect(prompt.output).toContain("Fresh contexts and bounded sub-reviews");
   expect(prompt.output).not.toContain("# Worker self-service setup");
 });
+
+it("offers a compact orchestration brief without replaying all historical message bodies", async () => {
+  await fixture(({ root }) => {
+    assign(root);
+    const message = ok(
+      root,
+      "send",
+      "--agent",
+      "B",
+      "--to",
+      "A",
+      "--kind",
+      "update",
+      "--task",
+      "P1-01",
+      "--text",
+      "Synthetic historical message body",
+    );
+    const brief = ok(root, "brief");
+    expect(brief.tasks[0].state).toBe("assigned");
+    expect(brief.recent[0].id).toBe(message.id);
+    expect(JSON.stringify(brief)).not.toContain(
+      "Synthetic historical message body",
+    );
+    expect(brief.messages).toBeUndefined();
+  });
+});

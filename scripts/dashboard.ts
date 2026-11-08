@@ -136,6 +136,54 @@ export async function monitorStatus(store: string, now = new Date()) {
   }
 }
 
+export async function headlessStatus(store: string) {
+  try {
+    const value = JSON.parse(
+      await readFile(join(store, "supervisor/state.json"), "utf8"),
+    ) as {
+      running: boolean;
+      checkedAt: string;
+      draining: boolean;
+      held: string[];
+      records: Record<
+        string,
+        {
+          lane: string;
+          task: string | null;
+          status: string;
+          reason: string;
+          startedAt?: string;
+          finishedAt?: string;
+        }
+      >;
+    };
+    const latest = new Map<string, (typeof value.records)[string]>();
+    for (const record of Object.values(value.records).sort((a, b) =>
+      (a.startedAt ?? "").localeCompare(b.startedAt ?? ""),
+    ))
+      latest.set(record.lane, record);
+    return {
+      state: !value.running
+        ? "stopped"
+        : Date.now() - Date.parse(value.checkedAt) > 45000
+          ? "stale"
+          : value.draining
+            ? "draining"
+            : "running",
+      checkedAt: value.checkedAt,
+      held: value.held,
+      lanes: [...latest.values()].map((r) => ({
+        lane: r.lane,
+        task: r.task,
+        status: r.status,
+        reason: r.reason,
+      })),
+    };
+  } catch {
+    return { state: "not-started", checkedAt: null, held: [], lanes: [] };
+  }
+}
+
 export async function snapshot(root: string) {
   const board: Board = JSON.parse(
     execFileSync(process.execPath, [cli, "board"], {
@@ -169,6 +217,7 @@ export async function snapshot(root: string) {
   return {
     updatedAt: new Date().toISOString(),
     monitor: await monitorStatus(board.store),
+    headless: await headlessStatus(board.store),
     tasks,
     messages: board.messages,
     unanswered: board.unanswered,

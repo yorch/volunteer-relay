@@ -88,6 +88,20 @@ function render() {
       (n) => n.dataset.key,
     ),
   );
+  const headless = data.headless;
+  $("headless-status").textContent = headless?.state ?? "not-started";
+  $("headless-note").textContent = headless?.checkedAt
+    ? `Checked ${date(headless.checkedAt)} · Held lanes: ${headless.held.join(", ") || "none"}`
+    : "Not started. Dedicated sessions require an exclusive ownership handover.";
+  $("headless-lanes").replaceChildren(
+    ...(headless?.lanes ?? []).map((lane) =>
+      el(
+        "p",
+        `${lane.lane} · ${lane.task ?? "coordination/review"} · ${lane.status} · ${lane.reason}`,
+        "watch-alert",
+      ),
+    ),
+  );
   const monitor = data.monitor;
   $("monitor-status").textContent = monitor?.state ?? "not-started";
   $("monitor-note").textContent = monitor?.checkedAt

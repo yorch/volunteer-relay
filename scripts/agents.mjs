@@ -170,6 +170,7 @@ const help = `Harness-neutral local coordination (Node 26.11.1)
   agents send --agent D --to B|all --kind question|answer|update|handoff|request [--task P2-01] [--reply-to UUID] --text "Message"
   agents inbox --agent B [--unanswered true] [--task P1-01]
   agents board
+  agents brief
   agents accept --agent A --task P1-01 --commit HEAD --text "Integration checks" [--strategy ff|rebase|squash --integration-base SHA]
   agents release --agent A --task P1-01 --text "Old session stopped; reason"
 Use --file path instead of --text for multiline notes. JSON output except prompt/help.
@@ -193,6 +194,7 @@ export async function main(args = process.argv.slice(2)) {
     "send",
     "inbox",
     "board",
+    "brief",
     "accept",
     "release",
   ];
@@ -202,7 +204,7 @@ export async function main(args = process.argv.slice(2)) {
   await prepare(ctx);
   if (command === "init")
     return { store: ctx.store, gitCommonDir: ctx.common, schemaVersion: 1 };
-  if (command === "board") {
+  if (command === "board" || command === "brief") {
     const entries = await readdir(join(ctx.store, "tasks"));
     const tasks = [];
     for (const id of entries.filter((id) => /^P\d-\d{2}$/.test(id)).sort()) {
@@ -220,6 +222,30 @@ export async function main(args = process.argv.slice(2)) {
     const answered = new Set(
       all.filter((m) => m.kind === "answer").map((m) => m.replyTo),
     );
+    if (command === "brief")
+      return {
+        store: ctx.store,
+        tasks: tasks.map((t) => ({
+          task: t.task,
+          owner: t.assignment.owner,
+          state: t.accepted
+            ? "accepted"
+            : (t.status?.state ?? (t.claim ? "claimed" : "assigned")),
+          commit: t.accepted?.commit ?? t.status?.commit ?? null,
+        })),
+        unanswered: all.filter(
+          (m) =>
+            ["question", "request"].includes(m.kind) && !answered.has(m.id),
+        ),
+        recent: all.slice(-5).map((m) => ({
+          id: m.id,
+          from: m.from,
+          to: m.to,
+          kind: m.kind,
+          task: m.task,
+          at: m.at,
+        })),
+      };
     return {
       store: ctx.store,
       messages: all,

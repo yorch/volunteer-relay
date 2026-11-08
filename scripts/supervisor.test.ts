@@ -1,0 +1,298 @@
+import { expect, it } from "vitest";
+import type { snapshot } from "./dashboard.ts";
+import {
+  type Config,
+  command,
+  plan,
+  type RecordState,
+  type State,
+  validateConfig,
+} from "./supervisor.ts";
+
+const config: Config = {
+  version: 1,
+  root: process.cwd(),
+  binary: process.execPath,
+  allowedTasks: ["P1-06", "P1-07"],
+  maxParallel: 4,
+  intervalSeconds: 10,
+  maxRunMinutes: 25,
+  maxRunsPerHour: 20,
+  confirmedStoppedAt: "2026-11-07T00:00:00Z",
+  lanes: {
+    A: { enabled: true },
+    B: { enabled: true },
+    E: { enabled: true },
+    R: { enabled: true },
+  },
+};
+const state = (): State => ({
+  version: 1,
+  running: true,
+  checkedAt: "",
+  pid: 1,
+  draining: false,
+  held: [],
+  commands: [],
+  records: {},
+  notices: {},
+});
+const board = (): Awaited<ReturnType<typeof snapshot>> =>
+  ({
+    tasks: [
+      {
+        id: "P1-06",
+        live: {
+          assignment: {
+            owner: "B",
+            at: "2026-11-07T00:00:00Z",
+            baseCommit: "base",
+            text: "scope",
+          },
+          claim: null,
+          status: {
+            state: "working",
+            at: "2026-11-07T00:00:00Z",
+            commit: null,
+            text: "work",
+          },
+          accepted: null,
+        },
+      },
+    ],
+    messages: [],
+    unanswered: [],
+  }) as unknown as Awaited<ReturnType<typeof snapshot>>;
+function record(key: string, lane: "A" | "B" | "R"): RecordState {
+  return {
+    key,
+    lane,
+    task: "P1-06",
+    cwd: process.cwd(),
+    status: "idle",
+    reason: "",
+    seen: [],
+    runs: [],
+    noProgress: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    finishedAt: new Date(0).toISOString(),
+  };
+}
+it("starts only authorized assigned workers, with coordinator bootstrap and no idle review run", () => {
+  const work = plan(board(), state(), config);
+  expect(work.map((w) => w.lane)).toEqual(["A", "B"]);
+  const off = { ...config, allowedTasks: [] };
+  expect(plan(board(), state(), off).map((w) => w.lane)).toEqual(["A"]);
+});
+it("does not overlap running or paused lanes and coalesces new answers for the next turn", () => {
+  const b = board();
+  const s = state();
+  const w = plan(b, s, config).find((w) => w.lane === "B");
+  if (!w) throw new Error("Missing fixture work");
+  const r = record(w.key, "B");
+  r.status = "running";
+  r.seen = w.events;
+  s.records[w.key] = r;
+  b.messages.push({
+    id: "answer",
+    from: "A",
+    to: "B",
+    kind: "answer",
+    at: "2026-11-07T00:01:00Z",
+    text: "approved",
+    task: "P1-06",
+    replyTo: "question",
+  });
+  expect(plan(b, s, config).some((w) => w.lane === "B")).toBe(false);
+  r.status = "idle";
+  expect(plan(b, s, config).find((w) => w.lane === "B")?.events).toContain(
+    "message:answer",
+  );
+  r.status = "paused";
+  expect(plan(b, s, config).some((w) => w.lane === "B")).toBe(false);
+});
+it("keeps ready authors frozen until an actual revision request", () => {
+  const b = board();
+  const live = b.tasks[0]?.live;
+  if (!live?.status) throw new Error("Fixture");
+  live.status.state = "ready";
+  live.status.commit = "candidate";
+  const s = state();
+  expect(plan(b, s, config).some((w) => w.lane === "B")).toBe(false);
+  const request = {
+    id: "revision",
+    from: "A",
+    to: "B",
+    kind: "request",
+    task: "P1-06",
+    replyTo: null,
+    at: "2026-11-07T00:02:00Z",
+    text: "targeted revision",
+  };
+  b.messages.push(request);
+  b.unanswered.push(request);
+  expect(plan(b, s, config).some((w) => w.lane === "B")).toBe(true);
+});
+it("creates a fresh reviewer context per pinned request and respects run budgets and held lanes", () => {
+  const b = board();
+  const request = {
+    id: "review-one",
+    from: "A",
+    to: "R",
+    kind: "request",
+    task: "P1-06",
+    replyTo: null,
+    at: "2026-11-07T00:01:00Z",
+    text: "pinned",
+  };
+  b.messages.push(request);
+  b.unanswered.push(request);
+  const s = state();
+  const first = plan(b, s, config).find((w) => w.lane === "R");
+  expect(first?.key).toBe("R:review-one");
+  if (!first) throw new Error("Fixture");
+  const r = record(first.key, "R");
+  r.runs = Array(20).fill(Date.now());
+  s.records[first.key] = r;
+  expect(plan(b, s, config).some((w) => w.lane === "R")).toBe(false);
+  b.unanswered = [];
+  expect(plan(b, s, config).some((w) => w.lane === "R")).toBe(false);
+  r.runs = [];
+  b.unanswered = [{ ...request, id: "review-two" }];
+  expect(plan(b, s, config).find((w) => w.lane === "R")?.key).toBe(
+    "R:review-two",
+  );
+  s.held = ["R"];
+  expect(plan(b, s, config).some((w) => w.lane === "R")).toBe(false);
+});
+it("builds explicit-session resume arguments with automatic approval review and no bypass or latest flags", () => {
+  const r = record("B:task", "B");
+  r.sessionId = "00000000-0000-4000-8000-000000000001";
+  const invocation = command(
+    config,
+    r,
+    "/private/schema.json",
+    "/private/result.json",
+  );
+  expect(invocation.args).toContain("--approve-for-me");
+  expect(invocation.args).not.toContain("--sandbox"); // approve-for-me already selects workspace-write
+  expect(invocation.args.slice(-3)).toEqual(["resume", r.sessionId, "-"]);
+  expect(invocation.args).not.toContain("--last");
+  expect(invocation.args.some((a) => a.includes("bypass"))).toBe(false);
+  expect(() => validateConfig({ ...config, confirmedStoppedAt: "" })).toThrow(
+    "Confirm",
+  );
+  expect(() => validateConfig({ ...config, maxParallel: 99 })).toThrow(
+    "maxParallel",
+  );
+});
+
+it("runs a controlled CLI, persists its exact session, resumes on nudge and drains safely", async () => {
+  const { mkdtemp, mkdir, writeFile, readFile, rm } = await import(
+    "node:fs/promises"
+  );
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { execFileSync } = await import("node:child_process");
+  const { serve } = await import("./supervisor.ts");
+  const root = await mkdtemp(join(tmpdir(), "relay-headless-test-"));
+  const old = process.env.RELAY_COORD_DIR;
+  process.env.RELAY_COORD_DIR = "";
+  const controller = new AbortController();
+  let running: Promise<void> | undefined;
+  try {
+    await mkdir(join(root, "docs/tasks"), { recursive: true });
+    await writeFile(join(root, "docs/STATUS.md"), "Synthetic only");
+    await writeFile(
+      join(root, ".gitignore"),
+      ".relay-coordination/\n.relay-local/\n",
+    );
+    const git = (...args: string[]) =>
+      execFileSync("git", args, { cwd: root, stdio: "pipe" });
+    git("init", "-q", "--initial-branch=main");
+    git("config", "user.name", "Synthetic");
+    git("config", "user.email", "synthetic@example.invalid");
+    git("add", ".");
+    git("commit", "-qm", "test: initialize headless fixture");
+    const binary = join(root, "fake-codex.mjs");
+    await writeFile(
+      binary,
+      `#!/usr/bin/env node
+import {writeFileSync,mkdirSync,readFileSync,existsSync} from 'node:fs';
+let input='';for await(const chunk of process.stdin)input+=chunk;
+if(!input.includes('dedicated headless lane A'))process.exit(2);
+const args=process.argv.slice(2);const out=args[args.indexOf('--output-last-message')+1];
+mkdirSync('.relay-local',{recursive:true});const file='.relay-local/args.json';const history=existsSync(file)?JSON.parse(readFileSync(file,'utf8')):[];history.push(args);writeFileSync(file,JSON.stringify(history));
+console.log(JSON.stringify({type:'thread.started',thread_id:'00000000-0000-4000-8000-000000000001'}));
+writeFileSync(out,JSON.stringify({state:'waiting',summary:'Controlled fixture completed'}));
+console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:5,output_tokens:2}}));
+`,
+      { mode: 0o700 },
+    );
+    const directory = join(root, ".relay-coordination/supervisor");
+    running = serve(
+      {
+        ...config,
+        root,
+        binary,
+        intervalSeconds: 1,
+        lanes: { A: { enabled: true } },
+      },
+      directory,
+      controller.signal,
+    );
+    const until = async (check: () => Promise<boolean>) => {
+      const deadline = Date.now() + 7000;
+      while (!(await check())) {
+        if (Date.now() > deadline)
+          throw new Error("Controlled supervisor transition timed out");
+        await new Promise((r) => setTimeout(r, 25));
+      }
+    };
+    const load = async () =>
+      JSON.parse(
+        await readFile(join(directory, "state.json"), "utf8"),
+      ) as State;
+    await until(async () => {
+      try {
+        return Object.values((await load()).records).some((r) => r.finishedAt);
+      } catch {
+        return false;
+      }
+    });
+    let first = Object.values((await load()).records)[0];
+    expect(first?.sessionId).toBe("00000000-0000-4000-8000-000000000001");
+    expect(first?.inputTokens).toBe(5);
+    await writeFile(
+      join(directory, "commands/00000000-0000-4000-8000-000000000002.json"),
+      JSON.stringify({
+        action: "nudge",
+        lane: "A",
+        at: new Date().toISOString(),
+        text: "Synthetic follow-up",
+      }),
+    );
+    await until(async () => {
+      first = Object.values((await load()).records)[0];
+      return (first?.runs.length ?? 0) === 2 && first?.status !== "running";
+    });
+    const args = JSON.parse(
+      await readFile(join(root, ".relay-local/args.json"), "utf8"),
+    );
+    expect(args[1].slice(-3)).toEqual([
+      "resume",
+      "00000000-0000-4000-8000-000000000001",
+      "-",
+    ]);
+    controller.abort();
+    await running;
+    expect((await load()).running).toBe(false);
+  } finally {
+    controller.abort();
+    if (running) await running;
+    if (old === undefined) delete process.env.RELAY_COORD_DIR;
+    else process.env.RELAY_COORD_DIR = old;
+    await rm(root, { recursive: true, force: true });
+  }
+}, 12000);

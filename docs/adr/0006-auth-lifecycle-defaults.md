@@ -1,0 +1,9 @@
+# ADR 0006 — Authentication lifecycle defaults
+
+Accepted for P1-06/P1-07. Preserve existing credential sign-up behavior until onboarding is separately scoped; an account grants no tenant membership. Session lifetime 7 days, update age 1 day, reset token 1 hour and invitation 48 hours are defaults with controlled test overrides. Reset revokes prior sessions. Owner-only organization administration is separate from coordinator app permissions; canonical role validation must cover actual plugin endpoints before persistence.
+
+No global emailVerified gate is added without a verification workflow. Invitation acceptance must prove possession of a valid expiring/single-use emailed invitation secret bound to the matching signed-in recipient; a self-declared email alone is insufficient. Fail closed on an unresolved library gap. Keep tokens/passwords/URLs out of logs and error details.
+
+Auth mail callbacks are server-only dependencies with controlled test recorders. Authenticated invitation delivery failure can return a safe unavailable result with pending state retained. Public reset responses stay opaque for known/unknown accounts even under recipient-specific delivery failure; global missing configuration may be reported uniformly before lookup. Never claim actual mail delivery from a simulated callback or opaque acknowledgement. Live SMTP/HTTP routing is outside these slices.
+
+A owns shared AuthOrganizationOption and auth UI command schemas. Commands validate transport shape only; server/Better Auth enforce password, session, token and role policy. Session helper uses verified session user ID plus live canonical membership, preserves relevant response headers for later HTTP integration and does not trust activeOrganizationId for authority. E can build injected-callback auth components independently while B owns those policies; production integration waits for the server gate.
