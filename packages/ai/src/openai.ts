@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { proposalItemSchema } from "@relay/contracts";
 import { z } from "zod";
 import {
@@ -47,6 +48,8 @@ export function createOpenAIProvider(options: {
           });
         const bytes = await options.readAttachment(attachment.storageKey);
         if (
+          createHash("sha256").update(bytes).digest("hex") !==
+            attachment.sha256 ||
           bytes.byteLength !== attachment.bytes ||
           bytes.byteLength > 10485760
         )

@@ -772,3 +772,4 @@ export function createPrivateFilesystemBlobStore(
     },
   };
 }
+export { readPrivateBlob } from "./private-reader.ts";

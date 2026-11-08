@@ -1,6 +1,7 @@
 import { createExtractionService, createOpenAIProvider } from "@relay/ai";
 import { parseEnvironment } from "@relay/config";
 import { createDatabase, createProcessingRepository } from "@relay/db";
+import { readPrivateBlob } from "@relay/intake";
 
 if (process.versions.node !== "26.11.1")
   throw new Error("Worker requires Node 26.11.1");
