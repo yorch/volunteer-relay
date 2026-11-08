@@ -1,5 +1,7 @@
 # Recording runbook
 
+> Snapshot, resource identifiers and cleanup order: [`state.md`](state.md).
+
 Exact commands and expected results for the Volunteer Relay video. Everything
 here uses synthetic demo data only.
 
@@ -172,14 +174,21 @@ measured result is reported by `video:validate`.
 disk is final (not scratch), matches the timeline's measured durations, every
 narrated scene has captions, every product scene has a capture, and all captures
 share one base URL. `final.mp4` is reserved for that validated full render;
-`--proof`, `--draft` and `--scene` cannot write it. S03 carries an on-screen
-"Authored demo proposal · no live model call" label.
+`--proof`, `--draft` and `--scene` cannot write it. On-screen fictional-data wording is intentionally absent (D8); provenance lives in
+the manifests, `docs/feature-audit.md` and `docs/readiness-report.md`.
 
 Remotion uses an existing Playwright Chrome Headless Shell when one is cached
 (`REMOTION_BROWSER_EXECUTABLE` overrides). Without one it downloads a browser on
 first render, which needs network access.
 
 ## 6. After recording
+
+Stop the rehearsal server **before** deleting `apps/web/.next-video`: removing the
+live dev build directory kills `next dev` with exit 1 (harmless to artifacts, but it
+looks like a failure in task logs).
+
+Cleanup order: kill dev server → `rm -rf apps/web/.next-video` → `docker compose -p
+relay-video stop postgres` → optionally `bun run video:auth:clear`.
 
 - `bun run video:auth:clear` and remove `video/.auth/`.
 - Rotate or disable the recording identities in the application.
@@ -189,14 +198,17 @@ first render, which needs network access.
 
 ## Troubleshooting
 
-| Symptom                                                        | Cause and fix                                                                                                                                                                       |
-| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Missing VIDEO_*_PASSWORD`                                     | Supply credentials or run `video:provision` in local mode.                                                                                                                          |
-| Sign-in page reloads in a loop, inputs detach while typing     | Two `next dev` processes share `apps/web/.next`. Start the rehearsal server with `RELAY_NEXT_DIST_DIR=.next-video` (ignored) so a concurrent e2e run or build cannot invalidate it. |
-| `Refusing local preparation: database …`                       | The database name must end `_video_recording` and `VIDEO_LOCAL_DATABASE_MARKER=relay-video-recording`.                                                                              |
-| `does not match the authored oracle`                           | The database moved past the authored state. Recreate your own disposable database, or accept the state through the operator flow on hosted.                                         |
-| `narration needs Xs but the scene cap is Ys`                   | Shorten the narration or raise the cap deliberately; never speed the voice.                                                                                                         |
-| `captured footage … shorter than the … scene`                  | Recapture with a longer hold; never loop an action.                                                                                                                                 |
-| `The need's manage panel never exposed the acknowledge action` | Acknowledgment is only allowed for the current owner; S06 uses the owner session.                                                                                                   |
-| Remotion `ETIMEDOUT` while downloading a browser               | Point `REMOTION_BROWSER_EXECUTABLE` at a local Chrome/Chromium binary.                                                                                                              |
-| Sign-in rejected / redirect to another origin                  | The identity is not a member of the configured organization, or `VIDEO_ALLOWED_ORIGIN` differs from the target. Fix configuration; never weaken auth.                               |
+| Symptom                                                        | Cause and fix                                                                                                                                                                                           |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Missing VIDEO_*_PASSWORD`                                     | Supply credentials or run `video:provision` in local mode.                                                                                                                                              |
+| Need form never exposes Assign / Acknowledge                   | Since the #24 UI revamp `Select` is a custom combobox (`role=combobox` + `role=option`), not a native `<select>`. Target the trigger by name and click the option, never `selectOption()` on the panel. |
+| `@relay/<pkg>` cannot be resolved during `tsc`/`vitest`        | Workspace symlinks are stale after another lane adds a package dependency: run `bun install --force`, then re-run the gate. The lockfile does not change.                                               |
+| Biome reports “nested root configuration”                      | Another agent's scratch worktree under `.claude/` contains its own `biome.json`. `biome.json` here excludes `!.claude`; do not add a nested config under `video/`.                                      |
+| Sign-in page reloads in a loop, inputs detach while typing     | Two `next dev` processes share `apps/web/.next`. Start the rehearsal server with `RELAY_NEXT_DIST_DIR=.next-video` (ignored) so a concurrent e2e run or build cannot invalidate it.                     |
+| `Refusing local preparation: database …`                       | The database name must end `_video_recording` and `VIDEO_LOCAL_DATABASE_MARKER=relay-video-recording`.                                                                                                  |
+| `does not match the authored oracle`                           | The database moved past the authored state. Recreate your own disposable database, or accept the state through the operator flow on hosted.                                                             |
+| `narration needs Xs but the scene cap is Ys`                   | Shorten the narration or raise the cap deliberately; never speed the voice.                                                                                                                             |
+| `captured footage … shorter than the … scene`                  | Recapture with a longer hold; never loop an action.                                                                                                                                                     |
+| `The need's manage panel never exposed the acknowledge action` | Acknowledgment is only allowed for the current owner; S06 uses the owner session.                                                                                                                       |
+| Remotion `ETIMEDOUT` while downloading a browser               | Point `REMOTION_BROWSER_EXECUTABLE` at a local Chrome/Chromium binary.                                                                                                                                  |
+| Sign-in rejected / redirect to another origin                  | The identity is not a member of the configured organization, or `VIDEO_ALLOWED_ORIGIN` differs from the target. Fix configuration; never weaken auth.                                                   |

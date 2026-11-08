@@ -1,5 +1,7 @@
 # Setup checklist
 
+> Current snapshot and exact provisioning sequence: [`state.md`](state.md).
+
 Status as observed in this workspace on 2026-11-08. `configured` means the value
 exists; `verified` means a sign-in or read-only probe succeeded; `blocked` means
 the missing input is a real prerequisite.

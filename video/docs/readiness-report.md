@@ -34,18 +34,23 @@ burned-in captions).
 
 ## Verification results
 
-- `bun run video:verify` — Biome clean, project typecheck clean, **69 video unit
+Snapshot at footage commit `42bda8c` (see
+[`state.md`](state.md) for the live snapshot; the app may have moved since):
+
+- `bun run video:verify` — Biome clean, project typecheck clean, **82 video unit
   tests passing** (manifest schema, frame arithmetic, duration limits, caption
   grouping/validation/SRT, alignment parsing, cache identity and cache-miss
-  planning, binary audio writes, database guard, final-render readiness,
-  checkpoint comparison, target guard, env parsing, argument parsing).
-- `bun run video:validate` — 30 pass, 2 warnings (scratch narration provenance,
-  proportional caption provenance), 0 blockers, 1 skip (final render not
-  requested).
-- Repository `bun run verify` on the merged tree (`ede1a71`): Biome clean, strict
-  typecheck, **590 tests**, production build, exit 0.
+  planning, binary audio writes, database guard, final-render readiness, focus
+  transform, accent mapping, checkpoint comparison, target guard, env parsing,
+  argument parsing).
+- `bun run video:validate` — **36 ok, 0 warnings, 0 blockers, 0 skipped**,
+  including final-render identity, full-programme duration and loudness.
+- Repository `bun run verify` — Biome clean, strict typecheck, **686 tests**,
+  production build, exit 0.
+- Measurement snapshot: programme 157.30 s / 4 719 frames @ 30 fps; final
+  1920×1080 H.264 yuv420p/bt709 + AAC, 25.0 MiB, −16.4 LUFS, −4.0 dBTP.
 
-A frozen copy of the reviewable media (proof, six scene clips, captions,
+A frozen copy of the reviewable media (final, proof, six scene clips, captions,
 manifests, QA stills) lives in [`video/review/`](../review/README.md) with its
 provenance; it is committed evidence, not a build input.
 
@@ -87,7 +92,8 @@ this revision fixes them:
   fails when a required role stays unverified.
 - `VIDEO_ORGANIZATION_ID` / `VIDEO_SECONDARY_ORGANIZATION_ID` now override the
   committed scenario for authentication and assertions.
-- S03 displays "Authored demo proposal · no live model call".
+- On-screen fictional-data wording was removed at the operator's request (D8 in
+  [`decisions.md`](decisions.md)); provenance stays in the manifests and docs.
 - Env parsing rejects malformed quoting and handles quoted values with trailing
   comments; `parseArgs` no longer duplicates a flag value as a positional.
 

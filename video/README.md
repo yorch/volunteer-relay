@@ -8,6 +8,14 @@ ready when an asset is missing or the wrong size.
 This directory owns `video/**` only. Application code, contracts, migrations and
 root manifests stay with their owners; the workspace consumes them.
 
+## Start here
+
+- **Resuming in a new session?** Read [`docs/state.md`](docs/state.md) first: current
+  snapshot, exact resume commands, resource identifiers, sync rules and cleanup
+  order. It also records the footage commit so drift is detectable.
+- **Why the cut looks like this?** [`docs/decisions.md`](docs/decisions.md).
+- **What could still improve?** [`docs/improvement-backlog.md`](docs/improvement-backlog.md).
+
 ## What is here
 
 ```text
@@ -20,6 +28,9 @@ video/
   src/                            Remotion composition, scenes, components, pure libs
   scripts/                        doctor, provision, prepare, auth, voice, capture,
                                   timeline, validate, preview, render
+  docs/state.md                   snapshot + resume guide (read this first)
+  docs/decisions.md               decision log and rationale
+  docs/improvement-backlog.md     prioritised, not-yet-implemented upgrades
   docs/                           feature audit, runbook, readiness, licences, checklist
   review/                         committed review copy of the proof, scene clips and manifests
   generated/                      ignored: narration, alignments, captures, captions, manifests
@@ -55,6 +66,34 @@ Run from the repository root with Node 26.11.1; Bun dispatches the scripts.
 Bun needs `--` before video-specific flags: `bun run video:capture -- --scene
 S04`. Node's native type stripping runs the scripts, so `node
 video/scripts/doctor.ts` works too.
+
+## Data flow
+
+```
+video/fixtures/*.json ─┐
+video/scenes.json  ────┤
+                       ├─ scripts/voice.ts ──► generated/narration/*.mp3 + alignments/*.json
+                       │                        └─ generated/narration/manifest.json
+app rehearsal ─────────┤
+                       └─ scripts/capture.ts ─► generated/captions? no:
+                                               generated/captures/S0X.mp4
+                                               generated/capture-manifest.json
+                                                         (commit, origin, markers, regions)
+
+generated/narration + generated/captures + timeline manifest
+        │
+        ├─ scripts/timeline.ts ─► generated/timeline.json, captions/*.json + .srt
+        │                         generated/timeline.proof.json
+        │
+        └─ scripts/render.ts ───► mix narration (loudness) + accents
+                                 props = timeline + files + cues + regions
+                                     │
+                                     └─► Remotion (src/Root.tsx) ─► video/output/*.mp4
+                                                                     generated/render-report.json
+```
+
+Anything under `generated/` or `output/` is disposable and git-ignored; anything
+under `review/` is a committed snapshot for reviewers (see `review/README.md`).
 
 ## Delivery targets
 
