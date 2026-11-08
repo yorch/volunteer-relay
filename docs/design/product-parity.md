@@ -1,0 +1,40 @@
+# Product UI versus the prototype
+
+Reviewed 2026-11-08. **Visual and UX parity is incomplete.** The implemented product follows the reference palette and shell direction, but the browser acceptance results establish functional behavior, not fidelity to the prototype. Track remaining work in [P2-06](../tasks/P2-06.md); implementation through M2–M7 does not close this design gate.
+
+## Comparison method and limits
+
+Rendered the unchanged [reference](../../design/reference/prototype.html) in Chromium at 1440×1000 and 390×1000. Rendered five corresponding authenticated production pages at the same viewports: inbox, needs, activities, reports and import. The reference's seven screens were rendered at both widths. Inspected desktop inbox, needs, activities and reports, and mobile inbox screenshots. All 24 rendered page/viewport combinations had no document-level horizontal overflow; this is not a complete accessibility assessment.
+
+Production web image was built at `dd989a1`; later `40742ce` changes only worker image readability, and subsequent changes through `5ed23ca` are documentation. The running application uses a synthetic owner organization with one queued source, one approved 60-minute contribution and one acknowledged need. Reference figures are fictional illustrative counters, so numerical equality and populated versus empty queue differences are not visual defects. The populated production proposal editor and volunteer experience were not directly compared in this live pass. Their behavior has separate controlled browser coverage; design parity remains unverified.
+
+The reference's remote font request was blocked for a deterministic offline comparison. Both images use available fallbacks; exact Manrope/DM Sans rendering was not established. The product names those families but does not bundle their files. The prototype remains unmodified.
+
+## Findings
+
+| Area | Current match | Remaining difference / acceptance work |
+| --- | --- | --- |
+| Palette and surfaces | Warm off-white, sage navigation, dark teal actions, rounded bordered cards and selected navigation follow the reference. | Product borders are stronger, cards more rounded, type and controls larger, spacing less compact. Reconcile tokens while preserving contrast and touch targets. |
+| Staff shell | Sidebar, organization identity, top bar and responsive navigation exist. | Reference has compact navigation, icons/counts, breadcrumbs and profile hierarchy. Product exposes many administration links equally, has a plain tagline and account link, and a default outer body margin. On mobile, navigation takes about 400px before content. |
+| Overview | Staff home resolves to the inbox; volunteers and report readers have role-specific landing behavior. | No dedicated prototype-style operational overview with authorized summary metrics and prioritized work. This is a product overview gap, unrelated to the excluded orchestration dashboard. |
+| Inbox | Original evidence inspection, queue states, review and retry/reprocess controls are implemented. | Live queued-source view is dominated by large processing cards and raw identifiers. The reference uses summary metrics, search/tabs and a message-list/evidence/proposed-fields workspace. Populated proposal layout parity needs a dedicated comparison. |
+| Needs | Authorized lifecycle, ownership, acknowledgment, deadlines and provisional states exist. | A large always-open creation form precedes a vertical list of action forms. The reference is an immediately scannable three-column board: needs an owner, waiting for acknowledgment, in progress. Lifecycle controls need progressive disclosure and clear status grouping. |
+| Activities | Real ledger and reasoned corrections are available. | An always-open entry form and editable contribution cards replace the reference's compact ledger table and source links. Make the ledger primary and entry/correction secondary. Preserve separate contributions per activity. |
+| Reports | Approved totals, pending/unknown exclusions, filters and matching aggregate CSV exist. | Tall filter controls precede many oversized metric cards; reference leads with compact summary cards and a board-ready table. Humanize duration formatting: the live acknowledgment average shows an unrounded fractional minute. |
+| Imports | Preview/confirm, mapping and private attachments are implemented. | Functional controls extend beyond the reference's simple import card. A focused visual/interaction review of mapping, errors and confirmation is still required. |
+| Volunteer | Separate permission-scoped form/status flow exists and has controlled browser tests. | Production volunteer screenshots were not captured in this owner-only pass. Compare as a volunteer before accepting parity. Do not copy the reference's fake phone frame or expose staff navigation. |
+| Typography and iconography | Accessible system fallbacks are usable. | Fonts are not locally bundled; logo glyph is missing in the inspected browser. Use reliable assets and decide intentionally whether to bundle reference fonts. |
+
+## Evidence
+
+The screenshots below contain synthetic data only. They show the different layouts; no pixel-difference score or full parity claim is made.
+
+| Screen | Reference | Running product |
+| --- | --- | --- |
+| Needs, desktop | [Reference](evidence/2026-11-08/prototype-needs-1440.png) | [Product](evidence/2026-11-08/product-needs-1440.png) |
+| Reports, desktop | [Reference](evidence/2026-11-08/prototype-reports-1440.png) | [Product](evidence/2026-11-08/product-reports-1440.png) |
+| Inbox, mobile | [Reference](evidence/2026-11-08/prototype-inbox-390.png) | [Product](evidence/2026-11-08/product-inbox-390.png) |
+
+## Preserve deliberate behavioral differences
+
+Keep live tenant/role checks, authoritative approved-ledger totals, explicit unknowns, source revisions, optimistic concurrency, evidence or staff reasons, policy snapshots and provisional alerts. Do not restore the prototype's localStorage persistence, inferred one-hour defaults, fake totals or unrestricted role switching. Clarification delivery needs a real authorized workflow before a reference-only send button can be presented as operational. The design pass must preserve the independently authored fixture oracle and all currently validated behavior.

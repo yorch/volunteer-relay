@@ -47,7 +47,7 @@ Read [AGENTS.md](AGENTS.md), [status](docs/STATUS.md), [contracts](docs/CONTRACT
 
 ## Design reference
 
-The [interactive prototype](design/reference/prototype.html) is a standalone visual reference, not an implemented product workflow. Read its [usage notes](design/reference/README.md) and the [review/phase map](docs/design/prototype-review.md) before translating it. The production screens follow its reviewed direction; the prototype remains reference-only and does not supply product data.
+The [interactive prototype](design/reference/prototype.html) is a standalone visual reference, not an implemented product workflow. Read its [usage notes](design/reference/README.md) and the [review/phase map](docs/design/prototype-review.md) before translating it. The production screens share its palette and general shell, but full layout and UX parity remains open. See the [current comparison and screenshots](docs/design/product-parity.md) and [design follow-up task](docs/tasks/P2-06.md). The prototype remains reference-only and does not supply product data.
 
 ## Running multiple agents
 
