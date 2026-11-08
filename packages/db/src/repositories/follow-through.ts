@@ -257,6 +257,9 @@ export function createFollowThroughRepository(
           await tx.execute(
             sql`insert into organization_settings(organization_id,revision,timezone,automation_policy,policy_version,routing,fallback_membership_id,ack_minutes,retention_days) values (${context.organizationId},${updated.revision},${updated.timezone},${updated.automationPolicy},${updated.policyVersion},${textJson(updated.routing)}::jsonb,${updated.fallbackMembershipId},${updated.ackMinutes},${updated.retentionDays}) on conflict (organization_id) do update set revision=excluded.revision,timezone=excluded.timezone,automation_policy=excluded.automation_policy,policy_version=excluded.policy_version,routing=excluded.routing,fallback_membership_id=excluded.fallback_membership_id,ack_minutes=excluded.ack_minutes,retention_days=excluded.retention_days`,
           );
+          await tx.execute(
+            sql`insert into organization_audit_event(organization_id,operation_id,phase,action,target_id,actor,correlation_id,before,after,occurred_at) values (${context.organizationId},${randomUUID()},'applied','settings.update',${context.organizationId},${textJson(context.actor)}::jsonb,${context.correlationId},${textJson(current)}::jsonb,${textJson(updated)}::jsonb,${now()})`,
+          );
           await saveCommand(
             tx,
             context.organizationId,
