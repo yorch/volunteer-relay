@@ -1755,7 +1755,7 @@ function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
   }
   async function previewImport(e: FormEvent) {
     e.preventDefault();
-    const authorMapping: Record<string, string | null> = {};
+    const authorMapping: Record<string, string | null> = Object.create(null);
     for (const row of authorRows) {
       if (!row.author.trim()) {
         setError("Enter a name for each author mapping.");
@@ -1763,19 +1763,14 @@ function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
       }
       authorMapping[row.author.trim()] = row.member || null;
     }
-    const photoMapping: Record<string, string[]> = {};
+    const photoMapping: Record<string, string[]> = Object.create(null);
     for (const row of photoRows) {
-      const names = row.filenames
-        .split(",")
-        .map((name) => name.trim())
-        .filter(Boolean);
-      if (!row.id.trim() || !names.length) {
-        setError(
-          "Enter an update ID and at least one filename for each photo mapping.",
-        );
+      if (!row.id.trim() || !row.filenames) {
+        setError("Enter an update ID and select a photo for each link.");
         return;
       }
-      photoMapping[row.id.trim()] = names;
+      const id = row.id.trim();
+      photoMapping[id] = [...(photoMapping[id] ?? []), row.filenames];
     }
     if (
       files.length > 10 ||
@@ -1928,8 +1923,8 @@ function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
                   />
                 </label>
                 <label>
-                  Photo filenames (comma separated)
-                  <input
+                  Photo
+                  <select
                     value={row.filenames}
                     onChange={(e) =>
                       setPhotoRows((rows) =>
@@ -1938,7 +1933,14 @@ function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
                         ),
                       )
                     }
-                  />
+                  >
+                    <option value="">Select a photo</option>
+                    {files.map((file) => (
+                      <option key={file.name} value={file.name}>
+                        {file.name}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <button
                   type="button"

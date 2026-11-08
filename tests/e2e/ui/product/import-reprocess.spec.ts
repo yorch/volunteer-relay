@@ -103,13 +103,15 @@ test("text and mapped photo are previewed and confirmed as multipart", async ({
   });
   await expect(page.getByLabel("Import text")).toContainText("Alex");
   await page.getByLabel("Photos", { exact: false }).setInputFiles({
-    name: "garden.png",
+    name: "garden,front.png",
     mimeType: "image/png",
     buffer: Buffer.from("synthetic"),
   });
   await page.getByRole("button", { name: "Add photo link" }).click();
   await page.getByLabel("Update ID").fill("1");
-  await page.getByLabel("Photo filenames", { exact: false }).fill("garden.png");
+  await page
+    .getByLabel("Photo", { exact: true })
+    .selectOption("garden,front.png");
   await page.getByRole("button", { name: "Preview import" }).click();
   await expect(page.getByText("1 attachments", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Confirm import" }).click();
@@ -117,8 +119,8 @@ test("text and mapped photo are previewed and confirmed as multipart", async ({
   expect(bodies).toHaveLength(2);
   for (const body of bodies) {
     expect(body).toContain('name="data"');
-    expect(body).toContain('name="files"; filename="garden.png"');
-    expect(body).toContain('"photoMapping":{"1":["garden.png"]}');
+    expect(body).toContain('name="files"; filename="garden,front.png"');
+    expect(body).toContain('"photoMapping":{"1":["garden,front.png"]}');
   }
   expect(bodies[1]).toContain('"idempotencyKey"');
 });
