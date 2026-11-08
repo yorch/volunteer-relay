@@ -559,3 +559,46 @@
     font-size: 1.6rem;
   }
 }
+.updateList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.updateList li {
+  border-top: 1px solid #e0e9e3;
+  padding: 1rem 0;
+  overflow-wrap: anywhere;
+}
+.ledger .ledgerMain p,
+.card .updateList li p {
+  color: #526b5c;
+  margin: 0.4rem 0;
+  font-size: 0.875rem;
+}
+.updateHeading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.updateHeading strong {
+  white-space: pre-wrap;
+}
+.updateList details {
+  margin-top: 0.5rem;
+}
+.ledgerMain {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.ledgerRow .evidenceAction {
+  margin: 0.4rem 0;
+}
+@media (max-width: 760px) {
+  .ledgerMain {
+    display: block;
+  }
+}

@@ -698,3 +698,100 @@ test("staff without a current organization is directed to choose one", async ({
     page.getByText("You do not have permission to access this workspace."),
   ).toHaveCount(0);
 });
+
+test("ledger identifies activities and exposes their source without opening correction", async ({
+  page,
+}) => {
+  await page.route("**/api/product/workspace", (route) =>
+    route.fulfill({
+      json: {
+        ok: true,
+        value: {
+          ...snapshot,
+          organization: { ...organization, role: "coordinator" },
+          activities: [
+            {
+              activityId: "a-1",
+              kind: "Garden delivery",
+              localDate: "2026-01-05",
+            },
+          ],
+          contributions: [
+            {
+              ...snapshot.contributions[0],
+              origin: {
+                kind: "source",
+                sourceId: "source-original",
+                sourceRevision: 2,
+              },
+            },
+          ],
+        },
+      },
+    }),
+  );
+  await page.route("**/api/auth/organizations", (route) =>
+    route.fulfill({ status: 503, json: { ok: false } }),
+  );
+  await page.goto("/workspace/activities");
+  await expect(page.getByText("Garden delivery")).toBeVisible();
+  await expect(page.getByText("2026-01-05")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Inspect current source evidence" }),
+  ).toBeVisible();
+  await expect(page.getByText("Corrected minutes")).not.toBeVisible();
+});
+
+test("volunteer recognizes and opens their own update evidence", async ({
+  page,
+}) => {
+  await page.route("**/api/product/workspace", (route) =>
+    route.fulfill({
+      json: {
+        ok: true,
+        value: {
+          ...snapshot,
+          sources: [
+            {
+              sourceId: "own-source",
+              revision: 2,
+              status: "accepted",
+              preview: "Delivered garden supplies",
+              receivedAt: "2026-01-05T12:00:00Z",
+            },
+          ],
+        },
+      },
+    }),
+  );
+  await page.route("**/api/auth/organizations", (route) =>
+    route.fulfill({ status: 503, json: { ok: false } }),
+  );
+  await page.route("**/api/product/source?*", (route) =>
+    route.fulfill({
+      json: {
+        ok: true,
+        value: {
+          sourceId: "own-source",
+          revision: 2,
+          channel: "web",
+          receivedAt: "2026-01-05T12:00:00Z",
+          text: "Delivered garden supplies with the team",
+          attachments: [],
+        },
+      },
+    }),
+  );
+  await page.goto("/workspace/volunteer");
+  await expect(
+    page.getByText("Delivered garden supplies", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("accepted", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "View my update" }).click();
+  await expect(
+    page.getByText("Delivered garden supplies with the team"),
+  ).toBeVisible();
+  await expect(
+    page.getByText("This is your original update, shown read-only."),
+  ).toBeVisible();
+});

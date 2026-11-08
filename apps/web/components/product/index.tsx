@@ -525,6 +525,7 @@ function Volunteer({
   const [pending, setPending] = useState(false);
   const [submissionKey, setSubmissionKey] = useState(key);
   const [photo, setPhoto] = useState<File | null>(null);
+  const [sourceId, setSourceId] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState("");
   const photoKey = useRef<string | null>(null);
   const photoInput = useRef<HTMLInputElement>(null);
@@ -637,10 +638,32 @@ function Volunteer({
       <Card>
         <h2>Your updates</h2>
         {snapshot.sources.length ? (
-          <ul>
-            {snapshot.sources.map((s) => (
-              <li key={s.sourceId}>
-                Update {s.sourceId} · revision {s.revision} · {s.status}
+          <ul className={styles.updateList}>
+            {snapshot.sources.map((source) => (
+              <li key={source.sourceId}>
+                <div className={styles.updateHeading}>
+                  <strong>
+                    {source.preview?.trim() || "Update without a text preview"}
+                  </strong>
+                  <span className={styles.badge}>{source.status}</span>
+                </div>
+                <p>
+                  {source.receivedAt
+                    ? `Received ${date(source.receivedAt)}`
+                    : "Received date unavailable"}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setSourceId(source.sourceId)}
+                >
+                  View my update
+                </button>
+                <details>
+                  <summary>Receipt details</summary>
+                  <p>
+                    Update {source.sourceId} · revision {source.revision}
+                  </p>
+                </details>
               </li>
             ))}
           </ul>
@@ -648,6 +671,13 @@ function Volunteer({
           <p>No updates yet.</p>
         )}
       </Card>
+      {sourceId && (
+        <PendingSource
+          sourceId={sourceId}
+          status="your update"
+          close={() => setSourceId(null)}
+        />
+      )}
       <Card>
         <h2>Your contributions</h2>
         <ContributionList
@@ -1059,8 +1089,9 @@ function PendingSource({
             </section>
           )}
           <p>
-            Read-only evidence. Review actions are available when a proposal is
-            ready.
+            {status === "your update"
+              ? "This is your original update, shown read-only."
+              : "Read-only evidence. Review actions are available when a proposal is ready."}
           </p>
         </>
       ) : (
@@ -1458,6 +1489,9 @@ function Activities({
             <Contribution
               key={c.contributionId}
               contribution={c}
+              activity={snapshot.activities?.find(
+                (a) => a.activityId === c.activityId,
+              )}
               members={snapshot.members}
               mutate={mutate}
             />
@@ -1511,10 +1545,12 @@ function Activities({
 }
 function Contribution({
   contribution: c,
+  activity,
   members,
   mutate,
 }: {
   contribution: ContributionRecord;
+  activity: NonNullable<WorkspaceSnapshot["activities"]>[number] | undefined;
   members: WorkspaceSnapshot["members"];
   mutate: Mutate;
 }) {
@@ -1542,34 +1578,44 @@ function Contribution({
   }
   return (
     <div className={styles.ledgerRow}>
-      <p>
-        <strong>
+      <div className={styles.ledgerMain}>
+        <div>
+          <strong>
+            {activity?.kind || `Activity ${c.activityId.slice(0, 8)}`}
+          </strong>
+          <p>{activity?.localDate || "Date unknown"}</p>
+        </div>
+        <p>
           {members.find((m) => m.membershipId === c.membershipId)?.name ??
-            (c.membershipId ? "Volunteer" : "Unknown volunteer")}
-        </strong>{" "}
-        ·{" "}
-        {c.durationMinutes === null
-          ? "Unknown duration"
-          : `${c.durationMinutes} minutes`}{" "}
-        · {c.status} · revision {c.revision}
-      </p>
+            (c.membershipId ? "Volunteer" : "Unknown volunteer")}{" "}
+          ·{" "}
+          {c.durationMinutes === null
+            ? "Unknown duration"
+            : `${c.durationMinutes} minutes`}{" "}
+          · {c.status}
+        </p>
+      </div>
+      {c.origin.kind === "source" && (
+        <button
+          type="button"
+          className={styles.evidenceAction}
+          onClick={() => setShowSource(true)}
+        >
+          Inspect current source evidence
+        </button>
+      )}
+      {showSource && c.origin.kind === "source" && (
+        <PendingSource
+          sourceId={c.origin.sourceId}
+          status="current evidence"
+          close={() => setShowSource(false)}
+        />
+      )}
       <details>
         <summary>Details and correction</summary>
-        <p>Activity {c.activityId}</p>
-        {c.origin.kind === "source" && (
-          <>
-            <button type="button" onClick={() => setShowSource(true)}>
-              Inspect current source evidence
-            </button>
-            {showSource && (
-              <PendingSource
-                sourceId={c.origin.sourceId}
-                status="current evidence"
-                close={() => setShowSource(false)}
-              />
-            )}
-          </>
-        )}
+        <p>
+          Activity {c.activityId} · revision {c.revision}
+        </p>
         <p>
           {c.origin.kind === "source"
             ? `Source ${c.origin.sourceId} · revision ${c.origin.sourceRevision}`
