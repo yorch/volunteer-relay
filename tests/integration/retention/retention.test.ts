@@ -661,3 +661,78 @@ it("erases a verified orphan and returns a fixed error on adapter failure", asyn
     ),
   ).rejects.toThrow("Blob pruning unavailable");
 });
+
+it("settles markers under the blob lock and leaves them on erasure failure", async () => {
+  await seedSource();
+  let settled = 0;
+  expect(
+    await pruneUnreferencedBlob(
+      fixture.db,
+      { storageKey: key, sha256: hash },
+      async () => {
+        throw new Error("should not erase");
+      },
+      async () => {
+        settled += 1;
+      },
+    ),
+  ).toBe(false);
+  expect(settled).toBe(1);
+  const orphan = "b".repeat(64);
+  await expect(
+    pruneUnreferencedBlob(
+      fixture.db,
+      { storageKey: `bb/${orphan}`, sha256: orphan },
+      async () => {
+        throw new Error("failure");
+      },
+      async () => {
+        settled += 1;
+      },
+    ),
+  ).rejects.toThrow("Blob pruning unavailable");
+  expect(settled).toBe(1);
+  let release = () => {};
+  let entered = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const holding = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const first = pruneUnreferencedBlob(
+    fixture.db,
+    { storageKey: key, sha256: hash },
+    async () => {},
+    async () => {
+      entered();
+      await gate;
+    },
+  );
+  await holding;
+  let secondSettled = false;
+  const second = pruneUnreferencedBlob(
+    fixture.db,
+    { storageKey: key, sha256: hash },
+    async () => {},
+    async () => {
+      secondSettled = true;
+    },
+  );
+  try {
+    expect(
+      await Promise.race([
+        second.then(() => "finished"),
+        new Promise<string>((resolve) =>
+          setTimeout(() => resolve("blocked"), 50),
+        ),
+      ]),
+    ).toBe("blocked");
+    expect(secondSettled).toBe(false);
+  } finally {
+    release();
+  }
+  expect(await first).toBe(false);
+  expect(await second).toBe(false);
+  expect(secondSettled).toBe(true);
+});
