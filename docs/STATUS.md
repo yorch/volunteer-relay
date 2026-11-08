@@ -165,6 +165,8 @@ The live dashboard at :4310 was independently checked after the operator's proce
 
 ## Upcoming queue and real blockers
 
+P0-28 now explicitly includes operator-approved pipelined submissions: one executing session per lane with multiple frozen review tips, independent accepted baselines, exact revision routing and aggregate lane budgets. Protocol recorded; CLI/scheduler implementation not active and no new unschedulable assignments created. P0-21 R69b0ca88 found actual Chromium focus loss on keyed reorder; D revision2829d204 requests focused correction/retests. P0-20 remains with F for both confirmed retention/cleanup corrections.
+
 P0-29 independent watchdog is registered, queued for narrowly delegated B module work after P1-11 acceptance and P0-24 rollout. No assignment/config change or watchdog launch yet. Its180s deterministic checks, notice-only default and explicitly guarded recovery must reuse reload/responsiveness signals; A owns composition and verified durable launch. P0-24 R answer c72d22b4 reports no actionable pure-helper findings (136 tests); actual running-loop/loaded-state integration remains mandatory. P0-20/P0-21 exact-tip reviews are queued behind operational reload. P1-10's combined verification completion remains unavailable, so its gate is unconfirmed rather than passed.
 
 1. P1-08/A explicit auth HTTP composition and controlled/current-membership tests; P1-09/B verified-email lifecycle and P1-10/E production pages are assigned at 0ff17cb and independent on frozen ADR 0007 boundaries. B/E remain unclaimed until supervisor reload; do not treat them as running.
