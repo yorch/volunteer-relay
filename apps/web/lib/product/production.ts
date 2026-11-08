@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { parseEnvironment } from "@relay/config";
 import {
   and,
+  createAttachmentMetadataStore,
   createDatabase,
   createDomainStore,
   createMembershipReader,
@@ -11,6 +12,7 @@ import {
   schema,
 } from "@relay/db";
 import {
+  createAttachmentReader,
   createLedgerService,
   createNeedService,
   createSourceRepository,
@@ -20,6 +22,7 @@ import {
   createSessionResolver,
   createTenantAuthorization,
 } from "../auth/index.ts";
+import { createProductExtensions, readPrivateBlob } from "./extensions.ts";
 import { createProductHandler, productFailure } from "./http.ts";
 
 let handler: ReturnType<typeof createProductHandler> | undefined;
@@ -38,7 +41,26 @@ export async function productHandler(request: Request) {
         mailConfigured: false,
       });
       const store = createDomainStore(db);
+      const sources = createSourceRepository({
+        authorization,
+        store: createSourceStore(db),
+      });
+      const processing = createProcessingRepository(db);
+      const attachments = createAttachmentReader({
+        authorization,
+        metadata: createAttachmentMetadataStore(db),
+        blobs: { read: (key) => readPrivateBlob(env.ATTACHMENT_ROOT, key) },
+      });
       handler = createProductHandler({
+        extensions: createProductExtensions({
+          db,
+          authorization,
+          sources,
+          processing,
+          attachments,
+          root: env.ATTACHMENT_ROOT,
+          maxBytes: env.ATTACHMENT_MAX_BYTES,
+        }),
         appUrl: env.APP_URL,
         authorization,
         sources: createSourceRepository({

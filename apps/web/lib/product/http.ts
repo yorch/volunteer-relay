@@ -48,6 +48,11 @@ export interface ProductHttpDependencies {
   ledger: LedgerService;
   needs: NeedService;
   members(context: TenantContext): Promise<WorkspaceSnapshot["members"]>;
+  extensions?(
+    context: TenantContext,
+    path: string,
+    request: Request,
+  ): Promise<Result<unknown> | Response | null>;
 }
 const statuses = {
   UNAUTHENTICATED: 401,
@@ -168,6 +173,9 @@ export function createProductHandler(deps: ProductHttpDependencies) {
         }
         return reply({ ok: true, value });
       }
+      const extended = await deps.extensions?.(context, path, request);
+      if (extended)
+        return extended instanceof Response ? extended : reply(extended);
       if (request.method !== "POST")
         return reply(productFailure("NOT_FOUND", correlationId));
       let body: unknown;
