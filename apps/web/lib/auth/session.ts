@@ -11,6 +11,7 @@ import type { MembershipReader } from "@relay/db";
 import { isContractRole } from "@relay/domain/auth";
 import { APIError } from "better-auth/api";
 import type { Auth } from "./auth.ts";
+import { trackMailDelivery } from "./delivery.ts";
 
 type Failure = Extract<Result<never>, { ok: false }>;
 
@@ -29,11 +30,10 @@ export interface SessionResolverDependencies {
   auth: Auth;
   authorization: AuthorizationService;
   memberships: MembershipReader;
-  mailFailures?: Array<{ kind: "reset" | "invitation" | "verification" }>;
   // Application origin used to constrain password-reset redirect targets.
   appUrl: string;
-  // Whether a mail transport is configured; without one, reset requests are
-  // refused with a bounded error instead of silently succeeding.
+  // Whether a mail transport is configured; without one, reset and invitation
+  // requests are refused with a bounded error instead of silently succeeding.
   mailConfigured: boolean;
 }
 
@@ -46,7 +46,6 @@ export function createSessionResolver({
   auth,
   authorization,
   memberships,
-  mailFailures = [],
   appUrl,
   mailConfigured,
 }: SessionResolverDependencies) {
@@ -298,28 +297,37 @@ export function createSessionResolver({
       role: string;
       correlationId: string;
     }): Promise<Result<{ invitationId: string; headers?: Headers }>> {
-      const failuresBefore = mailFailures.filter(
-        (entry) => entry.kind === "invitation",
-      ).length;
+      if (!mailConfigured)
+        return failure(
+          "DEPENDENCY_UNAVAILABLE",
+          "Invitation delivery is not configured",
+          input.correlationId,
+          false,
+        );
       let created: { id: string } | null;
       let responseHeaders: Headers | undefined;
+      let deliveryFailed: boolean;
       try {
-        const response = await auth.api.createInvitation({
-          body: {
-            email: input.email,
-            role: input.role as
-              | "owner"
-              | "coordinator"
-              | "volunteer"
-              | "report-reader",
-            organizationId: input.organizationId,
-          },
-          headers: input.headers,
-          returnHeaders: true,
-        });
-        created = response.response;
-        responseHeaders = response.headers;
-        collectHeaders(response.headers, input.responseHeaders);
+        // Delivery is observed for this call only, never via shared state.
+        const tracked = await trackMailDelivery(() =>
+          auth.api.createInvitation({
+            body: {
+              email: input.email,
+              role: input.role as
+                | "owner"
+                | "coordinator"
+                | "volunteer"
+                | "report-reader",
+              organizationId: input.organizationId,
+            },
+            headers: input.headers,
+            returnHeaders: true,
+          }),
+        );
+        created = tracked.value.response;
+        responseHeaders = tracked.value.headers;
+        deliveryFailed = tracked.failed.has("invitation");
+        collectHeaders(tracked.value.headers, input.responseHeaders);
       } catch {
         return failure(
           "DEPENDENCY_UNAVAILABLE",
@@ -334,10 +342,7 @@ export function createSessionResolver({
           "Invitation could not be created",
           input.correlationId,
         );
-      const failuresAfter = mailFailures.filter(
-        (entry) => entry.kind === "invitation",
-      ).length;
-      if (failuresAfter > failuresBefore)
+      if (deliveryFailed)
         // The invitation row is pending and can be re-sent; delivery failed.
         return failure(
           "DEPENDENCY_UNAVAILABLE",
@@ -439,7 +444,9 @@ export function createSessionResolver({
         };
         await auth.api.requestPasswordReset(request);
       } catch {
-        // Includes transport failure; the pending token stays for a retry.
+        // Adapter/SDK failure. A transport failure is deliberately not
+        // surfaced (it would reveal that the account exists); the pending
+        // token stays for a retry.
         return failure(
           "DEPENDENCY_UNAVAILABLE",
           "Password reset delivery is unavailable",

@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { parseEnvironment } from "./index.ts";
 
 it("rejects unsafe production defaults", () => {
@@ -81,4 +81,65 @@ it("only allows a fallback root during an S3 cutover", () => {
     BLOB_FALLBACK_ROOT: "/data/attachments",
   });
   expect(parsed.BLOB_FALLBACK_ROOT).toBe("/data/attachments");
+});
+
+describe("production secrets and connection settings", () => {
+  const production = {
+    NODE_ENV: "production",
+    BETTER_AUTH_SECRET: "s".repeat(40),
+    DATABASE_URL: "postgres://app:synthetic@db.example.invalid:5432/relay",
+  } as const;
+
+  it("requires an explicit DATABASE_URL only in production", () => {
+    const { DATABASE_URL: _omitted, ...withoutUrl } = production;
+    expect(() => parseEnvironment(withoutUrl)).toThrow(/DATABASE_URL/);
+    expect(parseEnvironment(production).DATABASE_URL).toBe(
+      "postgres://app:synthetic@db.example.invalid:5432/relay",
+    );
+    expect(parseEnvironment({ NODE_ENV: "test" }).DATABASE_URL).toBe(
+      "postgres://relay:relay@localhost:5432/relay",
+    );
+  });
+
+  it("reports the missing DATABASE_URL alongside schema issues", () => {
+    expect(() => parseEnvironment({ NODE_ENV: "production" })).toThrow(
+      /auth secret[\s\S]*DATABASE_URL|DATABASE_URL[\s\S]*auth secret/,
+    );
+  });
+
+  it("requires a long Telegram webhook secret in production", () => {
+    const short = "w".repeat(31);
+    expect(() =>
+      parseEnvironment({ ...production, TELEGRAM_WEBHOOK_SECRET: short }),
+    ).toThrow(/TELEGRAM_WEBHOOK_SECRET/);
+    expect(
+      parseEnvironment({
+        ...production,
+        TELEGRAM_WEBHOOK_SECRET: "w".repeat(32),
+      }).TELEGRAM_WEBHOOK_SECRET,
+    ).toHaveLength(32);
+    // Local replay/polling development keeps short synthetic secrets.
+    expect(
+      parseEnvironment({
+        NODE_ENV: "development",
+        TELEGRAM_WEBHOOK_SECRET: "a",
+      }).TELEGRAM_WEBHOOK_SECRET,
+    ).toBe("a");
+    expect(() =>
+      parseEnvironment({ TELEGRAM_WEBHOOK_SECRET: "x".repeat(257) }),
+    ).toThrow();
+  });
+
+  it("validates the retention ledger key through the schema", () => {
+    expect(parseEnvironment(production).RETENTION_LEDGER_KEY).toBeUndefined();
+    expect(() =>
+      parseEnvironment({ ...production, RETENTION_LEDGER_KEY: "too-short" }),
+    ).toThrow(/RETENTION_LEDGER_KEY/);
+    expect(
+      parseEnvironment({
+        ...production,
+        RETENTION_LEDGER_KEY: "k".repeat(32),
+      }).RETENTION_LEDGER_KEY,
+    ).toBe("k".repeat(32));
+  });
 });

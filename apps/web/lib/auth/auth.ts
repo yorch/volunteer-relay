@@ -1,13 +1,17 @@
 import { parseEnvironment } from "@relay/config";
-import { type Database, schema } from "@relay/db";
+import { type Database, schema, sql } from "@relay/db";
 import type { ContractRole } from "@relay/domain/auth";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { organization } from "better-auth/plugins";
 import { createAccessControl } from "better-auth/plugins/access";
+import { recordMailDeliveryFailure } from "./delivery.ts";
 import type { AuthMailCallbacks } from "./mail.ts";
-import { createEmailVerification } from "./verification.ts";
+import {
+  createEmailVerification,
+  maxOutstandingTokensPerUser,
+} from "./verification.ts";
 
 // Two layers share one statement set:
 // - the four tenant permissions from @relay/contracts (domain authority), and
@@ -54,7 +58,8 @@ export interface AuthPolicy {
   sessionUpdateAgeSec: number;
   resetTokenExpiresInSec: number;
   invitationExpiresInSec: number;
-  // Invite-only is the product default; tests and later demo profiles can opt in.
+  // Public credential sign-up is enabled by default, matching the documented
+  // /api/auth/sign-up route. A deployment that must be invite-only sets false.
   allowCredentialSignUp: boolean;
 }
 
@@ -77,6 +82,9 @@ export interface AuthDependencies {
 }
 
 const invitationAcceptPath = "/invitations";
+// Better Auth stores reset tokens as `reset-password:<token>` with the user id
+// as the value.
+const resetIdentifierPrefix = "reset-password:";
 
 export function createAuth({
   db,
@@ -87,9 +95,10 @@ export function createAuth({
 }: AuthDependencies) {
   const policy: AuthPolicy = { ...defaultAuthPolicy, ...policyOverrides };
 
-  // Transport failures are recorded by the transport itself and never rethrown
-  // with driver detail: the pending token/invitation row stays available for a
-  // retry, and no token reaches a caller-visible error.
+  // Transport failures are never rethrown with driver detail: the pending
+  // token/invitation row stays available for a retry, and no token reaches a
+  // caller-visible error. The failure kind is recorded for the enclosing
+  // trackMailDelivery call so a server helper can report it per request.
   const sendResetPassword = mail
     ? async ({
         user,
@@ -108,7 +117,9 @@ export function createAuth({
             token,
           });
         } catch {
-          // Deliberately swallowed; the transport recorded the failure.
+          // Not surfaced by the reset helper: only existing accounts reach the
+          // transport, so reporting it would enumerate accounts.
+          recordMailDeliveryFailure("reset");
         }
       }
     : undefined;
@@ -134,6 +145,7 @@ export function createAuth({
           });
         } catch {
           // As above: bounded failure, no token or recipient in the error path.
+          recordMailDeliveryFailure("invitation");
         }
       }
     : undefined;
@@ -154,6 +166,33 @@ export function createAuth({
     },
     secret,
     baseURL,
+    databaseHooks: {
+      verification: {
+        create: {
+          // Caps outstanding reset tokens per account: each request beyond the
+          // cap invalidates the oldest pending token, and expired ones go too.
+          after: async (row: { identifier: string; value: string }) => {
+            if (!row.identifier.startsWith(resetIdentifierPrefix)) return;
+            try {
+              await db.execute(sql`
+                delete from verification
+                where identifier like ${`${resetIdentifierPrefix}%`} and value = ${row.value}
+                  and id not in (
+                    select id from verification
+                    where identifier like ${`${resetIdentifierPrefix}%`} and value = ${row.value}
+                      and expires_at > now()
+                    order by created_at desc, id desc
+                    limit ${maxOutstandingTokensPerUser}
+                  )
+              `);
+            } catch {
+              // Best effort: a failed prune must not make a reset response
+              // differ for existing accounts. Expiry still bounds the tokens.
+            }
+          },
+        },
+      },
+    },
     database: drizzleAdapter(db, { provider: "pg", schema, transaction: true }),
     session: {
       expiresIn: policy.sessionExpiresInSec,
