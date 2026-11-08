@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { automationPolicySchema } from "./index.ts";
+import { automationPolicySchema } from "./policies.ts";
 
 const membershipId = z.string().min(1);
 export const organizationSettingsSchema = z

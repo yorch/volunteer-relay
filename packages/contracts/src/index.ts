@@ -11,10 +11,7 @@ export const needStatusSchema = z.enum([
   "cancelled",
 ]);
 export const urgencySchema = z.enum(["routine", "urgent"]);
-export const automationPolicySchema = z.enum([
-  "review-all",
-  "validated-auto-record",
-]);
+export { automationPolicySchema } from "./policies.ts";
 export const contributionStatusSchema = z.enum([
   "pending",
   "approved",
