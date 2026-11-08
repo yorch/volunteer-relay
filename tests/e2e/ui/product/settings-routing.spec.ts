@@ -63,9 +63,7 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
-test("category routing chooses eligible people and preserves special category keys", async ({
-  page,
-}) => {
+test("category routing chooses eligible people by name", async ({ page }) => {
   let body: Record<string, unknown> | null = null;
   await page.route("**/api/product/settings", (route) => {
     if (route.request().method() === "GET")
@@ -77,7 +75,7 @@ test("category routing chooses eligible people and preserves special category ke
   });
   await page.goto("/workspace/settings");
   await page.getByRole("button", { name: "Add category route" }).click();
-  await page.getByLabel("Category", { exact: true }).fill("__proto__");
+  await page.getByLabel("Category", { exact: true }).fill("transport");
   await page.getByRole("checkbox", { name: "Jordan", exact: true }).check();
   await expect(
     page.getByRole("checkbox", { name: "Sam", exact: true }),
@@ -89,7 +87,7 @@ test("category routing chooses eligible people and preserves special category ke
   await expect.poll(() => body).not.toBeNull();
   expect(body).toMatchObject({
     expectedRevision: 2,
-    routing: { ["__proto__"]: ["staff"] },
+    routing: { transport: ["staff"] },
     fallbackMembershipId: "owner",
   });
 });
@@ -192,4 +190,22 @@ test("valid fallback survives delayed team loading and an unrelated edit", async
     fallbackMembershipId: "staff",
     timezone: "Europe/London",
   });
+});
+
+test("reserved routing category is rejected before saving", async ({
+  page,
+}) => {
+  let saves = 0;
+  await page.route("**/api/product/settings", (route) => {
+    if (route.request().method() === "POST") saves++;
+    return route.fulfill({ json: { ok: true, value: settings } });
+  });
+  await page.goto("/workspace/settings");
+  await page.getByRole("button", { name: "Add category route" }).click();
+  await page.getByLabel("Category", { exact: true }).fill("__proto__");
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(
+    page.getByText("Choose a different category name; this name is reserved."),
+  ).toBeVisible();
+  expect(saves).toBe(0);
 });

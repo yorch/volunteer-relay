@@ -1285,3 +1285,54 @@
   gap: 0.5rem;
   min-height: 44px;
 }
+
+@media (max-width: 760px) {
+  .deliveryTable,
+  .deliveryTable tbody {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+  .deliveryTable thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .deliveryTable tr {
+    display: grid;
+    margin: 0 0 1rem;
+    border: 1px solid #dce5dc;
+    border-radius: 10px;
+    background: white;
+    padding: 0.4rem 0.8rem;
+  }
+  .deliveryTable td {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    gap: 0.7rem;
+    min-width: 0;
+    padding: 0.65rem 0;
+    overflow-wrap: anywhere;
+  }
+  .deliveryTable td::before {
+    content: attr(data-label);
+    color: #53675f;
+    font-weight: 650;
+  }
+  .deliveryTable td > * {
+    min-width: 0;
+  }
+  .deliveryTable td:last-child {
+    grid-template-columns: 1fr;
+  }
+  .deliveryTable td:last-child::before {
+    display: none;
+  }
+  .deliveryTable summary {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+}

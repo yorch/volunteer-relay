@@ -241,6 +241,12 @@ function SettingsForm({
     const routes: Record<string, string[]> = Object.create(null);
     for (const row of routing) {
       const category = row.category.trim();
+      if (["__proto__", "constructor", "prototype"].includes(category)) {
+        setLocalError(
+          "Choose a different category name; this name is reserved.",
+        );
+        return;
+      }
       if (!category || Object.hasOwn(routes, category)) {
         setLocalError("Give each route a different, nonempty category.");
         return;

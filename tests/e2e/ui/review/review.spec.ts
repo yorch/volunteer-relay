@@ -9,9 +9,13 @@ test("review shows unknowns, field evidence, independent revision and safe state
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
     "Every update has a story.",
   );
+  const menu = page.getByText("Menu", { exact: true });
+  const mobileMenu = await menu.isVisible();
+  if (mobileMenu) await menu.click();
   await expect(
     page.getByRole("link", { name: "Source inbox", exact: true }),
   ).toHaveAttribute("aria-current", "page");
+  if (mobileMenu) await menu.click();
   await expect(
     page.locator("dd").filter({ hasText: /^Unknown duration$/ }),
   ).toBeVisible();

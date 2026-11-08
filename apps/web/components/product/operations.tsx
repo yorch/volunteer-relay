@@ -431,25 +431,25 @@ export function Delivery({ owner }: { owner: boolean }) {
               <tbody>
                 {deliveries.map((d) => (
                   <tr key={d.id}>
-                    <td>
+                    <td data-label="Channel">
                       <strong>{d.channel}</strong>
                       <span className={styles.tableSub}>
                         {d.template.replace(/[-_]+/g, " ")}
                       </span>
                     </td>
-                    <td>
+                    <td data-label="Status">
                       <StatusBadge status={d.status} />
                     </td>
-                    <td>{d.attempts}</td>
-                    <td>
+                    <td data-label="Attempts">{d.attempts}</td>
+                    <td data-label="Provider accepted">
                       {d.acceptedAt ? stamp(d.acceptedAt) : "Not accepted"}
                     </td>
-                    <td>
+                    <td data-label="Person acknowledgment">
                       <span className={styles.notProvided}>
                         Confirm with the need record
                       </span>
                     </td>
-                    <td>
+                    <td data-label="Details">
                       <details className={styles.technicalDetails}>
                         <summary>View</summary>
                         <dl className={styles.detailList}>

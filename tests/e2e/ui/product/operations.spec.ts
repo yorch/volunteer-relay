@@ -125,7 +125,10 @@ test("delivery distinguishes failed from provider acceptance", async ({
     }),
   ).toBeVisible();
   await expect(page.getByText("Unknown", { exact: true })).toBeVisible();
-  await expect(page.getByText("n1", { exact: true })).toBeHidden();
+  const needIds = page.getByText("n1", { exact: true });
+  await expect(needIds).toHaveCount(2);
+  await expect(needIds.nth(0)).toBeHidden();
+  await expect(needIds.nth(1)).toBeHidden();
   await page.getByText("View", { exact: true }).first().click();
   await expect(page.getByText("n1", { exact: true }).first()).toBeVisible();
 });

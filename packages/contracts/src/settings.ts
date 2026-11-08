@@ -15,7 +15,23 @@ export const organizationSettingsSchema = z
     }, "Unknown timezone"),
     automationPolicy: automationPolicySchema,
     policyVersion: z.string().min(1).max(100),
-    routing: z.record(z.string(), z.array(membershipId).max(50)),
+    routing: z.preprocess(
+      (value, context) => {
+        if (
+          value !== null &&
+          typeof value === "object" &&
+          ["__proto__", "constructor", "prototype"].some((key) =>
+            Object.hasOwn(value, key),
+          )
+        )
+          context.addIssue({
+            code: "custom",
+            message: "Reserved routing category",
+          });
+        return value;
+      },
+      z.record(z.string(), z.array(membershipId).max(50)),
+    ),
     fallbackMembershipId: membershipId.nullable(),
     ackMinutes: z.number().int().min(1).max(10080),
     retentionDays: z.number().int().min(1).max(3650),
