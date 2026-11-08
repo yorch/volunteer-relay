@@ -76,17 +76,28 @@ export function Field({
   label,
   hint,
   error,
+  required,
   children,
 }: {
   id: string;
   label: string;
   hint?: string;
   error?: string;
+  /** Adds a visual required marker; the control still carries `required` or `aria-required`. */
+  required?: boolean;
   children: ReactNode;
 }) {
   return (
     <div className={styles.field}>
-      <label htmlFor={id}>{label}</label>
+      <label htmlFor={id}>
+        {label}
+        {required && (
+          <span className={styles.requiredMark} aria-hidden="true">
+            {" "}
+            *
+          </span>
+        )}
+      </label>
       {hint && <p id={`${id}-hint`}>{hint}</p>}
       {children}
       {error && (

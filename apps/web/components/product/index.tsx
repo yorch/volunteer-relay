@@ -46,6 +46,7 @@ import styles from "./product.module.css";
 import { Retention } from "./retention";
 import { date, key } from "./shared";
 import { Summary } from "./summary";
+import { Topbar } from "./topbar";
 import { Volunteer } from "./volunteer";
 
 type Page =
@@ -550,16 +551,30 @@ export function ProductWorkspace({ page: pageProp }: { page?: Page }) {
           : activePage === "reports"
             ? role === "report-reader" || staff
             : staff;
+  const openNeeds = snapshot.needs.filter((n) =>
+    ["new", "assigned", "acknowledged"].includes(n.status),
+  );
+  const queued = snapshot.queue.length;
   const nav = staff
     ? [
         { href: "/workspace", icon: "workspace", label: "Overview" },
-        { href: "/workspace/inbox", icon: "inbox", label: "Source inbox" },
+        {
+          href: "/workspace/inbox",
+          icon: "inbox",
+          label: "Source inbox",
+          ...(queued > 0 ? { count: queued } : {}),
+        },
         {
           href: "/workspace/activities",
           icon: "activities",
           label: "Activities",
         },
-        { href: "/workspace/needs", icon: "needs", label: "Needs" },
+        {
+          href: "/workspace/needs",
+          icon: "needs",
+          label: "Needs",
+          ...(openNeeds.length > 0 ? { count: openNeeds.length } : {}),
+        },
         { href: "/workspace/import", icon: "import", label: "Import" },
         { href: "/workspace/reports", icon: "reports", label: "Summary" },
         { href: "/workspace/settings", icon: "settings", label: "Settings" },
@@ -679,6 +694,20 @@ export function ProductWorkspace({ page: pageProp }: { page?: Page }) {
         activePage === "home" ? "/workspace" : `/workspace/${activePage}`
       }
       navigation={nav}
+      topbar={
+        <Topbar
+          pages={nav}
+          needs={openNeeds.map((n) => ({ id: n.needId, label: n.summary }))}
+          members={
+            role === "owner"
+              ? snapshot.members.map((m) => ({
+                  id: m.membershipId,
+                  label: m.name,
+                }))
+              : []
+          }
+        />
+      }
       account={
         <>
           {snapshot.members.find(

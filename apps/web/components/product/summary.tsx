@@ -121,6 +121,71 @@ function Value({ text }: { text: string }) {
     text
   );
 }
+type Ledger = ProductReport["ledger"];
+/**
+ * Approved vs pending contributions. "Duration unknown" and "volunteer
+ * unresolved" are overlapping flags on the pending set (one contribution can
+ * carry both), so they are listed beside the bar, never stacked in it.
+ */
+export function CompositionBar({ ledger }: { ledger?: Ledger | undefined }) {
+  if (!ledger) return null;
+  const parts = [
+    { key: "approved", label: "Approved", n: ledger.approvedContributions },
+    { key: "pending", label: "Pending", n: ledger.pendingContributions },
+  ] as const;
+  const flags = [
+    {
+      key: "unknown",
+      label: "Pending with duration unknown",
+      n: ledger.pendingUnknownDuration,
+    },
+    {
+      key: "unresolved",
+      label: "Pending with volunteer unresolved",
+      n: ledger.pendingUnresolvedVolunteer,
+    },
+  ] as const;
+  const total = parts.reduce((sum, p) => sum + p.n, 0);
+  return (
+    <div className={styles.composition}>
+      <h2 className={styles.compositionTitle}>Where contributions stand</h2>
+      {total > 0 ? (
+        <span className={styles.compositionBar} aria-hidden="true">
+          {parts
+            .filter((p) => p.n > 0)
+            .map((p) => (
+              <span
+                key={p.key}
+                className={`${styles.segment} ${styles[`seg-${p.key}`]}`}
+                style={{ flexGrow: p.n }}
+              />
+            ))}
+        </span>
+      ) : (
+        <p className={styles.compositionEmpty}>
+          No contributions have been recorded yet.
+        </p>
+      )}
+      <ul className={styles.legend}>
+        {[...parts, ...flags].map((p) => (
+          <li key={p.key}>
+            <span
+              className={`${styles.swatch} ${styles[`seg-${p.key}`]}`}
+              aria-hidden="true"
+            />
+            <span>
+              {p.label}: {p.n}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className={styles.compositionNote}>
+        The two “pending with” counts can overlap, so they do not add up to the
+        pending total.
+      </p>
+    </div>
+  );
+}
 function stamp(value: Date | null, timezone: string) {
   if (!value) return "";
   try {
@@ -171,6 +236,25 @@ export function Summary({
         ),
       ).toString(),
     );
+  }
+  const [density, setDensity] = useState<"comfortable" | "compact">(
+    "comfortable",
+  );
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem("relay-table-density") === "compact")
+        setDensity("compact");
+    } catch {
+      /* storage unavailable */
+    }
+  }, []);
+  function chooseDensity(next: "comfortable" | "compact") {
+    setDensity(next);
+    try {
+      window.localStorage.setItem("relay-table-density", next);
+    } catch {
+      /* storage unavailable */
+    }
   }
   const s = report?.ledger;
   const q = report?.query ?? {};
@@ -308,12 +392,27 @@ export function Summary({
             </Card>
           </div>
           <Card className={styles.avoidBreak}>
+            <CompositionBar ledger={s} />
+          </Card>
+          <Card className={styles.avoidBreak}>
             <div className={styles.sectionHeading}>
               <div>
                 <span className={styles.eyebrow}>Report details</span>
                 <h2>At a glance</h2>
               </div>
-              <span>Approved ledger and needs</span>
+              <div className={styles.density}>
+                {(["comfortable", "compact"] as const).map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className={styles.densityButton}
+                    aria-pressed={density === d}
+                    onClick={() => chooseDensity(d)}
+                  >
+                    {d === "comfortable" ? "Comfortable" : "Compact"}
+                  </button>
+                ))}
+              </div>
             </div>
             <Meter
               value={s.approvedContributions}
@@ -321,7 +420,17 @@ export function Summary({
               className={styles.meter ?? ""}
             />
             <div className={styles.tableWrap}>
-              <table className={styles.reportTable}>
+              <table
+                className={`${styles.reportTable} ${
+                  density === "compact" ? styles.compact : ""
+                }`}
+              >
+                <thead>
+                  <tr>
+                    <th scope="col">Measure</th>
+                    <th scope="col">Result</th>
+                  </tr>
+                </thead>
                 <tbody>
                   <tr>
                     <th scope="row">Approved minutes</th>

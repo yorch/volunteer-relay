@@ -664,4 +664,66 @@
   .page :focus-visible {
     outline-color: Highlight;
   }
+  .page input[aria-invalid="true"] {
+    outline: 2px solid Mark;
+  }
+  .settingsForm .formFooter {
+    border-top: 1px solid CanvasText;
+  }
+}
+
+/* Form fields: foundation Field wrapper, inline errors, required marker */
+.fieldWrap {
+  min-width: 0;
+}
+.fieldWrap > div {
+  margin-bottom: 0;
+}
+.requiredLabel::after {
+  content: " *";
+  /* biome-ignore lint/suspicious/noDuplicateProperties: alt-text fallback */
+  content: " *" / "";
+  color: var(--relay-danger, #8b3427);
+  font-weight: 700;
+}
+.fieldError {
+  margin: 0;
+  color: var(--relay-danger, #8b3427);
+  font-size: var(--relay-text-sm, 0.875rem);
+  font-weight: 500;
+}
+.page input[aria-invalid="true"] {
+  border-color: var(--relay-danger, #8b3427);
+  box-shadow: 0 0 0 1px var(--relay-danger, #8b3427);
+}
+
+/* Settings: sticky save bar (in flow, never fixed) */
+.settingsForm :is(input, button, [role="combobox"]) {
+  scroll-margin-bottom: 96px;
+}
+.settingsForm .formFooter {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  border-top: 1px solid var(--relay-line-strong, #c5d0c6);
+}
+.saveState {
+  display: grid;
+  gap: var(--relay-space-1, 4px);
+  min-width: 0;
+}
+.saveState > span {
+  color: var(--relay-muted, #4d6058);
+  font-size: var(--relay-text-sm, 0.875rem);
+}
+.dirty,
+.clean {
+  font-size: var(--relay-text-sm, 0.875rem);
+  font-weight: 700;
+}
+.dirty {
+  color: var(--relay-accent-ink, #7a4a06);
+}
+.clean {
+  color: var(--relay-success, #285d3e);
 }

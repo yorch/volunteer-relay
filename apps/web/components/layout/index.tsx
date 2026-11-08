@@ -109,6 +109,7 @@ export function StaffShell({
   mainId,
   children,
   account,
+  topbar,
 }: {
   organization: string;
   navigation: readonly NavigationItem[];
@@ -116,6 +117,8 @@ export function StaffShell({
   mainId: string;
   children: ReactNode;
   account?: ReactNode;
+  /** Right side of the topbar (search, alerts, ...). Replaces the tagline. */
+  topbar?: ReactNode;
 }) {
   const group = (item: NavigationItem) =>
     item.group ??
@@ -170,6 +173,11 @@ export function StaffShell({
                               <li key={item.href}>
                                 <Link
                                   href={item.href as Route}
+                                  aria-describedby={
+                                    item.count !== undefined
+                                      ? `nav-count-${item.href.split("/").pop() || "home"}`
+                                      : undefined
+                                  }
                                   aria-current={
                                     currentPath === item.href
                                       ? "page"
@@ -179,9 +187,21 @@ export function StaffShell({
                                   <Icon name={navIcon(item.icon)} size={20} />
                                   <span>{item.label}</span>
                                   {item.count !== undefined && (
-                                    <span className={styles.count}>
-                                      {item.count}
-                                    </span>
+                                    <>
+                                      <span
+                                        className={styles.count}
+                                        aria-hidden="true"
+                                      >
+                                        {item.count}
+                                      </span>
+                                      <span
+                                        id={`nav-count-${item.href.split("/").pop() || "home"}`}
+                                        className={styles.countText}
+                                        aria-hidden="true"
+                                      >
+                                        {item.count} waiting
+                                      </span>
+                                    </>
                                   )}
                                 </Link>
                               </li>
@@ -216,9 +236,13 @@ export function StaffShell({
               </span>
               <strong>{current?.label ?? "Workspace"}</strong>
             </span>
-            <span className={styles.topbarNote}>
-              A little clarity. More care.
-            </span>
+            {topbar ? (
+              <div className={styles.topbarActions}>{topbar}</div>
+            ) : (
+              <span className={styles.topbarNote}>
+                A little clarity. More care.
+              </span>
+            )}
           </header>
           <main id={mainId} tabIndex={-1} className={styles.content}>
             {children}

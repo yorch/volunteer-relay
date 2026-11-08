@@ -631,3 +631,8 @@
     outline-offset: 2px;
   }
 }
+
+.requiredMark {
+  color: var(--relay-danger);
+  font-weight: 700;
+}

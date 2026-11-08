@@ -513,3 +513,22 @@
     display: none;
   }
 }
+
+.topbarActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--relay-space-2, 8px);
+  min-width: 0;
+}
+
+/* Read as the link's description (aria-describedby), never as part of its name. */
+.countText {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
