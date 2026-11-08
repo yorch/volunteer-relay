@@ -12,6 +12,9 @@
       "!**/dist",
       "!**/next-env.d.ts",
       "!bun.lock",
+      "!video/generated",
+      "!video/output",
+      "!video/.auth",
       "!IMPLEMENTATION-PLAN.md",
       "!design/reference/prototype.html"
     ]

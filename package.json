@@ -8,7 +8,8 @@
   },
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "video"
   ],
   "scripts": {
     "agents": "node scripts/agents.mjs",
@@ -33,7 +34,22 @@
     "test:live-provider": "node scripts/live-provider-smoke.ts",
     "test:product:integration": "node scripts/product-integration.mjs",
     "typecheck": "node scripts/run.mjs typecheck",
-    "verify": "node scripts/run.mjs verify"
+    "verify": "node scripts/run.mjs verify",
+    "video:auth": "node video/scripts/auth.ts",
+    "video:auth:clear": "node video/scripts/auth-clear.ts",
+    "video:capture": "node video/scripts/capture.ts",
+    "video:doctor": "node video/scripts/doctor.ts",
+    "video:prepare": "node video/scripts/prepare.ts",
+    "video:preview": "node video/scripts/preview.ts",
+    "video:proof": "node video/scripts/render.ts --proof",
+    "video:provision": "node video/scripts/provision.ts",
+    "video:render": "node video/scripts/render.ts",
+    "video:test": "node node_modules/vitest/vitest.mjs run video",
+    "video:timeline": "node video/scripts/timeline.ts",
+    "video:typecheck": "node node_modules/typescript/bin/tsc -p video/tsconfig.json",
+    "video:validate": "node video/scripts/validate.ts",
+    "video:verify": "node node_modules/@biomejs/biome/bin/biome check video && node node_modules/typescript/bin/tsc -p video/tsconfig.json && node node_modules/vitest/vitest.mjs run video",
+    "video:voice": "node video/scripts/voice.ts"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "3.1019.0",

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "note": "Pronunciation overrides applied when generating narration. Keys are literal written forms in the script; values are what the voice reads. Keys and values are part of the narration cache key.",
+  "entries": [
+    { "written": "Volunteer Relay", "spoken": "Volunteer Relay" },
+    { "written": "Tidepath", "spoken": "Tide Path" },
+    { "written": "Marisol", "spoken": "Mah-ree-sol" },
+    { "written": "Sofia", "spoken": "So-fee-ah" },
+    { "written": "Mateo", "spoken": "Mah-teh-oh" }
+  ]
+}

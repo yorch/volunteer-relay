@@ -1,0 +1,209 @@
+import { existsSync, renameSync, rmSync } from "node:fs";
+import { chromium } from "@playwright/test";
+import {
+  ensureDir,
+  gitCommit,
+  log,
+  type ParsedArgs,
+  parseArgs,
+  requireNode26,
+  run,
+} from "../src/lib/cli.ts";
+import { paths, repoRoot } from "../src/lib/env.ts";
+import { probeMedia } from "../src/lib/probe.ts";
+import { loadExpectedResults, loadScenario } from "../src/lib/scenario.ts";
+import { productScenes, type Scene } from "../src/lib/schema.ts";
+import { resolveTarget } from "../src/lib/target.ts";
+import { assertTotals, sceneActions } from "./lib/actions.ts";
+import {
+  type CaptureAsset,
+  captureMezzaninePath,
+  captureRawPath,
+  readCaptureManifest,
+  writeCaptureManifest,
+} from "./lib/assets.ts";
+import { loadEverything } from "./lib/script.ts";
+import {
+  newRecordingContext,
+  openPage,
+  storageStatePath,
+} from "./lib/session.ts";
+
+/**
+ * Deterministic 1920x1080 capture of genuine application state. Each take starts
+ * from a declared checkpoint, proves persisted totals before and after, and
+ * fails closed instead of rendering a plausible but wrong scene.
+ */
+
+const HOLD_BUFFER_SECONDS = 1.5;
+
+function normalizeCapture(sceneId: string): void {
+  const raw = captureRawPath(sceneId);
+  const mezzanine = captureMezzaninePath(sceneId);
+  const result = run("ffmpeg", [
+    "-y",
+    "-loglevel",
+    "error",
+    "-i",
+    raw,
+    "-vf",
+    "scale=1920:1080:flags=lanczos,fps=30,setsar=1",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    "20",
+    "-pix_fmt",
+    "yuv420p",
+    "-an",
+    mezzanine,
+  ]);
+  if (result.status !== 0)
+    throw new Error(`Normalising ${sceneId} failed: ${result.stderr.trim()}`);
+  rmSync(raw, { force: true });
+}
+
+async function captureScene(
+  scene: Scene,
+  env: Record<string, string | undefined>,
+): Promise<CaptureAsset> {
+  const target = resolveTarget(env);
+  const scenario = loadScenario(paths.scenario);
+  const expected = loadExpectedResults(paths.expectedResults);
+  const action = sceneActions[scene.id];
+  if (!action)
+    throw new Error(`No capture action is registered for ${scene.id}`);
+  if (!scene.capture) throw new Error(`${scene.id} has no capture plan`);
+  const statePath = storageStatePath(scene.capture.role);
+  if (!existsSync(statePath))
+    throw new Error(
+      `Missing ${scene.capture.role} session. Run bun run video:auth first.`,
+    );
+
+  const browser = await chromium.launch();
+  const recordedAt = new Date().toISOString();
+  const markers: Array<{ label: string; atSeconds: number }> = [];
+  const started = performance.now();
+  const mark = (label: string) => {
+    markers.push({
+      label,
+      atSeconds: Number(((performance.now() - started) / 1000).toFixed(3)),
+    });
+    log(`    · ${label}`);
+  };
+  let produced: string | null = null;
+  try {
+    const context = await newRecordingContext(
+      browser,
+      target,
+      scene.capture.role,
+    );
+    const page = await openPage(context, target, scene.capture.route);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const ready = page.getByText(scene.capture.readyText, { exact: false });
+    await ready.first().waitFor({ timeout: 30_000 });
+
+    const actionContext = {
+      page,
+      target,
+      scenario,
+      expected,
+      mark,
+    };
+    await assertTotals(actionContext, action.startsFrom);
+    mark(`checkpoint:${action.startsFrom}`);
+    await action.run(actionContext);
+    if (action.establishes) {
+      await assertTotals(actionContext, action.establishes);
+      mark(`checkpoint:${action.establishes}`);
+    }
+
+    const elapsed = (performance.now() - started) / 1000;
+    const hold = Math.max(0, scene.minSeconds + HOLD_BUFFER_SECONDS - elapsed);
+    if (hold > 0) await page.waitForTimeout(hold * 1000);
+    mark("hold-complete");
+
+    const video = page.video();
+    await context.close();
+    produced = video ? await video.path() : null;
+    if (!produced || !existsSync(produced))
+      throw new Error(`Playwright produced no video for ${scene.id}`);
+  } finally {
+    await browser.close();
+  }
+
+  ensureDir(paths.captures);
+  const raw = captureRawPath(scene.id);
+  rmSync(raw, { force: true });
+  renameSync(produced, raw);
+  normalizeCapture(scene.id);
+  const probe = probeMedia(captureMezzaninePath(scene.id));
+  if (probe.width !== 1920 || probe.height !== 1080)
+    throw new Error(
+      `${scene.id} normalised to ${probe.width}x${probe.height}, expected 1920x1080`,
+    );
+  return {
+    sceneId: scene.id,
+    file: `captures/${scene.id}.mp4`,
+    durationSeconds: probe.durationSeconds,
+    width: probe.width,
+    height: probe.height,
+    fps: probe.fps,
+    origin: target.originLabel,
+    appCommit: gitCommit(repoRoot),
+    scenarioId: scenario.scenarioId,
+    checkpointId: action.startsFrom,
+    role: scene.capture.role,
+    recordedAt,
+    markers,
+  };
+}
+
+async function main(): Promise<void> {
+  requireNode26();
+  const args: ParsedArgs = parseArgs(process.argv.slice(2));
+  const { env, manifest } = loadEverything();
+  const target = resolveTarget(env);
+  const only = typeof args.flags.scene === "string" ? args.flags.scene : null;
+  const scenes = productScenes(manifest).filter(
+    (scene) => !only || scene.id === only,
+  );
+  if (scenes.length === 0)
+    throw new Error(
+      only ? `Unknown product scene ${only}` : "No product scenes",
+    );
+
+  log(
+    `Capturing ${scenes.length} scene(s) at 1920x1080 from ${target.baseUrl} (${target.originLabel})`,
+  );
+  const existing = readCaptureManifest();
+  const byId = new Map(
+    (existing?.scenes ?? []).map((asset) => [asset.sceneId, asset]),
+  );
+  for (const scene of scenes) {
+    log(`  ${scene.id} ${scene.title}`);
+    const asset = await captureScene(scene, env);
+    byId.set(scene.id, asset);
+    log(
+      `  ${scene.id}: ${asset.durationSeconds.toFixed(2)}s, ${asset.width}x${asset.height}, ${asset.markers.length} markers`,
+    );
+  }
+  writeCaptureManifest({
+    schemaVersion: 1,
+    scenarioId: loadScenario(paths.scenario).scenarioId,
+    targetMode: target.mode,
+    baseUrl: target.baseUrl,
+    appCommit: gitCommit(repoRoot),
+    capturedAt: new Date().toISOString(),
+    scenes: [...byId.values()].sort((a, b) => (a.sceneId < b.sceneId ? -1 : 1)),
+  });
+  log(
+    "Capture manifest written. A subset capture only matches a database still at that scene's start checkpoint.",
+  );
+}
+
+await main().catch((error: unknown) => {
+  process.stderr.write(`video:capture failed: ${(error as Error).message}\n`);
+  process.exitCode = 1;
+});

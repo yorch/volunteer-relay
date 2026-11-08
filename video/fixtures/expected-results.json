@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "authorship": "Authored by hand for the recording scenario from the manual demo oracle (fixtures/demo/expected-start.json) and the demo fixture definitions in packages/db/src/demo-data.ts. No number here was read from application output, a capture run or a live model response.",
+  "baseline": {
+    "sources": 10,
+    "reviewQueue": 7,
+    "approvedMinutes": 180,
+    "approvedContributions": 3,
+    "activitiesWithApprovedContributions": 2,
+    "pendingContributions": 1,
+    "pendingUnknownDuration": 1,
+    "openNeeds": 4,
+    "resolvedNeeds": 1
+  },
+  "checkpoints": {
+    "after-s04": {
+      "sources": 10,
+      "reviewQueue": 6,
+      "approvedMinutes": 300,
+      "approvedContributions": 5,
+      "activitiesWithApprovedContributions": 3,
+      "pendingContributions": 1,
+      "pendingUnknownDuration": 1,
+      "openNeeds": 4,
+      "resolvedNeeds": 1
+    },
+    "after-s05": {
+      "sources": 10,
+      "reviewQueue": 5,
+      "approvedMinutes": 300,
+      "approvedContributions": 5,
+      "activitiesWithApprovedContributions": 3,
+      "pendingContributions": 1,
+      "pendingUnknownDuration": 1,
+      "openNeeds": 4,
+      "resolvedNeeds": 1
+    },
+    "after-s06": {
+      "sources": 10,
+      "reviewQueue": 5,
+      "approvedMinutes": 300,
+      "approvedContributions": 5,
+      "activitiesWithApprovedContributions": 3,
+      "pendingContributions": 1,
+      "pendingUnknownDuration": 1,
+      "openNeeds": 4,
+      "resolvedNeeds": 1
+    }
+  }
+}

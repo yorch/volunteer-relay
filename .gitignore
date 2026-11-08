@@ -17,3 +17,8 @@ test-results/
 playwright-report/
 apps/web/next-env.d.ts
 .pi/tasks/
+# Video workspace: credentials, generated media and renders are never committed.
+video/.env.local
+video/.auth/
+video/generated/
+video/output/
