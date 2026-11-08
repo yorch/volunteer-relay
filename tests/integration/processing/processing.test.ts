@@ -352,7 +352,15 @@ it("bounds retries and recovers expired leases without approving work", async ()
   expect(await repo.pendingSources(1)).toEqual([]);
   expect(await repo.listSourceStatuses(staff)).toEqual({
     ok: true,
-    value: [{ sourceId: "s1", revision: 1, status: "failed" }],
+    value: [
+      {
+        sourceId: "s1",
+        revision: 1,
+        status: "failed",
+        preview: source.text.slice(0, 160),
+        receivedAt: new Date(source.receivedAt).toISOString(),
+      },
+    ],
   });
   expect(await repo.listQueue(staff)).toEqual({ ok: true, value: [] });
 });
@@ -1334,7 +1342,15 @@ it("does not reset an active lease, but permits retry of an exhausted crashed le
   );
   expect(await repo.listSourceStatuses(staff)).toEqual({
     ok: true,
-    value: [{ sourceId: "s1", revision: 1, status: "failed" }],
+    value: [
+      {
+        sourceId: "s1",
+        revision: 1,
+        status: "failed",
+        preview: source.text.slice(0, 160),
+        receivedAt: new Date(source.receivedAt).toISOString(),
+      },
+    ],
   });
   expect(
     await repo.retrySource(staff, { sourceId: "s1", idempotencyKey: "crash" }),

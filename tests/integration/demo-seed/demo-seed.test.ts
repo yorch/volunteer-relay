@@ -17,6 +17,7 @@ import { createAuth } from "../../../apps/web/lib/auth/auth.ts";
 import { provisionDemo } from "../../../apps/web/lib/auth/demo.ts";
 import { seedProductDemo } from "../../../apps/web/lib/auth/product-demo.ts";
 import { createProductExtensions } from "../../../apps/web/lib/product/extensions.ts";
+import { createWorkspaceActivityReader } from "../../../apps/web/lib/product/workspace-projections.ts";
 import { verifyProposalEvidence } from "../../../packages/ai/src/index.ts";
 import { createFilesystemBlobStore } from "../../../packages/blob/src/index.ts";
 import {
@@ -28,6 +29,7 @@ import {
   type Database,
   sql,
 } from "../../../packages/db/src/index.ts";
+import { createRetentionRepository } from "../../../packages/db/src/repositories/retention.ts";
 import { createAuthorizationService } from "../../../packages/domain/auth/src/index.ts";
 import {
   createAttachmentReader,
@@ -438,4 +440,91 @@ it("the composed CLI creates and reuses the product profile in test mode", async
   );
   expect(second.stdout).toContain("created: false");
   expect(await counts()).toEqual(before);
+});
+
+it("workspace metadata is meaningful, tenant scoped and rechecks staff authority", async () => {
+  await seed();
+  const owner = await getContext("demo-owner", "tidepath");
+  const volunteer = await getContext("demo-volunteer", "tidepath");
+  const reader = await getContext("demo-reader", "tidepath");
+  const activities = createWorkspaceActivityReader(db);
+  const id = "demo-product:v1:activity-shared";
+  await db.execute(
+    sql`insert into activity(organization_id,id,revision,kind,local_date,date_precision,origin_kind,origin_reason) values ('harbor','other-tenant-activity',1,'Private other activity',null,'unknown','staff','Synthetic test')`,
+  );
+  const facts = await activities(owner, [id, id, "other-tenant-activity"]);
+  expect(facts).toEqual([
+    { activityId: id, kind: "visit", localDate: "2026-11-06" },
+  ]);
+  expect(await activities(volunteer, [id])).toEqual([]);
+  expect(await activities(reader, [id])).toEqual([]);
+  const processing = createProcessingRepository(db);
+  const own = await processing.listSourceStatuses(volunteer);
+  expect(own.ok).toBe(true);
+  if (!own.ok) throw new Error("Own updates unavailable");
+  expect(
+    own.value.some(
+      (row) =>
+        row.sourceId === "demo-product:v1:shared-review" &&
+        row.preview?.includes("Demo Volunteer") &&
+        row.receivedAt === "2026-11-06T12:00:00.000Z",
+    ),
+  ).toBe(true);
+  expect(
+    own.value.some(
+      (row) =>
+        row.sourceId === "demo-product:v1:supplies" ||
+        row.sourceId === "demo-product:v1:photo" ||
+        row.sourceId === "demo-product:v1:harbor-message",
+    ),
+  ).toBe(false);
+  expect(await processing.listSourceStatuses(reader)).toMatchObject({
+    ok: false,
+    error: { code: "FORBIDDEN" },
+  });
+  await db.execute(
+    sql`update member set role='volunteer' where id='tidepath-demo-owner'`,
+  );
+  expect(await activities(owner, [id])).toEqual([]);
+  const narrowed = await processing.listSourceStatuses(owner);
+  expect(narrowed.ok).toBe(true);
+  if (!narrowed.ok) throw new Error("Own source list unavailable");
+  expect(narrowed.value.map((row) => row.sourceId)).toEqual([
+    "demo-product:v1:supplies",
+  ]);
+  await db.execute(
+    sql`update member set role='report-reader' where id='tidepath-demo-owner'`,
+  );
+  expect(await processing.listSourceStatuses(owner)).toMatchObject({
+    ok: false,
+    error: { code: "FORBIDDEN" },
+  });
+});
+
+it("source summary previews disappear after evidence is redacted", async () => {
+  await seed();
+  const owner = await getContext("demo-owner", "tidepath");
+  const volunteer = await getContext("demo-volunteer", "tidepath");
+  const retention = createRetentionRepository(db, {
+    now: () => new Date("2030-01-01T00:00:00Z"),
+  });
+  expect(
+    await retention.redactSource(owner, {
+      sourceId: "demo-product:v1:shared-review",
+      expectedRevision: 1,
+      idempotencyKey: "metadata-redact",
+      reason: "Synthetic privacy test",
+    }),
+  ).toMatchObject({ ok: true });
+  const processing = createProcessingRepository(db);
+  for (const actor of [owner, volunteer]) {
+    const rows = await processing.listSourceStatuses(actor);
+    expect(rows.ok).toBe(true);
+    if (!rows.ok) throw new Error("Source list unavailable");
+    expect(
+      rows.value.some(
+        (row) => row.sourceId === "demo-product:v1:shared-review",
+      ),
+    ).toBe(false);
+  }
 });

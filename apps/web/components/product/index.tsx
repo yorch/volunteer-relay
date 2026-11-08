@@ -673,6 +673,7 @@ function Volunteer({
       </Card>
       {sourceId && (
         <PendingSource
+          key={sourceId}
           sourceId={sourceId}
           status="your update"
           close={() => setSourceId(null)}
@@ -1614,7 +1615,7 @@ function Contribution({
       <details>
         <summary>Details and correction</summary>
         <p>
-          Activity {c.activityId} · revision {c.revision}
+          Activity {c.activityId} · contribution revision {c.revision}
         </p>
         <p>
           {c.origin.kind === "source"
