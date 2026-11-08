@@ -114,6 +114,48 @@ test("only owners can open member administration", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("member roster keeps roles visible and sends the selected invite role", async ({
+  page,
+}) => {
+  await page.route("**/api/product/members", (route) =>
+    route.fulfill({
+      json: {
+        ok: true,
+        value: [
+          {
+            membershipId: "m1",
+            name: "Alex Rivera",
+            email: "alex@example.org",
+            role: "owner",
+          },
+          {
+            membershipId: "m2",
+            name: "Sam Lee",
+            email: "sam@example.org",
+            role: "volunteer",
+          },
+        ],
+      },
+    }),
+  );
+  let inviteBody: Record<string, unknown> = {};
+  await page.route("**/api/product/members/invite", (route) => {
+    inviteBody = route.request().postDataJSON();
+    return route.fulfill({ json: { ok: true, value: {} } });
+  });
+  await page.goto("/workspace/members");
+  await expect(page.getByText("2 members")).toBeVisible();
+  await expect(page.getByText("Alex Rivera", { exact: true })).toBeVisible();
+  await expect(
+    page.locator("span[class*='roleBadge']").filter({ hasText: /^Owner$/ }),
+  ).toBeVisible();
+  await page.getByLabel("Email address").fill("new@example.org");
+  await page.getByLabel("Workspace role").selectOption("coordinator");
+  await page.getByRole("button", { name: "Send invitation" }).click();
+  await expect.poll(() => inviteBody.email).toBe("new@example.org");
+  expect(inviteBody).toEqual({ email: "new@example.org", role: "coordinator" });
+});
+
 test("staff must deliberately select and explain a candidate link", async ({
   page,
 }) => {

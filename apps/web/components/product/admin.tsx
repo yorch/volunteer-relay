@@ -14,7 +14,7 @@ import {
   useRef,
   useState,
 } from "react";
-import styles from "./product.module.css";
+import styles from "./admin.module.css";
 
 type Result<T> =
   | { ok: true; value: T }
@@ -85,8 +85,16 @@ function useWrite() {
     },
   };
 }
-function Panel({ children }: { children: ReactNode }) {
-  return <section className={styles.card}>{children}</section>;
+function Panel({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string | undefined;
+}) {
+  return (
+    <section className={`${styles.card} ${className}`}>{children}</section>
+  );
 }
 function Status({ error, notice }: { error: string; notice?: string }) {
   return (
@@ -128,10 +136,23 @@ function useLoad<T>(path: string) {
 export function Settings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
   const data = useLoad<OrganizationSettings>("settings");
   return (
-    <>
-      <h1>Organization settings</h1>
+    <div className={styles.page}>
+      <header className={styles.pageHeading}>
+        <div>
+          <p className={styles.eyebrow}>WORKSPACE ADMINISTRATION</p>
+          <h1>Organization settings</h1>
+          <p>Set how work is routed, reviewed and retained for your team.</p>
+        </div>
+        {data.value && (
+          <span className={styles.revision}>
+            Revision {data.value.revision}
+          </span>
+        )}
+      </header>
       {data.loading ? (
-        <p>Loading settings…</p>
+        <p aria-live="polite" className={styles.loading}>
+          Loading settings…
+        </p>
       ) : data.value ? (
         <SettingsForm
           key={data.value.revision}
@@ -141,14 +162,14 @@ export function Settings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
           reload={data.reload}
         />
       ) : (
-        <>
+        <Panel>
           <Status error={data.error} />
           <button type="button" onClick={() => void data.reload()}>
             Try again
           </button>
-        </>
+        </Panel>
       )}
-    </>
+    </div>
   );
 }
 function SettingsForm({
@@ -199,86 +220,157 @@ function SettingsForm({
   }
   return (
     <>
-      <p>
-        Settings revision {initial.revision}.{" "}
-        {owner
-          ? "Changes apply to this organization."
-          : "Only owners can change settings."}
-      </p>
-      <Panel>
-        <form onSubmit={save} onChange={writer.change}>
+      {!owner && (
+        <p className={styles.permissionNote}>
+          You can review these settings. Only an organization owner can change
+          them.
+        </p>
+      )}
+      <Panel className={styles.settingsPanel}>
+        <form
+          onSubmit={save}
+          onChange={writer.change}
+          className={styles.settingsForm}
+        >
           <fieldset disabled={!owner || writer.busy}>
-            <label>
-              Timezone
-              <input name="timezone" defaultValue={initial.timezone} required />
-            </label>
-            <label>
-              Automation policy
-              <select name="policy" defaultValue={initial.automationPolicy}>
-                <option value="review-all">Review all</option>
-                <option value="validated-auto-record">
-                  Validated auto-record
-                </option>
-              </select>
-            </label>
-            <p>
-              Validated auto-record applies only when the server's eligibility
-              checks pass; other proposals still need review.
-            </p>
-            <label>
-              Policy version
-              <input
-                name="version"
-                defaultValue={initial.policyVersion}
-                required
-                maxLength={100}
-              />
-            </label>
-            <label>
-              Routing (category to member ID array)
-              <textarea
-                value={routing}
-                onChange={(e) => setRouting(e.target.value)}
-                rows={6}
-              />
-            </label>
-            <label>
-              Fallback member
-              <select
-                name="fallback"
-                defaultValue={initial.fallbackMembershipId ?? ""}
-              >
-                <option value="">None</option>
-                {members.map((m) => (
-                  <option key={m.membershipId} value={m.membershipId}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Acknowledgment deadline (minutes)
-              <input
-                name="ack"
-                type="number"
-                min="1"
-                max="10080"
-                defaultValue={initial.ackMinutes}
-                required
-              />
-            </label>
-            <label>
-              Retention (days)
-              <input
-                name="retention"
-                type="number"
-                min="1"
-                max="3650"
-                defaultValue={initial.retentionDays}
-                required
-              />
-            </label>
-            {owner && <button type="submit">Save settings</button>}
+            <section
+              className={styles.settingsSection}
+              aria-labelledby="routing-title"
+            >
+              <div className={styles.sectionIntro}>
+                <h2 id="routing-title">Routing and review</h2>
+                <p>
+                  Choose the review policy and the team members who receive each
+                  type of need.
+                </p>
+              </div>
+              <div className={styles.formGrid}>
+                <label>
+                  Automation policy
+                  <select name="policy" defaultValue={initial.automationPolicy}>
+                    <option value="review-all">Review all</option>
+                    <option value="validated-auto-record">
+                      Validated auto-record
+                    </option>
+                  </select>
+                  <span className={styles.help}>
+                    Auto-record applies only when server eligibility checks
+                    pass. All other proposals wait for staff review.
+                  </span>
+                </label>
+                <label>
+                  Policy version
+                  <input
+                    name="version"
+                    defaultValue={initial.policyVersion}
+                    required
+                    maxLength={100}
+                  />
+                  <span className={styles.help}>
+                    A short reference used to identify the active review rules.
+                  </span>
+                </label>
+                <label className={styles.spanTwo}>
+                  Routing rules{" "}
+                  <span className={styles.help}>
+                    Use a JSON object with each category mapped to an array of
+                    member IDs.
+                  </span>
+                  <textarea
+                    aria-label="Routing (category to member ID array)"
+                    value={routing}
+                    onChange={(e) => setRouting(e.target.value)}
+                    rows={5}
+                    spellCheck={false}
+                  />
+                </label>
+                <label>
+                  Fallback member
+                  <select
+                    name="fallback"
+                    defaultValue={initial.fallbackMembershipId ?? ""}
+                  >
+                    <option value="">No fallback member</option>
+                    {members.map((m) => (
+                      <option key={m.membershipId} value={m.membershipId}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span className={styles.help}>
+                    Used when a category has no matching route.
+                  </span>
+                </label>
+                <label>
+                  Acknowledgment deadline
+                  <span className={styles.inputWithUnit}>
+                    <input
+                      name="ack"
+                      type="number"
+                      min="1"
+                      max="10080"
+                      defaultValue={initial.ackMinutes}
+                      required
+                    />
+                    <span>minutes</span>
+                  </span>
+                  <span className={styles.help}>
+                    Time allowed for a person to acknowledge an assigned need.
+                  </span>
+                </label>
+              </div>
+            </section>
+            <section
+              className={styles.settingsSection}
+              aria-labelledby="org-title"
+            >
+              <div className={styles.sectionIntro}>
+                <h2 id="org-title">Organization and privacy</h2>
+                <p>
+                  Keep dates consistent and set how long source evidence is
+                  retained.
+                </p>
+              </div>
+              <div className={styles.formGrid}>
+                <label>
+                  Organization timezone
+                  <input
+                    name="timezone"
+                    defaultValue={initial.timezone}
+                    required
+                  />
+                  <span className={styles.help}>
+                    Use an IANA timezone such as America/Chicago.
+                  </span>
+                </label>
+                <label>
+                  Source retention
+                  <span className={styles.inputWithUnit}>
+                    <input
+                      name="retention"
+                      type="number"
+                      min="1"
+                      max="3650"
+                      defaultValue={initial.retentionDays}
+                      required
+                    />
+                    <span>days</span>
+                  </span>
+                  <span className={styles.help}>
+                    Expired evidence becomes eligible for review; it is not
+                    removed automatically from this screen.
+                  </span>
+                </label>
+              </div>
+            </section>
+            {owner && (
+              <div className={styles.formFooter}>
+                <span>Saving creates a new settings revision.</span>
+                <button type="submit" disabled={writer.busy}>
+                  {writer.busy ? "Saving…" : "Save settings"}
+                </button>
+              </div>
+            )}
           </fieldset>
         </form>
       </Panel>
@@ -330,142 +422,226 @@ export function Notifications() {
     if (result.ok) {
       setLink(result.value);
       expiry.current = null;
+      setCopyMessage("");
     }
   }
   return (
-    <>
-      <h1>Notifications</h1>
-      <Status error={writer.error || list.error} notice={writer.notice} />
-      <Panel>
-        <h2>Inbox</h2>
-        {list.loading ? (
-          <p>Loading notifications…</p>
-        ) : list.value?.length ? (
-          <ul>
-            {list.value.map((n) => (
-              <li key={n.id}>
-                <strong>{n.title}</strong> · {n.readAt ? "Read" : "Unread"} ·{" "}
-                {new Date(n.createdAt).toLocaleString()}{" "}
-                {/^\/(?![/\\])/.test(n.appPath) && <a href={n.appPath}>Open</a>}{" "}
-                {!n.readAt && (
-                  <button
-                    type="button"
-                    disabled={writer.busy}
-                    onClick={() => void read(n)}
-                  >
-                    Mark read
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : list.error ? (
-          <button type="button" onClick={() => void list.reload()}>
-            Try again
-          </button>
-        ) : (
-          <p>No notifications yet.</p>
-        )}
-      </Panel>
-      <Panel>
-        <h2>Delivery preferences</h2>
-        {prefs.loading ? (
-          <p aria-live="polite">Loading preferences…</p>
-        ) : prefs.value ? (
-          <form
-            key={`${prefs.value.email}-${prefs.value.telegram}`}
-            onSubmit={preferences}
-            onChange={writer.change}
-          >
-            <label style={{ display: "flex", alignItems: "center" }}>
-              <input
-                type="checkbox"
-                name="email"
-                defaultChecked={prefs.value.email}
-              />{" "}
-              Email
-            </label>
-            <label style={{ display: "flex", alignItems: "center" }}>
-              <input
-                type="checkbox"
-                name="telegram"
-                defaultChecked={prefs.value.telegram}
-              />{" "}
-              Telegram
-            </label>
-            <button type="submit" disabled={writer.busy}>
-              Save preferences
-            </button>
-          </form>
-        ) : (
-          <>
-            <Status error={prefs.error} />
-            <button type="button" onClick={() => void prefs.reload()}>
-              Try loading preferences again
-            </button>
-          </>
-        )}
-      </Panel>
-      <Panel>
-        <h2>Telegram account</h2>
-        <p>
-          Create a link instruction that expires after ten minutes. Share it
-          only with the official bot.
-        </p>
-        <div className={styles.actions}>
-          <button
-            type="button"
-            disabled={writer.busy}
-            onClick={() => void linkTelegram()}
-          >
-            Create link instruction
-          </button>
-          <button
-            type="button"
-            disabled={writer.busy}
-            onClick={async () => {
-              if ((await writer.write("telegram-unlink", {}, false)).ok)
-                setLink(null);
-            }}
-          >
-            Unlink Telegram
-          </button>
+    <div className={styles.page}>
+      <header className={styles.pageHeading}>
+        <div>
+          <p className={styles.eyebrow}>TEAM COMMUNICATION</p>
+          <h1>Notifications</h1>
+          <p>
+            Keep up with assigned work and choose where team updates arrive.
+          </p>
         </div>
-        {link &&
-          (link.token ? (
-            <>
-              <label>
-                Instruction
-                <input
-                  readOnly
-                  value={`/link ${link.token}`}
-                  onFocus={(e) => e.currentTarget.select()}
-                />
-              </label>
+      </header>
+      <Status error={writer.error || list.error} notice={writer.notice} />
+      <div className={styles.notificationGrid}>
+        <Panel className={styles.inboxPanel}>
+          <div className={styles.panelHeading}>
+            <div>
+              <p className={styles.eyebrow}>ACTIVITY</p>
+              <h2>Notification inbox</h2>
+            </div>
+            <span className={styles.count}>
+              {list.loading
+                ? "Loading"
+                : list.error
+                  ? "Unavailable"
+                  : `${list.value?.filter((n) => !n.readAt).length ?? 0} unread`}
+            </span>
+          </div>
+          {list.loading ? (
+            <p aria-live="polite" className={styles.loading}>
+              Loading notifications…
+            </p>
+          ) : list.value?.length ? (
+            <ul className={styles.notificationList}>
+              {list.value.map((n) => (
+                <li
+                  className={`${styles.notification} ${n.readAt ? "" : styles.unread}`}
+                  key={n.id}
+                >
+                  <span className={styles.notificationMark} aria-hidden="true">
+                    {n.readAt ? "✓" : "•"}
+                  </span>
+                  <div className={styles.notificationBody}>
+                    <strong>{n.title}</strong>
+                    <span>{new Date(n.createdAt).toLocaleString()}</span>
+                    <div className={styles.notificationActions}>
+                      {/^\/(?![/\\])/.test(n.appPath) && (
+                        <a href={n.appPath}>Open related work</a>
+                      )}
+                      {!n.readAt && (
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          disabled={writer.busy}
+                          onClick={() => void read(n)}
+                        >
+                          Mark read
+                        </button>
+                      )}
+                      {n.readAt && (
+                        <span className={styles.readLabel}>Read</span>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : list.error ? (
+            <button type="button" onClick={() => void list.reload()}>
+              Try again
+            </button>
+          ) : (
+            <p className={styles.empty}>
+              You’re all caught up. New assignments and updates will appear
+              here.
+            </p>
+          )}
+        </Panel>
+        <div className={styles.preferenceStack}>
+          <Panel>
+            <p className={styles.eyebrow}>DELIVERY CHANNELS</p>
+            <h2>Delivery preferences</h2>
+            <p className={styles.cardIntro}>
+              Choose the channels where you want to receive organization
+              notifications.
+            </p>
+            {prefs.loading ? (
+              <p aria-live="polite" className={styles.loading}>
+                Loading preferences…
+              </p>
+            ) : prefs.value ? (
+              <form
+                className={styles.preferenceForm}
+                key={`${prefs.value.email}-${prefs.value.telegram}`}
+                onSubmit={preferences}
+                onChange={writer.change}
+              >
+                <label className={styles.checkRow}>
+                  <input
+                    type="checkbox"
+                    name="email"
+                    defaultChecked={prefs.value.email}
+                    aria-labelledby="email-channel-label"
+                    aria-describedby="email-channel-description"
+                  />
+                  <span>
+                    <strong id="email-channel-label">Email</strong>
+                    <small id="email-channel-description">
+                      Send updates to your organization email address.
+                    </small>
+                  </span>
+                </label>
+                <label className={styles.checkRow}>
+                  <input
+                    type="checkbox"
+                    name="telegram"
+                    defaultChecked={prefs.value.telegram}
+                    aria-labelledby="telegram-channel-label"
+                    aria-describedby="telegram-channel-description"
+                  />
+                  <span>
+                    <strong id="telegram-channel-label">Telegram</strong>
+                    <small id="telegram-channel-description">
+                      Send updates to your linked Telegram account.
+                    </small>
+                  </span>
+                </label>
+                <button type="submit" disabled={writer.busy}>
+                  {writer.busy ? "Saving…" : "Save preferences"}
+                </button>
+              </form>
+            ) : (
+              <>
+                <Status error={prefs.error} />
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => void prefs.reload()}
+                >
+                  Try loading preferences again
+                </button>
+              </>
+            )}
+          </Panel>
+          <Panel>
+            <p className={styles.eyebrow}>ACCOUNT LINK</p>
+            <h2>Telegram</h2>
+            <p className={styles.cardIntro}>
+              Link your account through the official bot. The one-time
+              instruction expires after ten minutes.
+            </p>
+            <div className={styles.actions}>
               <button
                 type="button"
+                disabled={writer.busy}
+                onClick={() => void linkTelegram()}
+              >
+                Create link instruction
+              </button>
+              <button
+                className={styles.secondaryButton}
+                type="button"
+                disabled={writer.busy}
                 onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(`/link ${link.token}`);
-                    setCopyMessage("Instruction copied.");
-                  } catch {
-                    setCopyMessage("Select and copy the instruction above.");
+                  if ((await writer.write("telegram-unlink", {}, false)).ok) {
+                    setLink(null);
+                    setCopyMessage("");
                   }
                 }}
               >
-                Copy instruction
+                Unlink Telegram
               </button>
-              {copyMessage && <p role="status">{copyMessage}</p>}
-              <p>Expires {new Date(link.expiresAt).toLocaleString()}</p>
-            </>
-          ) : (
-            <p>
-              A token is unavailable for this request. Create a new link
-              instruction.
-            </p>
-          ))}
-      </Panel>
-    </>
+            </div>
+            {link &&
+              (link.token ? (
+                <div className={styles.linkInstruction}>
+                  <label htmlFor="telegram-instruction">
+                    One-time instruction
+                  </label>
+                  <div className={styles.copyRow}>
+                    <input
+                      id="telegram-instruction"
+                      readOnly
+                      value={`/link ${link.token}`}
+                      onFocus={(e) => e.currentTarget.select()}
+                    />
+                    <button
+                      className={styles.secondaryButton}
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(
+                            `/link ${link.token}`,
+                          );
+                          setCopyMessage("Instruction copied.");
+                        } catch {
+                          setCopyMessage(
+                            "Select and copy the instruction above.",
+                          );
+                        }
+                      }}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  {copyMessage && <p role="status">{copyMessage}</p>}
+                  <p>Expires {new Date(link.expiresAt).toLocaleString()}</p>
+                </div>
+              ) : (
+                <p className={styles.help}>
+                  A token is unavailable for this request. Create a new link
+                  instruction.
+                </p>
+              ))}
+          </Panel>
+        </div>
+      </div>
+    </div>
   );
 }
 type Member = {
@@ -473,6 +649,12 @@ type Member = {
   name: string;
   email: string;
   role: ContractRole;
+};
+const roleName: Record<ContractRole, string> = {
+  owner: "Owner",
+  coordinator: "Coordinator",
+  "report-reader": "Report reader",
+  volunteer: "Volunteer",
 };
 export function Members() {
   const list = useLoad<Member[]>("members");
@@ -509,77 +691,155 @@ export function Members() {
       await list.reload();
   }
   return (
-    <>
-      <h1>Members</h1>
+    <div className={styles.page}>
+      <header className={styles.pageHeading}>
+        <div>
+          <p className={styles.eyebrow}>WORKSPACE ADMINISTRATION</p>
+          <h1>Members</h1>
+          <p>
+            Invite your team and keep access matched to each person’s
+            responsibilities.
+          </p>
+        </div>
+        {list.value && (
+          <span className={styles.revision}>{list.value.length} members</span>
+        )}
+      </header>
       <Status error={writer.error || list.error} notice={writer.notice} />
-      <Panel>
-        <h2>Invite a member</h2>
-        <form onSubmit={invite} onChange={writer.change}>
+      <Panel className={styles.invitePanel}>
+        <div className={styles.panelHeading}>
+          <div>
+            <p className={styles.eyebrow}>GROW YOUR TEAM</p>
+            <h2>Invite a member</h2>
+          </div>
+        </div>
+        <p className={styles.cardIntro}>
+          Send an invitation by email and choose the access they need to get
+          started.
+        </p>
+        <form
+          onSubmit={invite}
+          onChange={writer.change}
+          className={styles.inviteForm}
+        >
           <label>
-            Email
-            <input name="email" type="email" required />
+            Email address
+            <input
+              name="email"
+              type="email"
+              autoComplete="email"
+              placeholder="name@example.org"
+              required
+            />
           </label>
           <label>
-            Role
+            Workspace role
             <select name="role" defaultValue="volunteer">
               <Roles />
             </select>
           </label>
           <button type="submit" disabled={writer.busy}>
-            Send invitation
+            {writer.busy ? "Sending…" : "Send invitation"}
           </button>
         </form>
       </Panel>
       <Panel>
-        <h2>Current members</h2>
+        <div className={styles.panelHeading}>
+          <div>
+            <p className={styles.eyebrow}>ACCESS ROSTER</p>
+            <h2>Current members</h2>
+          </div>
+        </div>
         {list.loading ? (
-          <p>Loading members…</p>
+          <p aria-live="polite" className={styles.loading}>
+            Loading members…
+          </p>
         ) : list.value?.length ? (
-          list.value.map((m) => (
-            <div className={styles.item} key={m.membershipId}>
-              <p>
-                <strong>{m.name}</strong> · {m.email} · {m.role}
-              </p>
-              <form onSubmit={(e) => void role(e, m)} onChange={writer.change}>
-                <label>
-                  Role for {m.name}
-                  <select name="role" defaultValue={m.role}>
+          <div className={styles.roster}>
+            {list.value.map((m) => (
+              <article className={styles.memberRow} key={m.membershipId}>
+                <div className={styles.memberIdentity}>
+                  <span className={styles.memberAvatar} aria-hidden="true">
+                    {m.name
+                      .trim()
+                      .split(/\s+/)
+                      .slice(0, 2)
+                      .map((s) => s[0])
+                      .join("")
+                      .toUpperCase()}
+                  </span>
+                  <div>
+                    <strong>{m.name}</strong>
+                    <span>{m.email}</span>
+                  </div>
+                </div>
+                <span
+                  className={`${styles.roleBadge} ${styles[`role_${m.role.replace("-", "_")}`]}`}
+                >
+                  {roleName[m.role]}
+                </span>
+                <form
+                  className={styles.memberActions}
+                  onSubmit={(e) => void role(e, m)}
+                  onChange={writer.change}
+                >
+                  <label
+                    className={styles.visuallyHidden}
+                    htmlFor={`member-role-${m.membershipId}`}
+                  >
+                    Role for {m.name}
+                  </label>
+                  <select
+                    id={`member-role-${m.membershipId}`}
+                    name="role"
+                    defaultValue={m.role}
+                  >
                     <Roles />
                   </select>
-                </label>
-                <button type="submit" disabled={writer.busy}>
-                  Update role
-                </button>
-                <button
-                  type="button"
-                  disabled={writer.busy}
-                  onClick={async () => {
-                    if (
-                      (
-                        await writer.write(
-                          "members/remove",
-                          { membershipId: m.membershipId },
-                          false,
-                        )
-                      ).ok
-                    )
-                      await list.reload();
-                  }}
-                >
-                  Remove member
-                </button>
-              </form>
-            </div>
-          ))
+                  <button
+                    type="submit"
+                    className={styles.secondaryButton}
+                    disabled={writer.busy}
+                  >
+                    Update role
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.removeButton}
+                    disabled={writer.busy}
+                    onClick={async () => {
+                      if (
+                        (
+                          await writer.write(
+                            "members/remove",
+                            { membershipId: m.membershipId },
+                            false,
+                          )
+                        ).ok
+                      )
+                        await list.reload();
+                    }}
+                  >
+                    Remove
+                  </button>
+                </form>
+              </article>
+            ))}
+          </div>
         ) : list.error ? (
           <button type="button" onClick={() => void list.reload()}>
             Try again
           </button>
         ) : (
-          <p>No members found.</p>
+          <p className={styles.empty}>
+            No members found. Invite someone to begin working together.
+          </p>
         )}
+        <p className={styles.rosterNote}>
+          Role changes and removals take effect across this workspace.
+        </p>
       </Panel>
-    </>
+    </div>
   );
 }
 function Roles() {
