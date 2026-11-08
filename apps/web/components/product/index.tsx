@@ -46,12 +46,13 @@ type ResponseResult<T> =
 const key = () => crypto.randomUUID();
 const date = (value: string | null) =>
   value ? new Date(value).toLocaleString() : "Not set";
-const duration = (minutes: number | null) =>
-  minutes === null
-    ? "Unknown"
-    : minutes < 60
-      ? `${Math.round(minutes)} min`
-      : `${Math.floor(minutes / 60)} hr ${Math.round(minutes % 60)} min`;
+const duration = (minutes: number | null) => {
+  if (minutes === null) return "Unknown";
+  const rounded = Math.round(minutes);
+  return rounded < 60
+    ? `${rounded} min`
+    : `${Math.floor(rounded / 60)} hr ${rounded % 60} min`;
+};
 const fieldLabel = (value: string) =>
   value
     .replace(/([a-z])([A-Z])/g, "$1 $2")
