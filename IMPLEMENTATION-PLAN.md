@@ -28,7 +28,7 @@ Integration policy: follow AGENTS.md for Conventional Commits and linear history
 | Intake | Web, file imports, Telegram bot; text and photos | Confirmed |
 | Automation | Organization-selectable review-all or validated-auto-record | Confirmed |
 | Notifications | In-app, Telegram, email | Confirmed |
-| Queue | pg-boss using PostgreSQL, with application outbox | Planning default |
+| Queue | PostgreSQL durable work records and transactional outbox, with fenced leases and retry scheduling | Implemented; [ADR 0010](docs/adr/0010-product-work-queue.md) supersedes the pg-boss planning default |
 | UI | Tailwind CSS, accessible reusable components | Planning default |
 | Email | SMTP adapter; Mailpit in development/demo | Planning default |
 | Files | Private filesystem volume behind authenticated routes; storage adapter boundary | Planning default |
@@ -84,7 +84,7 @@ New → assigned → acknowledged → resolved. Cancellation and reopening requi
 
 Next.js accepts requests and persists source evidence plus an outbox entry in a transaction. The worker dispatches and processes jobs. Domain services remain independent of HTTP, Telegram, and model SDK objects. Background processing never relies on the Next.js request remaining open.
 
-Use pg-boss for durable work and schedules; use a transactional outbox to avoid the gap between committing domain data and enqueueing/delivering effects. Expect repeated delivery and process restarts. Unique constraints and idempotent domain handlers prevent duplicate business effects. Do not claim exactly-once delivery for external services.
+Use the PostgreSQL durable work records, fenced leases and retry scheduling implemented alongside the transactional outbox; [ADR 0010](docs/adr/0010-product-work-queue.md) records the deliberate replacement of the earlier pg-boss planning default. Persist source and outbox together, expect repeated delivery and process restarts, and use unique constraints and idempotent domain handlers to prevent duplicate business effects. Do not claim exactly-once delivery for external services.
 
 Private attachments live on a persistent shared volume, outside public web assets. Only authenticated, tenant-authorized routes stream them. Local disk is suitable for one host; retain an interface for future object storage. Include disk capacity monitoring, backup, file type/size restrictions, and metadata stripping for derived images.
 
@@ -94,7 +94,7 @@ The user-supplied interactive reference is `design/reference/prototype.html`. It
 
 E owns one shared visual foundation through P2-00, independently of B/C/D/F service implementation; dependency additions and role-aware layout wiring remain A/B-coordinated. P2-02 consumes it for fixture-backed mobile intake and staff review, integrating with real services at M2. P3-04 adds import/photo UI at M3. P5-03 adds a basic needs board at M2 only once B's tenant-aware lifecycle services and A's contracts exist, then delivery/deadline/escalation surfaces at M5. P6-01 adds the basic ledger at M2 and approved-query reports/CSV at M6. M4 reconciliation, correction and automation behavior is reflected in the review UI only after corresponding B/D services and A contract extensions land. Overview composes those authorized queries rather than inventing aggregate logic.
 
-UI acceptance includes actual desktop/tablet/mobile review, accessible labels/contrast/focus, loading/error/empty/unknown/provisional states, selection consistency under filters, role-specific navigation and matching domain/report totals. The prototype's JavaScript behavior was inspected in a stubbed DOM; browser visual verification was blocked by the unavailable host and remains required for translated UI. A supplies the planned Playwright runner before browser acceptance is claimed. This reference intake is planning/design work only and does not implement or complete any M1–M7 workflow.
+UI acceptance includes actual desktop/tablet/mobile review, accessible labels/contrast/focus, loading/error/empty/unknown/provisional states, selection consistency under filters, role-specific navigation and matching domain/report totals. At the original prototype review, browser visual verification was unavailable; that historical limitation is superseded by later controlled Chromium viewport tests and screenshot inspection of product screens. The prototype itself remains reference-only. See [status](docs/STATUS.md) for exact evidence and remaining live gates.
 
 ## 5. Domain model and invariants
 

@@ -1,21 +1,22 @@
 # Milestone status
 
-Updated 2026-11-08. Coordinator A owns this file. M1 is complete: P1-13 core ledger/need/attachment domain gate accepted on top of the accepted auth/tenant/source/HTTP slices. The repository is public at github.com/yorch/volunteer-relay with green hosted CI. The headless supervisor is stopped by the operator; next mandatory work is the M2 first end-to-end web workflow.
+Updated 2026-11-08. This summary supersedes the historical status entries below, which describe earlier checkpoints and are retained for context. Product functionality through M2–M7 is implemented in the current tree; implementation is not a claim that all live-service or deployment acceptance gates have passed. See [product implementation evidence](tasks/PRODUCT-IMPLEMENTATION.md) for scoped verification.
 
-| Milestone | Status                                           | Evidence / remaining gate                                                                                                                                                       |
-| --------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| M0        | Complete — engineering baseline                  | Frozen install, Biome, strict type checks, 6 Vitest tests, Next/worker builds and local Compose smoke passed under Node 26.11.1. Contracts v1 reviewed/frozen by coordinator A. |
-| M1        | Complete — identity, tenancy, domain persistence | Demo roles, organization switching, auth HTTP/pages, source/outbox and P1-13 ledger/need transitions plus cross-tenant read/write/attachment denial verified over PostgreSQL.   |
-| M2        | Preparation — extraction/UI foundations verified | Provider-free adapter and visual primitives integrated; actual reviewed workflow/live model gate remain open.                                                                   |
-| M3        | Not started                                      | Imports, photos, Telegram                                                                                                                                                       |
-| M4        | Not started                                      | Reconciliation and policy gates                                                                                                                                                 |
-| M5        | Not started                                      | Delivery and escalation                                                                                                                                                         |
-| M6        | Not started                                      | Reports against independent oracle                                                                                                                                              |
-| M7        | Not started                                      | Production operations and release                                                                                                                                               |
+| Milestone | Current product scope                                                                                 | Remaining gate                                                                                                                  |
+| --------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| M0–M1     | Identity, tenancy, source persistence, ledger and needs                                               | Continue current verification on the integrated tip.                                                                            |
+| M2        | Authenticated web intake, private evidence, extraction worker, review and contribution/need workflows | Opt-in real model smoke and live deployment verification remain open.                                                           |
+| M3        | JSON/CSV/WhatsApp text imports, private photos, Telegram intake/linking                               | Real Telegram and photo/model provider checks remain open.                                                                      |
+| M4        | Reviewed edits, explicit duplicate links, corrections and policy-gated automation                     | Live model behavior and production policy monitoring remain open.                                                               |
+| M5        | Need routing, acknowledgment, notification preferences, delivery and escalation                       | Real SMTP and Telegram delivery/acknowledgment checks remain open. Provider acceptance is not person acknowledgment.            |
+| M6        | Filtered aggregate reports, CSV, audit and delivery views                                             | Validate with the target deployment and live data under authorized access.                                                      |
+| M7        | Single-host Compose/TLS profile, provisioning, retention ledger and recovery tooling                  | Fresh-host startup, public TLS issuance/renewal, provider operation, disaster-recovery cutover and production load remain open. |
 
-## Current blockers and limits
+The browser suite passed 204/204 at `818c4db` (four viewports); subsequent source-inspection UI passed eight focused cases at `dc9cc94`. These were controlled browser tests, not live-provider acceptance. At `dd989a1`, the product PostgreSQL runner passed 244/244 tests across 27 files, and `bun run verify` passed Biome, typecheck, 394/394 unit tests across 42 files and the production Next build outside the nested sandbox with Chromium sandboxing retained. An explicitly opt-in live-provider smoke is available. Later-tip and hosted CI results must be reported from their actual runs; no live model, SMTP, Telegram or public deployment is implied by local tests.
 
-Integration now includes auth/tenant and source/outbox schema/repositories, migration/credential-free synthetic seed tooling, tenant authorization factories, fixture UI and a provider-free extraction/evaluator slice. Public sign-in/invitation/reset routes/UI, organization switching, proposal/review/ledger/need services, outbox dispatch/worker processing and live model checks remain incomplete. No real model credentials or public endpoint were needed for these slices. Root quality checks remain database-free; PostgreSQL integration and browser suites are explicit separate gates. Full M1/M2 milestone acceptance remains open.
+## Historical checkpoints — superseded status
+
+The sections below preserve earlier project history. Statements about future scope, blockers or test counts describe their dates and do not override the summary above.
 
 ## Ownership
 

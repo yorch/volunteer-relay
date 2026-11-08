@@ -1,5 +1,7 @@
 # Task ownership and parallel starts
 
+**Current product status:** M2–M7 implementation and evidence are summarized in [PRODUCT-IMPLEMENTATION.md](PRODUCT-IMPLEMENTATION.md) and [STATUS.md](../STATUS.md). The dispatch and phase descriptions below are historical planning context; their statements that product work is queued or fixture-only have been superseded.
+
 Phase 0 task cards P0-01–03 are complete. The current prototype review/reference commit adds planning handoffs only. Later cards remain queued; no later application implementation is included.
 
 After M0 contract review, the following can begin independently in separate worktrees:

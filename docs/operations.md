@@ -27,6 +27,7 @@ This profile is a deployment starting point, not proof of production readiness. 
    ```dotenv
    DATABASE_URL=postgres://relay_app:REPLACE_WITH_DIFFERENT_URL_SAFE_RANDOM_PASSWORD@postgres:5432/relay
    BETTER_AUTH_SECRET=REPLACE_WITH_AT_LEAST_32_RANDOM_CHARACTERS
+   RETENTION_LEDGER_KEY=REPLACE_WITH_A_DIFFERENT_32_OR_MORE_CHARACTER_SECRET
    NODE_ENV=production
    DEMO_MODE=false
    APP_URL=https://relay.example.org
@@ -65,7 +66,7 @@ COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" RELAY_ENV_FILE="$RELAY_ENV_FILE" in
 docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RELAY_ENV_FILE" -f compose.production.yaml up -d
 ```
 
-The backup contains a PostgreSQL custom dump, a tar archive of attachments and SHA-256 checksums. The dump and archive are captured sequentially while writers are stopped. Checksums detect accidental corruption; they do not authenticate the backup. Protect and verify the backup's origin separately. Caddy certificate state and the environment file are not in this backup; manage those separately. Caddy can reissue certificates subject to ACME limits.
+The backup contains a PostgreSQL custom dump, a tar archive of attachments, a deployment-wide signed redaction ledger and SHA-256 checksums. The files are captured sequentially while writers are stopped. The worker requires `RETENTION_LEDGER_KEY` (at least 32 characters) for ledger export and redaction; back up this stable signing key separately in the secret manager. Do not store it in the backup directory or commit it. A backup-time ledger is a historical snapshot and may omit later redactions. Checksums detect accidental corruption; they do not authenticate the backup. Protect and verify the backup's origin separately. Caddy certificate state and the environment file are not in this backup; manage those separately. Caddy can reissue certificates subject to ACME limits.
 
 ## Restore and upgrade
 
@@ -74,6 +75,7 @@ Restore only a trusted backup into a **new**, isolated Compose project with a fr
 ```sh
 export COMPOSE_PROJECT_NAME=relay-restore-unique
 export RELAY_ENV_FILE=/absolute/path/to/isolated-restore.env
+export RELAY_REDACTION_LEDGER=/secure/ledgers/current-deployment-redactions.json
 # Environment points to isolated credentials and project; never the live project.
 docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RELAY_ENV_FILE" -f compose.production.yaml up -d postgres volume-init
 # Wait for postgres health and successful volume-init before restore.
@@ -81,7 +83,18 @@ docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RELAY_ENV_FIL
 COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" RELAY_ENV_FILE="$RELAY_ENV_FILE" infra/production/restore.sh /secure/backups/relay-2026-01-01
 ```
 
-Validate row counts, representative authorization and attachment access in isolation before any cutover. Restore does not automatically start the application. Restore uses the bootstrap identity and omits ACLs; on the isolated target rerun the migration and runtime-grants gates before starting web and worker, so the new cluster obtains its own runtime role and grants. Plan cutover, DNS, secrets and rollback with the operator; do not start Caddy with the production domain in a test project. For upgrades, take and verify a quiesced backup, review migrations and compatibility, deploy pinned matching images, and verify health and workflows. A failed migration blocks startup; rollback may require a tested restore rather than an older image against a newer schema. Never run concurrent migrations or destructive resets against shared data.
+`RELAY_REDACTION_LEDGER` must point to the **current deployment-wide signed ledger**, including redactions made after the database backup, and the isolated worker must have the same protected `RETENTION_LEDGER_KEY` used to sign it. A ledger from the old backup alone is not sufficient if later redactions exist. Obtain and protect a fresh `export-all` ledger before recovery, following the CLI below; preserve it independently of the older backup. The restore script verifies and replays this ledger after restoring the database and files, before the application starts. If it is missing, invalid, stale, signed with a different key, or replay fails, keep the target offline and resolve the gap; otherwise old evidence could be resurrected. Check the ledger freshness using your operational records: a signature verifies integrity, not recency.
+
+For example, with all writers quiesced and the live database reachable, export to a new protected file outside the backup directory:
+
+```sh
+umask 077
+set -C  # refuse to overwrite an existing file in this shell
+docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$RELAY_ENV_FILE" -f compose.production.yaml run --rm -T --no-deps worker node scripts/retention.ts export-all --file - > /secure/ledgers/current-deployment-redactions.json
+set +C
+```
+
+Validate row counts, representative authorization and attachment access in isolation before any cutover. Restore does not automatically start the application. Restore uses the bootstrap identity and omits ACLs; the script runs the runtime-grants gate and signed ledger replay on the isolated target. Apply any newer migrations and rerun the grants gate before starting web and worker, so the new cluster obtains its own runtime role and grants. Plan cutover, DNS, secrets and rollback with the operator; do not start Caddy with the production domain in a test project. For upgrades, take and verify a quiesced backup, review migrations and compatibility, deploy pinned matching images, and verify health and workflows. A failed migration blocks startup; rollback may require a tested restore rather than an older image against a newer schema. Never run concurrent migrations or destructive resets against shared data.
 
 ## Evidence and remaining gates
 
