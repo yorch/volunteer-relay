@@ -498,6 +498,15 @@ function Inbox({
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
+  const [inspected, setInspected] = useState<string | null>(null);
+  const queued = snapshot.sources.filter(
+    (source) => source.status === "queued",
+  );
+  const inspectable = snapshot.sources.find(
+    (source) =>
+      source.sourceId === inspected &&
+      (source.status === "failed" || source.status === "queued"),
+  );
   const failed = snapshot.sources.filter(
     (source) => source.status === "failed",
   );
@@ -516,7 +525,13 @@ function Inbox({
             <ul className={styles.list}>
               {failed.map((source) => (
                 <li key={source.sourceId}>
-                  Source {source.sourceId} · revision {source.revision}{" "}
+                  Source {source.sourceId} · revision {source.revision} · failed{" "}
+                  <button
+                    type="button"
+                    onClick={() => setInspected(source.sourceId)}
+                  >
+                    Inspect evidence
+                  </button>{" "}
                   <button
                     type="button"
                     disabled={retrying !== null}
@@ -545,6 +560,34 @@ function Inbox({
           <p>No processing failures.</p>
         )}
       </Card>
+      <Card>
+        <h2>Queued updates</h2>
+        {queued.length ? (
+          <ul className={styles.list}>
+            {queued.map((source) => (
+              <li key={source.sourceId}>
+                Source {source.sourceId} · revision {source.revision} · queued{" "}
+                <button
+                  type="button"
+                  onClick={() => setInspected(source.sourceId)}
+                >
+                  Inspect evidence
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>No updates awaiting processing.</p>
+        )}
+      </Card>
+      {inspectable && (
+        <PendingSource
+          key={`${inspectable.sourceId}-${inspectable.revision}`}
+          sourceId={inspectable.sourceId}
+          status={inspectable.status}
+          close={() => setInspected(null)}
+        />
+      )}
       <Card>
         <h2>Reprocess an update</h2>
         <p>
@@ -633,6 +676,78 @@ function Inbox({
         </div>
       )}
     </>
+  );
+}
+function PendingSource({
+  sourceId,
+  status,
+  close,
+}: {
+  sourceId: string;
+  status: string;
+  close: () => void;
+}) {
+  const [source, setSource] = useState<SourceEnvelope | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let active = true;
+    void request<SourceEnvelope>(
+      `/api/product/source?sourceId=${encodeURIComponent(sourceId)}`,
+    ).then((result) => {
+      if (!active) return;
+      if (result.ok) setSource(result.value);
+      else setError(errorMessage(result.error.code));
+    });
+    return () => {
+      active = false;
+    };
+  }, [sourceId]);
+  return (
+    <Card>
+      <h2>Original source evidence</h2>
+      <p>
+        Source {sourceId} · {status}
+      </p>
+      <button type="button" onClick={close}>
+        Close evidence
+      </button>
+      {error ? (
+        <p role="alert">{error}</p>
+      ) : source ? (
+        <>
+          <p>
+            Source revision {source.revision} · {source.channel} · received{" "}
+            {date(source.receivedAt)}
+          </p>
+          <p className={styles.source}>{source.text || "No text provided."}</p>
+          {source.attachments.length > 0 && (
+            <section>
+              <h3>Source attachments</h3>
+              {source.attachments.map((attachment) => (
+                <figure key={attachment.id}>
+                  {/* biome-ignore lint/performance/noImgElement: original private evidence uses the authenticated same-origin endpoint */}
+                  <img
+                    className={styles.attachment}
+                    src={`/api/product/attachments/${encodeURIComponent(source.sourceId)}/${encodeURIComponent(attachment.id)}`}
+                    alt={`Source attachment ${attachment.id}, revision ${source.revision}`}
+                  />
+                  <figcaption>
+                    Source revision {source.revision} · attachment{" "}
+                    {attachment.id}
+                  </figcaption>
+                </figure>
+              ))}
+            </section>
+          )}
+          <p>
+            Read-only evidence. Review actions are available when a proposal is
+            ready.
+          </p>
+        </>
+      ) : (
+        <p aria-live="polite">Loading source evidence…</p>
+      )}
+    </Card>
   );
 }
 function ReviewEditor({
