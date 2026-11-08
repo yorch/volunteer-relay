@@ -663,6 +663,17 @@ async function execute(command, o, ctx) {
       "Commit or remove task-local changes before ready",
     );
   }
+  const previous = await read(taskPath(ctx, id, "status.json"), null);
+  if (
+    previous?.state === "ready" &&
+    (o.state !== "ready" || commit !== previous.commit)
+  ) {
+    if (o.state !== "working") await executionGuard(ctx, id, agent);
+    ensure(
+      o.state === "working",
+      "Frozen submission requires an explicit working revision transition through its original claim",
+    );
+  }
   const status = {
     agent,
     task: id,

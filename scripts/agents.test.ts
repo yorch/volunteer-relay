@@ -925,3 +925,164 @@ it("does not require pipeline scope for accepted tasks or ordinary ancestor assi
     ok(b2, ...claimSecond);
   });
 });
+
+it.each(["assigned", "claimed", "working", "native-running"])(
+  "preserves a frozen tip against blocked and replacement-ready transitions with another task %s",
+  async (state) => {
+    await fixture(({ root, b, b2 }) => {
+      assign(root);
+      scope(root, "P1-01", ["first"]);
+      scope(root, "P1-02", ["second"]);
+      ok(b, ...claim);
+      ok(b, ...ready);
+      const frozen = ok(root, "board").tasks[0];
+      expect(second(root).code).toBe(0);
+      if (state !== "assigned") ok(b2, ...claimSecond);
+      if (state === "working") {
+        ok(
+          b2,
+          "status",
+          "--agent",
+          "B",
+          "--task",
+          "P1-02",
+          "--state",
+          "working",
+          "--text",
+          "Synthetic active task",
+        );
+      }
+      if (state === "native-running") {
+        // A frozen newer submission can still have a native turn running.
+        ok(b2, ...ready.map((value) => (value === "P1-01" ? "P1-02" : value)));
+        const directory = join(root, ".relay-coordination/supervisor");
+        mkdirSync(directory, { recursive: true });
+        writeFileSync(
+          join(directory, "state.json"),
+          JSON.stringify({
+            records: {
+              next: { lane: "B", task: "P1-02", cwd: b2, status: "running" },
+            },
+          }),
+        );
+      }
+      // Same-tip annotation is harmless even while another task executes.
+      ok(b, ...ready);
+      const annotated = ok(root, "board").tasks[0];
+      expect(annotated.claim).toEqual(frozen.claim);
+      expect(annotated.status.commit).toBe(frozen.status.commit);
+      expect(
+        cli(
+          b,
+          "status",
+          "--agent",
+          "B",
+          "--task",
+          "P1-01",
+          "--state",
+          "blocked",
+          "--text",
+          "Attempt to erase frozen submission",
+        ).code,
+      ).toBe(1);
+      writeFileSync(join(b, "revision.txt"), "Synthetic replacement tip\n");
+      git(b, "add", ".");
+      git(b, "commit", "-qm", "fix(test): prepare synthetic revision");
+      expect(cli(b, ...ready).code).toBe(1);
+      expect(ok(root, "board").tasks[0]).toEqual(annotated);
+      if (state === "working") {
+        // The current owning task can finish while the older task stays frozen.
+        ok(b2, ...ready.map((value) => (value === "P1-01" ? "P1-02" : value)));
+        // Even after that checkpoint, changing a frozen tip requires working first.
+        expect(cli(b, ...ready).error).toContain(
+          "explicit working revision transition",
+        );
+        expect(
+          cli(
+            b,
+            "status",
+            "--agent",
+            "B",
+            "--task",
+            "P1-01",
+            "--state",
+            "blocked",
+            "--text",
+            "Missing revision transition",
+          ).error,
+        ).toContain("explicit working revision transition");
+        ok(b, ...working);
+        ok(
+          b,
+          "status",
+          "--agent",
+          "B",
+          "--task",
+          "P1-01",
+          "--state",
+          "blocked",
+          "--text",
+          "Ordinary active-task blocker",
+        );
+        ok(b, ...working);
+        expect(ok(b, ...ready).commit).toBe(git(b, "rev-parse", "HEAD"));
+      }
+    });
+  },
+);
+
+it("keeps the losing frozen submission intact after concurrent revision attempts", async () => {
+  await fixture(async ({ root, b, b2 }) => {
+    assign(root);
+    scope(root, "P1-01", ["first"]);
+    scope(root, "P1-02", ["second"]);
+    ok(b, ...claim);
+    ok(b, ...ready);
+    expect(second(root).code).toBe(0);
+    ok(b2, ...claimSecond);
+    ok(b2, ...ready.map((value) => (value === "P1-01" ? "P1-02" : value)));
+    const secondWorking = working.map((value) =>
+      value === "P1-01" ? "P1-02" : value,
+    );
+    const results = await Promise.all([
+      race(b, ...working),
+      race(b2, ...secondWorking),
+    ]);
+    expect(results.map((result) => result.code).sort()).toEqual([0, 1]);
+    const losingIndex = results.findIndex((result) => result.code !== 0);
+    const loser = losingIndex === 0 ? b : b2;
+    const task = losingIndex === 0 ? "P1-01" : "P1-02";
+    const frozen = ok(root, "board").tasks.find(
+      (entry: { task: string }) => entry.task === task,
+    );
+    expect(
+      cli(
+        loser,
+        "status",
+        "--agent",
+        "B",
+        "--task",
+        task,
+        "--state",
+        "blocked",
+        "--text",
+        "Concurrent frozen-tip bypass",
+      ).code,
+    ).toBe(1);
+    writeFileSync(
+      join(loser, "replacement.txt"),
+      "Independently authored hostile replacement\n",
+    );
+    git(loser, "add", ".");
+    git(loser, "commit", "-qm", "fix(test): attempt frozen-tip replacement");
+    expect(
+      cli(loser, ...ready.map((value) => (value === "P1-01" ? task : value)))
+        .code,
+    ).toBe(1);
+    expect(
+      ok(root, "board").tasks.find(
+        (entry: { task: string }) => entry.task === task,
+      ),
+    ).toEqual(frozen);
+  });
+});
