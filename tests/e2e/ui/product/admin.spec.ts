@@ -27,6 +27,21 @@ const settings = {
   retentionDays: 365,
 };
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/product/members", (route) =>
+    route.fulfill({
+      json: {
+        ok: true,
+        value: [
+          {
+            membershipId: "m1",
+            name: "Alex",
+            email: "alex@example.invalid",
+            role: "owner",
+          },
+        ],
+      },
+    }),
+  );
   await page.route("**/api/product/workspace", (route) =>
     route.fulfill({ json: { ok: true, value: workspace } }),
   );

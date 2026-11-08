@@ -135,6 +135,27 @@ function useLoad<T>(path: string) {
 }
 export function Settings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
   const data = useLoad<OrganizationSettings>("settings");
+  const owner = snapshot.organization.role === "owner";
+  const [staff, setStaff] = useState<Member[] | null>(null);
+  const [staffError, setStaffError] = useState("");
+  const reloadStaff = useCallback(async () => {
+    setStaff(null);
+    setStaffError("");
+    const result = await api<Member[]>("members");
+    if (result.ok)
+      setStaff(
+        result.value.filter(
+          (member) => member.role === "owner" || member.role === "coordinator",
+        ),
+      );
+    else
+      setStaffError(
+        "Team members could not be loaded. Try again before changing routing.",
+      );
+  }, []);
+  useEffect(() => {
+    if (owner) void reloadStaff();
+  }, [owner, reloadStaff]);
   return (
     <div className={styles.page}>
       <header className={styles.pageHeading}>
@@ -149,6 +170,14 @@ export function Settings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
           </span>
         )}
       </header>
+      {owner && staffError && (
+        <div role="alert" className={styles.error}>
+          <p>{staffError}</p>
+          <button type="button" onClick={() => void reloadStaff()}>
+            Retry team members
+          </button>
+        </div>
+      )}
       {data.loading ? (
         <p aria-live="polite" className={styles.loading}>
           Loading settings…
@@ -157,8 +186,9 @@ export function Settings({ snapshot }: { snapshot: WorkspaceSnapshot }) {
         <SettingsForm
           key={data.value.revision}
           initial={data.value}
-          owner={snapshot.organization.role === "owner"}
-          members={snapshot.members}
+          owner={owner}
+          members={owner ? (staff ?? []) : snapshot.members}
+          membersReady={!owner || staff !== null}
           reload={data.reload}
         />
       ) : (
@@ -176,27 +206,46 @@ function SettingsForm({
   initial,
   owner,
   members,
+  membersReady,
   reload,
 }: {
   initial: OrganizationSettings;
   owner: boolean;
   members: WorkspaceSnapshot["members"];
+  membersReady: boolean;
   reload: () => Promise<void>;
 }) {
   const writer = useWrite();
-  const [routing, setRouting] = useState(
-    JSON.stringify(initial.routing, null, 2),
+  const [routing, setRouting] = useState(() =>
+    Object.entries(initial.routing).map(([category, memberIds]) => ({
+      key: crypto.randomUUID(),
+      category,
+      memberIds: [...memberIds],
+    })),
   );
   const [localError, setLocalError] = useState("");
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
-    let routes: unknown;
-    try {
-      routes = JSON.parse(routing);
-    } catch {
-      setLocalError("Routing must be a JSON object.");
-      return;
+    if (!membersReady) return;
+    const routes: Record<string, string[]> = Object.create(null);
+    for (const row of routing) {
+      const category = row.category.trim();
+      if (!category || Object.hasOwn(routes, category)) {
+        setLocalError("Give each route a different, nonempty category.");
+        return;
+      }
+      if (
+        row.memberIds.some(
+          (id) => !members.some((member) => member.membershipId === id),
+        )
+      ) {
+        setLocalError(
+          "Remove unavailable team members from routing before saving.",
+        );
+        return;
+      }
+      routes[category] = [...new Set(row.memberIds)];
     }
     const draft = {
       expectedRevision: initial.revision,
@@ -232,7 +281,7 @@ function SettingsForm({
           onChange={writer.change}
           className={styles.settingsForm}
         >
-          <fieldset disabled={!owner || writer.busy}>
+          <fieldset disabled={!owner || writer.busy || !membersReady}>
             <section
               className={styles.settingsSection}
               aria-labelledby="routing-title"
@@ -270,20 +319,142 @@ function SettingsForm({
                     A short reference used to identify the active review rules.
                   </span>
                 </label>
-                <label className={styles.spanTwo}>
-                  Routing rules{" "}
-                  <span className={styles.help}>
-                    Use a JSON object with each category mapped to an array of
-                    member IDs.
-                  </span>
-                  <textarea
-                    aria-label="Routing (category to member ID array)"
-                    value={routing}
-                    onChange={(e) => setRouting(e.target.value)}
-                    rows={5}
-                    spellCheck={false}
-                  />
-                </label>
+                <section
+                  className={`${styles.spanTwo} ${styles.routingRules}`}
+                  aria-labelledby="routing-rules-title"
+                >
+                  <h3 id="routing-rules-title">Category routes</h3>
+                  <p className={styles.help}>
+                    Choose the people responsible for each category. Only owners
+                    and coordinators can receive routed needs.
+                  </p>
+                  {owner && !membersReady && (
+                    <p role="status">Loading team members…</p>
+                  )}
+                  {routing.length === 0 && (
+                    <p>
+                      No category routes yet. Unmatched needs use the fallback
+                      below.
+                    </p>
+                  )}
+                  {routing.map((row, index) => (
+                    <fieldset className={styles.routingRule} key={row.key}>
+                      <legend>Route {index + 1}</legend>
+                      <label>
+                        Category
+                        <input
+                          value={row.category}
+                          maxLength={100}
+                          required
+                          placeholder="For example, transport"
+                          onChange={(event) =>
+                            setRouting((rows) =>
+                              rows.map((item) =>
+                                item.key === row.key
+                                  ? { ...item, category: event.target.value }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                      <div className={styles.routingRecipients}>
+                        {members.map((member) => (
+                          <label key={member.membershipId}>
+                            <input
+                              type="checkbox"
+                              checked={row.memberIds.includes(
+                                member.membershipId,
+                              )}
+                              onChange={(event) =>
+                                setRouting((rows) =>
+                                  rows.map((item) =>
+                                    item.key === row.key
+                                      ? {
+                                          ...item,
+                                          memberIds: event.target.checked
+                                            ? [
+                                                ...new Set([
+                                                  ...item.memberIds,
+                                                  member.membershipId,
+                                                ]),
+                                              ]
+                                            : item.memberIds.filter(
+                                                (id) =>
+                                                  id !== member.membershipId,
+                                              ),
+                                        }
+                                      : item,
+                                  ),
+                                )
+                              }
+                            />
+                            {member.name}
+                          </label>
+                        ))}
+                        {row.memberIds
+                          .filter(
+                            (id) =>
+                              !members.some(
+                                (member) => member.membershipId === id,
+                              ),
+                          )
+                          .map((id) => (
+                            <div key={id} className={styles.help}>
+                              Unavailable team member
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  writer.change();
+                                  setRouting((rows) =>
+                                    rows.map((item) =>
+                                      item.key === row.key
+                                        ? {
+                                            ...item,
+                                            memberIds: item.memberIds.filter(
+                                              (value) => value !== id,
+                                            ),
+                                          }
+                                        : item,
+                                    ),
+                                  );
+                                }}
+                              >
+                                Remove unavailable member
+                              </button>
+                            </div>
+                          ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          writer.change();
+                          setRouting((rows) =>
+                            rows.filter((item) => item.key !== row.key),
+                          );
+                        }}
+                      >
+                        Remove route
+                      </button>
+                    </fieldset>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      writer.change();
+                      setRouting((rows) => [
+                        ...rows,
+                        {
+                          key: crypto.randomUUID(),
+                          category: "",
+                          memberIds: [],
+                        },
+                      ]);
+                    }}
+                  >
+                    Add category route
+                  </button>
+                </section>
                 <label>
                   Fallback member
                   <select

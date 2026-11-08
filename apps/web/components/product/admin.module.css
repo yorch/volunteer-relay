@@ -1258,3 +1258,30 @@
   color: var(--admin-muted);
   font-size: 0.8rem;
 }
+
+.routingRules {
+  display: grid;
+  gap: 0.9rem;
+}
+.settingsForm .routingRule {
+  border: 1px solid #dce5dc;
+  border-radius: 10px;
+  padding: 1rem;
+  display: grid;
+  gap: 0.8rem;
+}
+.routingRule legend {
+  padding: 0 0.35rem;
+  font-weight: 700;
+}
+.routingRecipients {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+}
+.routingRecipients label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+}
