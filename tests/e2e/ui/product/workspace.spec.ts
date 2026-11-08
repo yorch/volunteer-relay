@@ -408,7 +408,7 @@ test("report filters and CSV use the same query", async ({ page }) => {
   await page.getByLabel("From date").fill("2026-01-01");
   await page.getByLabel("To date").fill("2026-01-31");
   await page.getByLabel("Program").fill("Garden");
-  await page.getByLabel("Volunteer", { exact: true }).selectOption("member-1");
+  await page.getByLabel("Volunteer", { exact: false }).selectOption("member-1");
   await page.getByRole("button", { name: "Apply filters" }).click();
   await expect.poll(() => urls.length).toBe(1);
   const expected = new URL(urls[0]).search;
@@ -416,4 +416,129 @@ test("report filters and CSV use the same query", async ({ page }) => {
     page.getByRole("link", { name: "Download aggregate CSV" }),
   ).toHaveAttribute("href", `/api/product/reports.csv${expected}`);
   await expect(page.getByText("Unknown", { exact: true })).toBeVisible();
+});
+
+test("import preview blocks errors and requires acknowledgment for duplicates", async ({
+  page,
+}) => {
+  await page.route("**/api/product/workspace", (route) =>
+    route.fulfill({
+      json: {
+        ok: true,
+        value: {
+          ...snapshot,
+          organization: { ...organization, role: "coordinator" },
+          members: [{ membershipId: "member-1", name: "Alex" }],
+        },
+      },
+    }),
+  );
+  await page.route("**/api/auth/organizations", (route) =>
+    route.fulfill({ status: 503, json: { ok: false } }),
+  );
+  let calls = 0;
+  let confirmed: Record<string, unknown> = {};
+  await page.route("**/api/product/import-preview", (route) => {
+    calls++;
+    return route.fulfill({
+      json: {
+        ok: true,
+        value: {
+          sources: [],
+          errors:
+            calls === 1 ? [{ row: 1, code: "bad", message: "Bad date" }] : [],
+          ambiguousDuplicates:
+            calls === 1 ? [] : [{ sourceIds: ["one", "two"], rows: [1, 2] }],
+        },
+      },
+    });
+  });
+  await page.route("**/api/product/import", (route) => {
+    confirmed = route.request().postDataJSON();
+    return route.fulfill({
+      json: {
+        ok: true,
+        value: {
+          receipts: [
+            {
+              sourceId: "one",
+              revision: 1,
+              status: "received",
+              correlationId: "c",
+            },
+          ],
+        },
+      },
+    });
+  });
+  await page.goto("/workspace/import");
+  await page
+    .getByLabel("Import text")
+    .fill("id,author,text,timestamp\n1,Alex,Hello,2026-01-01");
+  await page.getByRole("button", { name: "Preview import" }).click();
+  await expect(page.getByText("Row 1: Bad date (bad)")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Confirm import" }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Preview import" }).click();
+  await expect(
+    page.getByRole("button", { name: "Confirm import" }),
+  ).toBeDisabled();
+  await page.getByLabel("Preserve possible duplicates for review").check();
+  await page.getByRole("button", { name: "Confirm import" }).click();
+  await expect(page.getByText("1 updates received.")).toBeVisible();
+  expect(confirmed).toMatchObject({
+    format: "csv",
+    dateFormat: "ISO",
+    timezone: "UTC",
+    authorMapping: {},
+    allowAmbiguous: true,
+  });
+  expect(confirmed.idempotencyKey).toEqual(expect.any(String));
+});
+
+test("photo retries reuse the submission key", async ({ page }) => {
+  await page.route("**/api/product/workspace", (route) =>
+    route.fulfill({ json: { ok: true, value: snapshot } }),
+  );
+  await page.route("**/api/auth/organizations", (route) =>
+    route.fulfill({ status: 503, json: { ok: false } }),
+  );
+  const bodies: string[] = [];
+  await page.route("**/api/product/source-photo", async (route) => {
+    bodies.push(route.request().postData() ?? "");
+    if (bodies.length === 1) await route.abort();
+    else
+      await route.fulfill({
+        json: {
+          ok: true,
+          value: {
+            sourceId: "photo-1",
+            revision: 1,
+            status: "received",
+            correlationId: "c",
+          },
+        },
+      });
+  });
+  await page.goto("/workspace/volunteer");
+  await page.getByLabel("Your update").fill("Garden photo");
+  await page.getByLabel("Photo", { exact: false }).setInputFiles({
+    name: "garden.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("synthetic"),
+  });
+  await page.getByRole("button", { name: "Send update" }).click();
+  await expect(
+    page.getByText("The service is unavailable. Please try again."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Send update" }).click();
+  await expect(
+    page.getByText("Receipt: photo-1", { exact: false }),
+  ).toBeVisible();
+  const keys = bodies.map(
+    (body) => body.match(/name="idempotencyKey"\r\n\r\n([^\r]+)/)?.[1],
+  );
+  expect(keys[0]).toBeTruthy();
+  expect(keys[0]).toBe(keys[1]);
 });

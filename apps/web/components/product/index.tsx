@@ -5,8 +5,10 @@ import {
   type NeedRecord,
   type ProductReport,
   productEndpoints,
+  type Receipt,
   type ReviewQueueEntry,
   reportQuerySchema,
+  type SourceEnvelope,
   type WorkspaceSnapshot,
 } from "@relay/contracts";
 import {
@@ -21,7 +23,13 @@ import { loadOrganizations, mutateAuth } from "../auth/transport";
 import { StaffShell, VolunteerShell } from "../layout";
 import styles from "./product.module.css";
 
-type Page = "volunteer" | "inbox" | "activities" | "needs" | "reports";
+type Page =
+  | "volunteer"
+  | "inbox"
+  | "activities"
+  | "needs"
+  | "reports"
+  | "import";
 type ResponseResult<T> =
   | { ok: true; value: T }
   | { ok: false; error: { code: string } };
@@ -201,6 +209,7 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
         { href: "/workspace/inbox", label: "Source inbox" },
         { href: "/workspace/activities", label: "Activities" },
         { href: "/workspace/needs", label: "Needs" },
+        { href: "/workspace/import", label: "Import" },
         { href: "/workspace/reports", label: "Summary" },
       ]
     : [{ href: "/workspace/reports", label: "Summary" }];
@@ -227,13 +236,15 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
           <a href="/workspace">Go to your workspace</a>
         </>
       ) : activePage === "volunteer" ? (
-        <Volunteer snapshot={snapshot} mutate={mutate} />
+        <Volunteer snapshot={snapshot} mutate={mutate} refresh={refresh} />
       ) : activePage === "inbox" ? (
         <Inbox snapshot={snapshot} mutate={mutate} refresh={refresh} />
       ) : activePage === "activities" ? (
         <Activities snapshot={snapshot} mutate={mutate} />
       ) : activePage === "needs" ? (
         <Needs snapshot={snapshot} mutate={mutate} />
+      ) : activePage === "import" ? (
+        <Import members={snapshot.members} />
       ) : (
         <Summary snapshot={snapshot} />
       )}
@@ -271,17 +282,62 @@ function Card({ children }: { children: ReactNode }) {
 function Volunteer({
   snapshot,
   mutate,
+  refresh,
 }: {
   snapshot: WorkspaceSnapshot;
   mutate: Mutate;
+  refresh: () => Promise<void>;
 }) {
   const [text, setText] = useState("");
   const [receipt, setReceipt] = useState("");
   const [pending, setPending] = useState(false);
   const [submissionKey, setSubmissionKey] = useState(key);
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoError, setPhotoError] = useState("");
+  const photoKey = useRef<string | null>(null);
+  const photoInput = useRef<HTMLInputElement>(null);
   async function submit(e: FormEvent) {
     e.preventDefault();
     setPending(true);
+    if (photo) {
+      if (
+        photo.size > 10 * 1024 * 1024 ||
+        !["image/png", "image/jpeg", "image/webp"].includes(photo.type)
+      ) {
+        setPhotoError("Choose a PNG, JPEG or WebP photo no larger than 10 MB.");
+        setPending(false);
+        return;
+      }
+      photoKey.current ??= key();
+      const form = new FormData();
+      form.set("text", text);
+      form.set("file", photo);
+      form.set("idempotencyKey", photoKey.current);
+      try {
+        const response = await fetch("/api/product/source-photo", {
+          method: "POST",
+          credentials: "same-origin",
+          body: form,
+        });
+        const result = (await response.json()) as ResponseResult<Receipt>;
+        if (!result.ok) setPhotoError(errorMessage(result.error.code));
+        else {
+          setReceipt(
+            `Receipt: ${result.value.sourceId} · revision ${result.value.revision} · received`,
+          );
+          setText("");
+          setPhoto(null);
+          if (photoInput.current) photoInput.current.value = "";
+          photoKey.current = null;
+          setPhotoError("");
+          await refresh();
+        }
+      } catch {
+        setPhotoError("The service is unavailable. Please try again.");
+      }
+      setPending(false);
+      return;
+    }
     const ok = await mutate(
       productEndpoints.sources,
       { schemaVersion: 1, idempotencyKey: submissionKey, text },
@@ -311,9 +367,27 @@ function Volunteer({
             required
             maxLength={20000}
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              photoKey.current = null;
+            }}
             rows={6}
           />
+          <label htmlFor="photo">
+            Photo (optional; PNG, JPEG or WebP, up to 10 MB)
+          </label>
+          <input
+            id="photo"
+            ref={photoInput}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            onChange={(e) => {
+              setPhoto(e.target.files?.[0] ?? null);
+              photoKey.current = null;
+              setPhotoError("");
+            }}
+          />
+          {photoError && <p role="alert">{photoError}</p>}
           <button disabled={pending} type="submit">
             {pending ? "Sending…" : "Send update"}
           </button>
@@ -1005,6 +1079,254 @@ function Need({
         <button type="submit">Update need</button>
       </form>
     </Card>
+  );
+}
+type ImportDraft = {
+  format: "json" | "csv" | "whatsapp";
+  text: string;
+  dateFormat: "ISO" | "YYYY-MM-DD" | "MM/DD/YYYY" | "DD/MM/YYYY";
+  timezone: string;
+  authorMapping: Record<string, string | null>;
+};
+type ImportPreview = {
+  sources: SourceEnvelope[];
+  errors: Array<{ row: number; code: string; message: string }>;
+  ambiguousDuplicates: Array<{ sourceIds: string[]; rows: number[] }>;
+};
+function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
+  const [format, setFormat] = useState<ImportDraft["format"]>("csv");
+  const [text, setText] = useState("");
+  const [dateFormat, setDateFormat] =
+    useState<ImportDraft["dateFormat"]>("ISO");
+  const [timezone, setTimezone] = useState("UTC");
+  const [mappingText, setMappingText] = useState("{}");
+  const [preview, setPreview] = useState<ImportPreview | null>(null);
+  const [draft, setDraft] = useState<ImportDraft | null>(null);
+  const [ack, setAck] = useState(false);
+  const [error, setError] = useState("");
+  const [receipts, setReceipts] = useState<Receipt[] | null>(null);
+  const [pending, setPending] = useState(false);
+  const attempt = useRef<string | null>(null);
+  function invalidate() {
+    setPreview(null);
+    setDraft(null);
+    setAck(false);
+    setReceipts(null);
+    attempt.current = null;
+  }
+  async function previewImport(e: FormEvent) {
+    e.preventDefault();
+    let authorMapping: Record<string, string | null>;
+    try {
+      const parsed: unknown = JSON.parse(mappingText);
+      if (
+        !parsed ||
+        typeof parsed !== "object" ||
+        Array.isArray(parsed) ||
+        Object.values(parsed).some(
+          (v) =>
+            v !== null &&
+            (typeof v !== "string" ||
+              !members.some((m) => m.membershipId === v)),
+        )
+      )
+        throw new Error();
+      authorMapping = parsed as Record<string, string | null>;
+    } catch {
+      setError(
+        "Author mapping must be a JSON object of author names to listed member IDs or null.",
+      );
+      return;
+    }
+    const next = { format, text, dateFormat, timezone, authorMapping };
+    setPending(true);
+    setError("");
+    const result = await request<ImportPreview>(
+      "/api/product/import-preview",
+      next,
+    );
+    if (result.ok) {
+      setDraft(next);
+      setPreview(result.value);
+      setAck(false);
+      attempt.current = null;
+    } else setError(errorMessage(result.error.code));
+    setPending(false);
+  }
+  async function confirm() {
+    if (
+      !preview ||
+      !draft ||
+      preview.errors.length ||
+      (preview.ambiguousDuplicates.length && !ack)
+    )
+      return;
+    attempt.current ??= key();
+    setPending(true);
+    setError("");
+    const result = await request<{ receipts: Receipt[] }>(
+      "/api/product/import",
+      {
+        ...draft,
+        idempotencyKey: attempt.current,
+        ...(ack ? { allowAmbiguous: true } : {}),
+      },
+    );
+    if (result.ok) {
+      setReceipts(result.value.receipts);
+      setPreview(null);
+      setDraft(null);
+      attempt.current = null;
+    } else setError(errorMessage(result.error.code));
+    setPending(false);
+  }
+  return (
+    <>
+      <h1>Import updates</h1>
+      <p>
+        Preview rows and author mappings before submitting. Possible duplicates
+        are preserved for review.
+      </p>
+      <Card>
+        <form onSubmit={previewImport} onChange={invalidate}>
+          <label>
+            Format
+            <select
+              value={format}
+              onChange={(e) =>
+                setFormat(e.target.value as ImportDraft["format"])
+              }
+            >
+              <option value="csv">CSV</option>
+              <option value="json">JSON</option>
+              <option value="whatsapp">WhatsApp</option>
+            </select>
+          </label>
+          <label>
+            Import text
+            <textarea
+              required
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              rows={8}
+            />
+          </label>
+          <label>
+            Date format
+            <select
+              value={dateFormat}
+              onChange={(e) =>
+                setDateFormat(e.target.value as ImportDraft["dateFormat"])
+              }
+            >
+              <option>ISO</option>
+              <option>YYYY-MM-DD</option>
+              <option>MM/DD/YYYY</option>
+              <option>DD/MM/YYYY</option>
+            </select>
+          </label>
+          <label>
+            Timezone
+            <input
+              required
+              value={timezone}
+              onChange={(e) => setTimezone(e.target.value)}
+            />
+          </label>
+          <label>
+            Author mapping (JSON: author name to member ID or null)
+            <textarea
+              value={mappingText}
+              onChange={(e) => setMappingText(e.target.value)}
+            />
+          </label>
+          <p>
+            Available member IDs:{" "}
+            {members.length
+              ? members.map((m) => `${m.name}: ${m.membershipId}`).join(", ")
+              : "None"}
+          </p>
+          <p>Default fields: id, author, text, timestamp.</p>
+          <button type="submit" disabled={pending}>
+            Preview import
+          </button>
+        </form>
+      </Card>
+      {error && <p role="alert">{error}</p>}
+      {preview && (
+        <Card>
+          <h2>Preview</h2>
+          <p>{preview.sources.length} sources ready to review.</p>
+          <ul>
+            {preview.sources.map((source) => (
+              <li key={`${source.sourceId}-${source.revision}`}>
+                {source.author.externalIdentity}: {source.text}
+              </li>
+            ))}
+          </ul>
+          {preview.errors.length > 0 && (
+            <>
+              <h3>Errors</h3>
+              <ul>
+                {preview.errors.map((e) => (
+                  <li key={`${e.row}-${e.code}-${e.message}`}>
+                    Row {e.row}: {e.message} ({e.code})
+                  </li>
+                ))}
+              </ul>
+              <p>Fix errors before confirming.</p>
+            </>
+          )}
+          {preview.ambiguousDuplicates.length > 0 && (
+            <>
+              <h3>Possible duplicates</h3>
+              <ul>
+                {preview.ambiguousDuplicates.map((d) => (
+                  <li key={JSON.stringify(d)}>
+                    Rows {d.rows.join(", ")} · sources {d.sourceIds.join(", ")}
+                  </li>
+                ))}
+              </ul>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={ack}
+                  onChange={(e) => {
+                    setAck(e.target.checked);
+                    attempt.current = null;
+                  }}
+                />{" "}
+                Preserve possible duplicates for review
+              </label>
+            </>
+          )}
+          <button
+            type="button"
+            disabled={
+              pending ||
+              preview.errors.length > 0 ||
+              (preview.ambiguousDuplicates.length > 0 && !ack)
+            }
+            onClick={() => void confirm()}
+          >
+            Confirm import
+          </button>
+        </Card>
+      )}
+      {receipts && (
+        <Card>
+          <h2>Import received</h2>
+          <p>{receipts.length} updates received.</p>
+          <ul>
+            {receipts.map((r) => (
+              <li key={`${r.sourceId}-${r.revision}`}>
+                {r.sourceId} · revision {r.revision}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+    </>
   );
 }
 function Summary({ snapshot }: { snapshot: WorkspaceSnapshot }) {
