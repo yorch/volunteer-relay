@@ -100,6 +100,453 @@ function validEvidence(
 
 /** Durable processing and human review. Worker-only methods are internal server APIs. */
 export function createProcessingRepository(db: Database) {
+  async function executeDecision(
+    context: TenantContext,
+    command: ReviewDecision,
+    automaticSource?: SourceEnvelope,
+  ): Promise<Result<ReviewOutcome>> {
+    if (!reviewDecisionSchema.safeParse(command).success)
+      return fail(context, "VALIDATION", "Invalid review decision");
+    try {
+      return await db.transaction(
+        async (tx): Promise<Result<ReviewOutcome>> => {
+          if (!automaticSource && !staff(await authorize(tx, context)))
+            return fail(context, "FORBIDDEN", "Review authority required");
+          // Serialize identical idempotency keys across concurrent reviewers.
+          await tx.execute(
+            sql`select pg_advisory_xact_lock(hashtextextended(${json([context.organizationId, command.idempotencyKey])}, 0))`,
+          );
+          const prior = await tx.execute(
+            sql`select command,outcome from review_decision where organization_id=${context.organizationId} and idempotency_key=${command.idempotencyKey}`,
+          );
+          if (prior.rows[0])
+            return equal(prior.rows[0].command, command)
+              ? success(prior.rows[0].outcome as ReviewOutcome)
+              : fail(context, "CONFLICT", "Idempotency key already used");
+          const found = await tx.execute(
+            sql`select source_id from extraction_run where organization_id=${context.organizationId} and run_id=${command.runId}`,
+          );
+          if (!found.rows[0])
+            return fail(context, "NOT_FOUND", "Review not found");
+          const sourceId = found.rows[0].source_id as string;
+          await tx.execute(
+            sql`select id from source where organization_id=${context.organizationId} and id=${sourceId} for update`,
+          );
+          const rows = await tx.execute(
+            sql`select r.*,s.envelope from extraction_run r join source_revision s on (s.organization_id,s.source_id,s.revision)=(r.organization_id,r.source_id,r.source_revision) where r.organization_id=${context.organizationId} and r.run_id=${command.runId} for update of r`,
+          );
+          const row = rows.rows[0];
+          if (!row) throw new Abort("NOT_FOUND", "Review not found");
+          if (
+            row.status !== "review" ||
+            row.revision !== command.expectedRevision
+          )
+            throw new Abort("CONFLICT", "Review revision changed");
+          const latest = await tx.execute(
+            sql`select max(revision) as revision from source_revision where organization_id=${context.organizationId} and source_id=${sourceId}`,
+          );
+          if (latest.rows[0]?.revision !== row.source_revision)
+            throw new Abort("CONFLICT", "Source revision is stale");
+          const original = row.proposal as ExtractionProposal;
+          const source = row.envelope as SourceEnvelope;
+          if (
+            !extractionProposalSchema.safeParse(original).success ||
+            !validEvidence(original, source)
+          )
+            throw new Abort("VALIDATION", "Stored proposal is invalid");
+          if (automaticSource) {
+            if (!equal(automaticSource, source))
+              throw new Abort("CONFLICT", "Automatic source changed");
+            await requireValidatedPolicy(
+              tx,
+              context.organizationId,
+              original,
+              source,
+            );
+          }
+          const proposal = {
+            ...original,
+            items: command.replacementItems ?? original.items,
+          };
+          if (!validEvidence(proposal, source))
+            throw new Abort(
+              "VALIDATION",
+              "Edited proposal evidence is invalid",
+            );
+          const editReason =
+            command.replacementItems === undefined ? null : command.reason;
+          if (
+            command.activityLinks !== undefined &&
+            (command.decision !== "accept" || !command.reason.trim())
+          )
+            throw new Abort(
+              "VALIDATION",
+              "Activity links require a staff reason",
+            );
+          if (command.decision === "accept") {
+            const links = command.activityLinks ?? {};
+            const activityKeys = proposal.items
+              .filter((item) => item.kind === "activity")
+              .map((item) => item.key);
+            if (Object.keys(links).some((key) => !activityKeys.includes(key)))
+              throw new Abort("VALIDATION", "Activity link key is invalid");
+            if (
+              new Set(Object.values(links).map((link) => link.activityId))
+                .size !== Object.keys(links).length
+            )
+              throw new Abort("VALIDATION", "Activity links must be distinct");
+            if (
+              proposal.unresolved.some(
+                (item) => item.field === "duplicateCandidate",
+              ) &&
+              (activityKeys.length === 0 ||
+                activityKeys.some((key) => !Object.hasOwn(links, key)))
+            )
+              throw new Abort(
+                "CONFLICT",
+                "Duplicate candidate requires an explicit activity link",
+              );
+            const corrections = proposal.items.filter(
+              (item) => item.kind === "correction",
+            );
+            const priorRun = await tx.execute(
+              sql`select r.run_id,r.proposal,d.command from extraction_run r join review_decision d on (d.organization_id,d.run_id)=(r.organization_id,r.run_id) where r.organization_id=${context.organizationId} and r.source_id=${sourceId} and r.source_revision<${source.revision} and r.status='accepted' order by r.source_revision desc limit 1`,
+            );
+            if (
+              Object.keys(links).length > 0 &&
+              (corrections.length > 0 || priorRun.rows[0])
+            )
+              throw new Abort(
+                "CONFLICT",
+                "Activity links require a new source review",
+              );
+            if (corrections.length > 0) {
+              if (corrections.length !== proposal.items.length)
+                throw new Abort(
+                  "CONFLICT",
+                  "Corrections cannot be mixed with new records",
+                );
+              const targets = new Set<string>();
+              for (const item of corrections) {
+                if (
+                  item.kind !== "correction" ||
+                  !item.targetId ||
+                  !item.expectedRevision ||
+                  targets.has(item.targetId) ||
+                  (item.durationMinutes !== null &&
+                    item.durationMinutes > 1440) ||
+                  !item.reason.trim()
+                )
+                  throw new Abort("VALIDATION", "Invalid correction");
+                targets.add(item.targetId);
+                const lineage = await tx.execute(
+                  sql`select 1 from review_effect e join extraction_run r on (r.organization_id,r.run_id)=(e.organization_id,e.run_id) where e.organization_id=${context.organizationId} and r.source_id=${sourceId} and r.source_revision<${source.revision} and r.status='accepted' and e.kind='contribution' and e.aggregate_id=${item.targetId} and e.aggregate_revision=${item.expectedRevision} limit 1`,
+                );
+                if (
+                  !lineage.rows.length &&
+                  (command.replacementItems === undefined ||
+                    !command.reason.trim())
+                )
+                  throw new Abort(
+                    "CONFLICT",
+                    "Correction requires explicit staff authorization",
+                  );
+                const auditReason = json({
+                  sourceId,
+                  sourceRevision: source.revision,
+                  staffReason: command.reason,
+                  proposalReason: item.reason,
+                });
+                const result = await correctContribution(
+                  tx,
+                  context,
+                  item.targetId,
+                  item.expectedRevision,
+                  item.durationMinutes,
+                  auditReason,
+                  new Date(),
+                );
+                await addEffect(
+                  tx,
+                  context.organizationId,
+                  command.runId,
+                  item.key,
+                  "contribution",
+                  item.targetId,
+                  result,
+                );
+              }
+            } else if (priorRun.rows[0]) {
+              await reconcile(
+                tx,
+                context,
+                command.runId,
+                proposal,
+                priorRun.rows[0],
+                editReason,
+              );
+            } else {
+              const activities = new Map<string, string>();
+              const participants = new Set<string>();
+              for (const item of proposal.items) {
+                if (item.kind === "activity") {
+                  if (
+                    (item.localDate === null) !==
+                    (item.datePrecision === "unknown")
+                  )
+                    throw new Abort("VALIDATION", "Invalid activity date");
+                  const link = links[item.key];
+                  activities.set(
+                    item.key,
+                    link ? link.activityId : randomUUID(),
+                  );
+                }
+              }
+              for (const item of proposal.items) {
+                if (item.kind !== "contribution") continue;
+                if (
+                  !activities.has(item.activityKey) ||
+                  (item.durationMinutes !== null && item.durationMinutes > 1440)
+                )
+                  throw new Abort("VALIDATION", "Invalid contribution");
+                if (item.membershipId !== null) {
+                  const key = json([item.activityKey, item.membershipId]);
+                  if (participants.has(key))
+                    throw new Abort("VALIDATION", "Duplicate contribution");
+                  participants.add(key);
+                  const member = await tx.execute(
+                    sql`select id from member where organization_id=${context.organizationId} and id=${item.membershipId} for key share`,
+                  );
+                  if (!member.rows.length)
+                    throw new Abort(
+                      "VALIDATION",
+                      "Contribution membership unavailable",
+                    );
+                  await tx.execute(
+                    sql`insert into source_author (organization_id,membership_id,current_membership_id) values (${context.organizationId},${item.membershipId},${item.membershipId}) on conflict (organization_id,membership_id) do update set current_membership_id=excluded.current_membership_id`,
+                  );
+                }
+              }
+              for (const [key, link] of Object.entries(links).sort(([a], [b]) =>
+                a.localeCompare(b),
+              )) {
+                const rows = await tx.execute(
+                  sql`select revision from activity where organization_id=${context.organizationId} and id=${link.activityId} for update`,
+                );
+                if (!rows.rows.length)
+                  throw new Abort("VALIDATION", "Linked activity unavailable");
+                if (rows.rows[0]?.revision !== link.expectedRevision)
+                  throw new Abort(
+                    "CONFLICT",
+                    "Linked activity revision changed",
+                  );
+                if (!activities.has(key))
+                  throw new Abort("VALIDATION", "Activity link key is invalid");
+              }
+              const now = new Date();
+              const timestamp = now.toISOString();
+              const origin = {
+                kind: "source",
+                sourceId,
+                sourceRevision: source.revision,
+              };
+              for (const item of proposal.items) {
+                if (item.kind === "activity") {
+                  const id = activities.get(item.key) as string;
+                  const link = links[item.key];
+                  if (link) {
+                    await addEffect(
+                      tx,
+                      context.organizationId,
+                      command.runId,
+                      item.key,
+                      "activity",
+                      id,
+                      link.expectedRevision,
+                    );
+                    continue;
+                  }
+                  const record = {
+                    schemaVersion: 1,
+                    organizationId: context.organizationId,
+                    activityId: id,
+                    revision: 1,
+                    kind: item.activityKind,
+                    localDate: item.localDate,
+                    datePrecision: item.datePrecision,
+                    beneficiaryReference: item.beneficiaryReference,
+                    origin,
+                    createdAt: timestamp,
+                    updatedAt: timestamp,
+                  };
+                  await tx.execute(
+                    sql`insert into activity (organization_id,id,revision,kind,local_date,date_precision,beneficiary_reference,origin_kind,origin_source_id,origin_source_revision,created_at,updated_at) values (${context.organizationId},${id},1,${item.activityKind},${item.localDate},${item.datePrecision},${item.beneficiaryReference},'source',${sourceId},${source.revision},${now},${now})`,
+                  );
+                  await audit(
+                    tx,
+                    context,
+                    "activity",
+                    id,
+                    record,
+                    now,
+                    editReason,
+                  );
+                  await addEffect(
+                    tx,
+                    context.organizationId,
+                    command.runId,
+                    item.key,
+                    "activity",
+                    id,
+                    1,
+                  );
+                } else if (item.kind === "contribution") {
+                  const activityId = activities.get(item.activityKey) as string;
+                  if (links[item.activityKey] && item.membershipId !== null) {
+                    const existing = await tx.execute(
+                      sql`select id,revision,duration_minutes from contribution where organization_id=${context.organizationId} and activity_id=${activityId} and membership_id=${item.membershipId} and status in ('pending','approved') for update`,
+                    );
+                    if (existing.rows[0]) {
+                      if (
+                        existing.rows[0].duration_minutes !==
+                        item.durationMinutes
+                      )
+                        throw new Abort(
+                          "CONFLICT",
+                          "Existing contribution duration differs; use a correction",
+                        );
+                      await addEffect(
+                        tx,
+                        context.organizationId,
+                        command.runId,
+                        item.key,
+                        "contribution",
+                        existing.rows[0].id as string,
+                        existing.rows[0].revision as number,
+                      );
+                      continue;
+                    }
+                  }
+                  const id = randomUUID();
+                  const status =
+                    item.membershipId !== null && item.durationMinutes !== null
+                      ? "approved"
+                      : "pending";
+                  const record = {
+                    schemaVersion: 1,
+                    organizationId: context.organizationId,
+                    contributionId: id,
+                    activityId,
+                    revision: 1,
+                    membershipId: item.membershipId,
+                    durationMinutes: item.durationMinutes,
+                    status,
+                    origin,
+                    createdAt: timestamp,
+                    updatedAt: timestamp,
+                  };
+                  await tx.execute(
+                    sql`insert into contribution (organization_id,id,revision,activity_id,membership_id,duration_minutes,status,origin_kind,origin_source_id,origin_source_revision,created_at,updated_at) values (${context.organizationId},${id},1,${activityId},${item.membershipId},${item.durationMinutes},${status},'source',${sourceId},${source.revision},${now},${now})`,
+                  );
+                  await audit(
+                    tx,
+                    context,
+                    "contribution",
+                    id,
+                    record,
+                    now,
+                    editReason,
+                  );
+                  await addEffect(
+                    tx,
+                    context.organizationId,
+                    command.runId,
+                    item.key,
+                    "contribution",
+                    id,
+                    1,
+                  );
+                  if (status === "approved")
+                    await event(
+                      tx,
+                      context,
+                      "ledger.changed",
+                      id,
+                      { contributionId: id, reason: "approved" },
+                      now,
+                    );
+                } else if (item.kind === "need") {
+                  const id = randomUUID();
+                  const record = {
+                    schemaVersion: 1,
+                    organizationId: context.organizationId,
+                    needId: id,
+                    revision: 1,
+                    category: item.category,
+                    urgency: item.urgency,
+                    summary: item.summary,
+                    provisional: item.provisional,
+                    status: "new",
+                    ownerMembershipId: null,
+                    dueAt: null,
+                    acknowledgeBy: null,
+                    acknowledgedAt: null,
+                    acknowledgedByMembershipId: null,
+                    resolvedAt: null,
+                    resolution: null,
+                    origin,
+                    createdAt: timestamp,
+                    updatedAt: timestamp,
+                  };
+                  await tx.execute(
+                    sql`insert into need (organization_id,id,revision,category,urgency,summary,provisional,status,origin_kind,origin_source_id,origin_source_revision,created_at,updated_at) values (${context.organizationId},${id},1,${item.category},${item.urgency},${item.summary},${item.provisional},'new','source',${sourceId},${source.revision},${now},${now})`,
+                  );
+                  await audit(tx, context, "need", id, record, now, editReason);
+                  await addEffect(
+                    tx,
+                    context.organizationId,
+                    command.runId,
+                    item.key,
+                    "need",
+                    id,
+                    1,
+                  );
+                  await event(
+                    tx,
+                    context,
+                    "need.changed",
+                    id,
+                    {
+                      needId: id,
+                      status: "new",
+                      provisional: item.provisional,
+                    },
+                    now,
+                  );
+                }
+              }
+            }
+          }
+          const outcome = { revision: command.expectedRevision + 1 };
+          await tx.execute(
+            sql`update extraction_run set status=${command.decision === "accept" ? "accepted" : "rejected"},revision=${outcome.revision} where organization_id=${context.organizationId} and run_id=${command.runId}`,
+          );
+          await tx.execute(
+            sql`insert into review_decision (organization_id,idempotency_key,run_id,command,outcome,actor,correlation_id) values (${context.organizationId},${command.idempotencyKey},${command.runId},${json(command)}::jsonb,${json(outcome)}::jsonb,${json(context.actor)}::jsonb,${context.correlationId})`,
+          );
+          return success(outcome);
+        },
+      );
+    } catch (error) {
+      return error instanceof Abort
+        ? fail(context, error.code, error.message)
+        : fail(
+            context,
+            "DEPENDENCY_UNAVAILABLE",
+            "Processing storage unavailable",
+          );
+    }
+  }
   return {
     async persistProposal(
       context: TenantContext,
@@ -286,457 +733,49 @@ export function createProcessingRepository(db: Database) {
       context: TenantContext,
       command: ReviewDecision,
     ): Promise<Result<ReviewOutcome>> {
-      if (!reviewDecisionSchema.safeParse(command).success)
-        return fail(context, "VALIDATION", "Invalid review decision");
+      return executeDecision(context, command);
+    },
+    async applyValidatedPolicy(
+      source: SourceEnvelope,
+    ): Promise<Result<{ applied: boolean }>> {
+      const context: TenantContext = {
+        organizationId: source.organizationId,
+        actor: { kind: "system", service: "worker" },
+        correlationId: `policy:${source.sourceId}`,
+      };
+      if (!sourceEnvelopeSchema.safeParse(source).success)
+        return fail(context, "VALIDATION", "Invalid automatic source");
       try {
-        return await db.transaction(
-          async (tx): Promise<Result<ReviewOutcome>> => {
-            if (!staff(await authorize(tx, context)))
-              return fail(context, "FORBIDDEN", "Review authority required");
-            // Serialize identical idempotency keys across concurrent reviewers.
-            await tx.execute(
-              sql`select pg_advisory_xact_lock(hashtextextended(${json([context.organizationId, command.idempotencyKey])}, 0))`,
-            );
-            const prior = await tx.execute(
-              sql`select command,outcome from review_decision where organization_id=${context.organizationId} and idempotency_key=${command.idempotencyKey}`,
-            );
-            if (prior.rows[0])
-              return equal(prior.rows[0].command, command)
-                ? success(prior.rows[0].outcome as ReviewOutcome)
-                : fail(context, "CONFLICT", "Idempotency key already used");
-            const found = await tx.execute(
-              sql`select source_id from extraction_run where organization_id=${context.organizationId} and run_id=${command.runId}`,
-            );
-            if (!found.rows[0])
-              return fail(context, "NOT_FOUND", "Review not found");
-            const sourceId = found.rows[0].source_id as string;
-            await tx.execute(
-              sql`select id from source where organization_id=${context.organizationId} and id=${sourceId} for update`,
-            );
-            const rows = await tx.execute(
-              sql`select r.*,s.envelope from extraction_run r join source_revision s on (s.organization_id,s.source_id,s.revision)=(r.organization_id,r.source_id,r.source_revision) where r.organization_id=${context.organizationId} and r.run_id=${command.runId} for update of r`,
-            );
-            const row = rows.rows[0];
-            if (!row) throw new Abort("NOT_FOUND", "Review not found");
-            if (
-              row.status !== "review" ||
-              row.revision !== command.expectedRevision
-            )
-              throw new Abort("CONFLICT", "Review revision changed");
-            const latest = await tx.execute(
-              sql`select max(revision) as revision from source_revision where organization_id=${context.organizationId} and source_id=${sourceId}`,
-            );
-            if (latest.rows[0]?.revision !== row.source_revision)
-              throw new Abort("CONFLICT", "Source revision is stale");
-            const original = row.proposal as ExtractionProposal;
-            const source = row.envelope as SourceEnvelope;
-            if (
-              !extractionProposalSchema.safeParse(original).success ||
-              !validEvidence(original, source)
-            )
-              throw new Abort("VALIDATION", "Stored proposal is invalid");
-            const proposal = {
-              ...original,
-              items: command.replacementItems ?? original.items,
-            };
-            if (!validEvidence(proposal, source))
-              throw new Abort(
-                "VALIDATION",
-                "Edited proposal evidence is invalid",
-              );
-            const editReason =
-              command.replacementItems === undefined ? null : command.reason;
-            if (
-              command.activityLinks !== undefined &&
-              (command.decision !== "accept" || !command.reason.trim())
-            )
-              throw new Abort(
-                "VALIDATION",
-                "Activity links require a staff reason",
-              );
-            if (command.decision === "accept") {
-              const links = command.activityLinks ?? {};
-              const activityKeys = proposal.items
-                .filter((item) => item.kind === "activity")
-                .map((item) => item.key);
-              if (Object.keys(links).some((key) => !activityKeys.includes(key)))
-                throw new Abort("VALIDATION", "Activity link key is invalid");
-              if (
-                new Set(Object.values(links).map((link) => link.activityId))
-                  .size !== Object.keys(links).length
-              )
-                throw new Abort(
-                  "VALIDATION",
-                  "Activity links must be distinct",
-                );
-              if (
-                proposal.unresolved.some(
-                  (item) => item.field === "duplicateCandidate",
-                ) &&
-                (activityKeys.length === 0 ||
-                  activityKeys.some((key) => !Object.hasOwn(links, key)))
-              )
-                throw new Abort(
-                  "CONFLICT",
-                  "Duplicate candidate requires an explicit activity link",
-                );
-              const corrections = proposal.items.filter(
-                (item) => item.kind === "correction",
-              );
-              const priorRun = await tx.execute(
-                sql`select r.run_id,r.proposal,d.command from extraction_run r join review_decision d on (d.organization_id,d.run_id)=(r.organization_id,r.run_id) where r.organization_id=${context.organizationId} and r.source_id=${sourceId} and r.source_revision<${source.revision} and r.status='accepted' order by r.source_revision desc limit 1`,
-              );
-              if (
-                Object.keys(links).length > 0 &&
-                (corrections.length > 0 || priorRun.rows[0])
-              )
-                throw new Abort(
-                  "CONFLICT",
-                  "Activity links require a new source review",
-                );
-              if (corrections.length > 0) {
-                if (corrections.length !== proposal.items.length)
-                  throw new Abort(
-                    "CONFLICT",
-                    "Corrections cannot be mixed with new records",
-                  );
-                const targets = new Set<string>();
-                for (const item of corrections) {
-                  if (
-                    item.kind !== "correction" ||
-                    !item.targetId ||
-                    !item.expectedRevision ||
-                    targets.has(item.targetId) ||
-                    (item.durationMinutes !== null &&
-                      item.durationMinutes > 1440) ||
-                    !item.reason.trim()
-                  )
-                    throw new Abort("VALIDATION", "Invalid correction");
-                  targets.add(item.targetId);
-                  const lineage = await tx.execute(
-                    sql`select 1 from review_effect e join extraction_run r on (r.organization_id,r.run_id)=(e.organization_id,e.run_id) where e.organization_id=${context.organizationId} and r.source_id=${sourceId} and r.source_revision<${source.revision} and r.status='accepted' and e.kind='contribution' and e.aggregate_id=${item.targetId} and e.aggregate_revision=${item.expectedRevision} limit 1`,
-                  );
-                  if (
-                    !lineage.rows.length &&
-                    (command.replacementItems === undefined ||
-                      !command.reason.trim())
-                  )
-                    throw new Abort(
-                      "CONFLICT",
-                      "Correction requires explicit staff authorization",
-                    );
-                  const auditReason = json({
-                    sourceId,
-                    sourceRevision: source.revision,
-                    staffReason: command.reason,
-                    proposalReason: item.reason,
-                  });
-                  const result = await correctContribution(
-                    tx,
-                    context,
-                    item.targetId,
-                    item.expectedRevision,
-                    item.durationMinutes,
-                    auditReason,
-                    new Date(),
-                  );
-                  await addEffect(
-                    tx,
-                    context.organizationId,
-                    command.runId,
-                    item.key,
-                    "contribution",
-                    item.targetId,
-                    result,
-                  );
-                }
-              } else if (priorRun.rows[0]) {
-                await reconcile(
-                  tx,
-                  context,
-                  command.runId,
-                  proposal,
-                  priorRun.rows[0],
-                  editReason,
-                );
-              } else {
-                const activities = new Map<string, string>();
-                const participants = new Set<string>();
-                for (const item of proposal.items) {
-                  if (item.kind === "activity") {
-                    if (
-                      (item.localDate === null) !==
-                      (item.datePrecision === "unknown")
-                    )
-                      throw new Abort("VALIDATION", "Invalid activity date");
-                    const link = links[item.key];
-                    activities.set(
-                      item.key,
-                      link ? link.activityId : randomUUID(),
-                    );
-                  }
-                }
-                for (const item of proposal.items) {
-                  if (item.kind !== "contribution") continue;
-                  if (
-                    !activities.has(item.activityKey) ||
-                    (item.durationMinutes !== null &&
-                      item.durationMinutes > 1440)
-                  )
-                    throw new Abort("VALIDATION", "Invalid contribution");
-                  if (item.membershipId !== null) {
-                    const key = json([item.activityKey, item.membershipId]);
-                    if (participants.has(key))
-                      throw new Abort("VALIDATION", "Duplicate contribution");
-                    participants.add(key);
-                    const member = await tx.execute(
-                      sql`select id from member where organization_id=${context.organizationId} and id=${item.membershipId} for key share`,
-                    );
-                    if (!member.rows.length)
-                      throw new Abort(
-                        "VALIDATION",
-                        "Contribution membership unavailable",
-                      );
-                    await tx.execute(
-                      sql`insert into source_author (organization_id,membership_id,current_membership_id) values (${context.organizationId},${item.membershipId},${item.membershipId}) on conflict (organization_id,membership_id) do update set current_membership_id=excluded.current_membership_id`,
-                    );
-                  }
-                }
-                for (const [key, link] of Object.entries(links).sort(
-                  ([a], [b]) => a.localeCompare(b),
-                )) {
-                  const rows = await tx.execute(
-                    sql`select revision from activity where organization_id=${context.organizationId} and id=${link.activityId} for update`,
-                  );
-                  if (!rows.rows.length)
-                    throw new Abort(
-                      "VALIDATION",
-                      "Linked activity unavailable",
-                    );
-                  if (rows.rows[0]?.revision !== link.expectedRevision)
-                    throw new Abort(
-                      "CONFLICT",
-                      "Linked activity revision changed",
-                    );
-                  if (!activities.has(key))
-                    throw new Abort(
-                      "VALIDATION",
-                      "Activity link key is invalid",
-                    );
-                }
-                const now = new Date();
-                const timestamp = now.toISOString();
-                const origin = {
-                  kind: "source",
-                  sourceId,
-                  sourceRevision: source.revision,
-                };
-                for (const item of proposal.items) {
-                  if (item.kind === "activity") {
-                    const id = activities.get(item.key) as string;
-                    const link = links[item.key];
-                    if (link) {
-                      await addEffect(
-                        tx,
-                        context.organizationId,
-                        command.runId,
-                        item.key,
-                        "activity",
-                        id,
-                        link.expectedRevision,
-                      );
-                      continue;
-                    }
-                    const record = {
-                      schemaVersion: 1,
-                      organizationId: context.organizationId,
-                      activityId: id,
-                      revision: 1,
-                      kind: item.activityKind,
-                      localDate: item.localDate,
-                      datePrecision: item.datePrecision,
-                      beneficiaryReference: item.beneficiaryReference,
-                      origin,
-                      createdAt: timestamp,
-                      updatedAt: timestamp,
-                    };
-                    await tx.execute(
-                      sql`insert into activity (organization_id,id,revision,kind,local_date,date_precision,beneficiary_reference,origin_kind,origin_source_id,origin_source_revision,created_at,updated_at) values (${context.organizationId},${id},1,${item.activityKind},${item.localDate},${item.datePrecision},${item.beneficiaryReference},'source',${sourceId},${source.revision},${now},${now})`,
-                    );
-                    await audit(
-                      tx,
-                      context,
-                      "activity",
-                      id,
-                      record,
-                      now,
-                      editReason,
-                    );
-                    await addEffect(
-                      tx,
-                      context.organizationId,
-                      command.runId,
-                      item.key,
-                      "activity",
-                      id,
-                      1,
-                    );
-                  } else if (item.kind === "contribution") {
-                    const activityId = activities.get(
-                      item.activityKey,
-                    ) as string;
-                    if (links[item.activityKey] && item.membershipId !== null) {
-                      const existing = await tx.execute(
-                        sql`select id,revision,duration_minutes from contribution where organization_id=${context.organizationId} and activity_id=${activityId} and membership_id=${item.membershipId} and status in ('pending','approved') for update`,
-                      );
-                      if (existing.rows[0]) {
-                        if (
-                          existing.rows[0].duration_minutes !==
-                          item.durationMinutes
-                        )
-                          throw new Abort(
-                            "CONFLICT",
-                            "Existing contribution duration differs; use a correction",
-                          );
-                        await addEffect(
-                          tx,
-                          context.organizationId,
-                          command.runId,
-                          item.key,
-                          "contribution",
-                          existing.rows[0].id as string,
-                          existing.rows[0].revision as number,
-                        );
-                        continue;
-                      }
-                    }
-                    const id = randomUUID();
-                    const status =
-                      item.membershipId !== null &&
-                      item.durationMinutes !== null
-                        ? "approved"
-                        : "pending";
-                    const record = {
-                      schemaVersion: 1,
-                      organizationId: context.organizationId,
-                      contributionId: id,
-                      activityId,
-                      revision: 1,
-                      membershipId: item.membershipId,
-                      durationMinutes: item.durationMinutes,
-                      status,
-                      origin,
-                      createdAt: timestamp,
-                      updatedAt: timestamp,
-                    };
-                    await tx.execute(
-                      sql`insert into contribution (organization_id,id,revision,activity_id,membership_id,duration_minutes,status,origin_kind,origin_source_id,origin_source_revision,created_at,updated_at) values (${context.organizationId},${id},1,${activityId},${item.membershipId},${item.durationMinutes},${status},'source',${sourceId},${source.revision},${now},${now})`,
-                    );
-                    await audit(
-                      tx,
-                      context,
-                      "contribution",
-                      id,
-                      record,
-                      now,
-                      editReason,
-                    );
-                    await addEffect(
-                      tx,
-                      context.organizationId,
-                      command.runId,
-                      item.key,
-                      "contribution",
-                      id,
-                      1,
-                    );
-                    if (status === "approved")
-                      await event(
-                        tx,
-                        context,
-                        "ledger.changed",
-                        id,
-                        { contributionId: id, reason: "approved" },
-                        now,
-                      );
-                  } else if (item.kind === "need") {
-                    const id = randomUUID();
-                    const record = {
-                      schemaVersion: 1,
-                      organizationId: context.organizationId,
-                      needId: id,
-                      revision: 1,
-                      category: item.category,
-                      urgency: item.urgency,
-                      summary: item.summary,
-                      provisional: item.provisional,
-                      status: "new",
-                      ownerMembershipId: null,
-                      dueAt: null,
-                      acknowledgeBy: null,
-                      acknowledgedAt: null,
-                      acknowledgedByMembershipId: null,
-                      resolvedAt: null,
-                      resolution: null,
-                      origin,
-                      createdAt: timestamp,
-                      updatedAt: timestamp,
-                    };
-                    await tx.execute(
-                      sql`insert into need (organization_id,id,revision,category,urgency,summary,provisional,status,origin_kind,origin_source_id,origin_source_revision,created_at,updated_at) values (${context.organizationId},${id},1,${item.category},${item.urgency},${item.summary},${item.provisional},'new','source',${sourceId},${source.revision},${now},${now})`,
-                    );
-                    await audit(
-                      tx,
-                      context,
-                      "need",
-                      id,
-                      record,
-                      now,
-                      editReason,
-                    );
-                    await addEffect(
-                      tx,
-                      context.organizationId,
-                      command.runId,
-                      item.key,
-                      "need",
-                      id,
-                      1,
-                    );
-                    await event(
-                      tx,
-                      context,
-                      "need.changed",
-                      id,
-                      {
-                        needId: id,
-                        status: "new",
-                        provisional: item.provisional,
-                      },
-                      now,
-                    );
-                  }
-                }
-              }
-            }
-            const outcome = { revision: command.expectedRevision + 1 };
-            await tx.execute(
-              sql`update extraction_run set status=${command.decision === "accept" ? "accepted" : "rejected"},revision=${outcome.revision} where organization_id=${context.organizationId} and run_id=${command.runId}`,
-            );
-            await tx.execute(
-              sql`insert into review_decision (organization_id,idempotency_key,run_id,command,outcome,actor,correlation_id) values (${context.organizationId},${command.idempotencyKey},${command.runId},${json(command)}::jsonb,${json(outcome)}::jsonb,${json(context.actor)}::jsonb,${context.correlationId})`,
-            );
-            return success(outcome);
-          },
+        const rows = await db.execute(
+          sql`select run_id,proposal from extraction_run where organization_id=${source.organizationId} and source_id=${source.sourceId} and source_revision=${source.revision}`,
         );
-      } catch (error) {
-        return error instanceof Abort
-          ? fail(context, error.code, error.message)
-          : fail(
-              context,
-              "DEPENDENCY_UNAVAILABLE",
-              "Processing storage unavailable",
-            );
+        const row = rows.rows[0];
+        if (!row) return success({ applied: false });
+        const proposal = row.proposal as ExtractionProposal;
+        const command: ReviewDecision = {
+          runId: row.run_id as string,
+          expectedRevision: 1,
+          idempotencyKey: `auto:${createHash("sha256")
+            .update(json([source.organizationId, row.run_id]))
+            .digest("hex")}`,
+          decision: "accept",
+          reason: `Automatic policy ${proposal.policyVersion}`,
+        };
+        const result = await executeDecision(context, command, source);
+        if (result.ok) return success({ applied: true });
+        if (
+          result.error.code === "CONFLICT" ||
+          result.error.code === "VALIDATION" ||
+          result.error.code === "NOT_FOUND"
+        )
+          return success({ applied: false });
+        return result;
+      } catch {
+        return fail(
+          context,
+          "DEPENDENCY_UNAVAILABLE",
+          "Processing storage unavailable",
+        );
       }
     },
   };
@@ -955,5 +994,113 @@ async function reconcile(
       effect.aggregate_id,
       revision,
     );
+  }
+}
+
+// An internal, deliberately narrow validated-auto-record gate. Any uncertainty,
+// prior source effect or plausible existing record remains in human review.
+async function requireValidatedPolicy(
+  tx: Executor,
+  organizationId: string,
+  proposal: ExtractionProposal,
+  source: SourceEnvelope,
+): Promise<void> {
+  const settings = await tx.execute(
+    sql`select automation_policy,policy_version from organization_settings where organization_id=${organizationId} for share`,
+  );
+  if (
+    settings.rows[0]?.automation_policy !== "validated-auto-record" ||
+    settings.rows[0]?.policy_version !== proposal.policyVersion
+  )
+    throw new Abort("CONFLICT", "Automatic policy unavailable");
+  if (
+    proposal.unresolved.length ||
+    proposal.items.length === 0 ||
+    !source.author.membershipId
+  )
+    throw new Abort("CONFLICT", "Proposal requires review");
+  const prior = await tx.execute(
+    sql`select 1 from extraction_run where organization_id=${organizationId} and source_id=${source.sourceId} and source_revision<${source.revision} and status='accepted' limit 1`,
+  );
+  if (prior.rows.length)
+    throw new Abort("CONFLICT", "Prior source effects require review");
+  const author = await tx.execute(
+    sql`select id from member where organization_id=${organizationId} and id=${source.author.membershipId} for share`,
+  );
+  if (!author.rows.length)
+    throw new Abort("CONFLICT", "Author membership unavailable");
+  // The table locks close the race with a simultaneous human ledger/need insert.
+  // They are held only through the small acceptance transaction.
+  await tx.execute(sql`lock table activity in share row exclusive mode`);
+  await tx.execute(sql`lock table need in share row exclusive mode`);
+  const activityKeys = new Set(
+    proposal.items
+      .filter((item) => item.kind === "activity")
+      .map((item) => item.key),
+  );
+  const contributionKeys = new Set(
+    proposal.items
+      .filter((item) => item.kind === "contribution")
+      .map((item) => item.activityKey),
+  );
+  if ([...activityKeys].some((key) => !contributionKeys.has(key)))
+    throw new Abort(
+      "CONFLICT",
+      "Activity without contribution requires review",
+    );
+  const seenDates = new Set<string>();
+  const seenBeneficiaries = new Set<string>();
+  const seenNeedCategories = new Set<string>();
+  for (const item of proposal.items) {
+    if (item.kind === "activity") {
+      if (
+        !["visit", "supplies"].includes(item.activityKind) ||
+        item.datePrecision !== "day" ||
+        !item.localDate
+      )
+        throw new Abort("CONFLICT", "Activity requires review");
+      if (
+        seenDates.has(item.localDate) ||
+        (item.beneficiaryReference !== null &&
+          seenBeneficiaries.has(item.beneficiaryReference))
+      )
+        throw new Abort("CONFLICT", "Potential activity match requires review");
+      seenDates.add(item.localDate);
+      if (item.beneficiaryReference !== null)
+        seenBeneficiaries.add(item.beneficiaryReference);
+      const candidate = await tx.execute(
+        sql`select 1 from activity where organization_id=${organizationId} and (local_date=${item.localDate} or (${item.beneficiaryReference}::text is not null and beneficiary_reference=${item.beneficiaryReference})) limit 1`,
+      );
+      if (candidate.rows.length)
+        throw new Abort("CONFLICT", "Potential activity match requires review");
+    } else if (item.kind === "contribution") {
+      if (
+        !item.membershipId ||
+        !item.durationMinutes ||
+        item.durationMinutes > 1440 ||
+        !activityKeys.has(item.activityKey)
+      )
+        throw new Abort("CONFLICT", "Contribution requires review");
+      const member = await tx.execute(
+        sql`select id from member where organization_id=${organizationId} and id=${item.membershipId} for share`,
+      );
+      if (!member.rows.length)
+        throw new Abort("CONFLICT", "Contribution membership unavailable");
+    } else if (item.kind === "need") {
+      if (
+        !["food", "supplies"].includes(item.category) ||
+        item.urgency !== "routine" ||
+        item.provisional
+      )
+        throw new Abort("CONFLICT", "Need requires review");
+      if (seenNeedCategories.has(item.category))
+        throw new Abort("CONFLICT", "Potential need match requires review");
+      seenNeedCategories.add(item.category);
+      const candidate = await tx.execute(
+        sql`select 1 from need where organization_id=${organizationId} and category=${item.category} and status in ('new','assigned','acknowledged') limit 1`,
+      );
+      if (candidate.rows.length)
+        throw new Abort("CONFLICT", "Potential need match requires review");
+    } else throw new Abort("CONFLICT", "Correction requires review");
   }
 }
