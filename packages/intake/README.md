@@ -1,0 +1,14 @@
+# Intake adapters
+
+The package exports pure preview adapters from `src/index.ts`:
+
+- `parseJsonImport` accepts a JSON array of message objects or `{ "messages": [...] }`. `ImportMapping` selects external ID, author, text and optional timestamp fields.
+- `parseCsvImport` accepts UTF-8 comma-separated data with one header row, doubled quote escapes and quoted multiline fields. Header names are selected through the same mapping.
+- For either format, timestamps must be ISO timestamps with an explicit offset (`dateFormat: "ISO"`) or the caller must choose `YYYY-MM-DD`, `MM/DD/YYYY` or `DD/MM/YYYY`. Date-only values mean midnight in the trusted context timezone. An ambiguous slash date (both first fields at most 12) is a row error.
+- `parseWhatsAppTextExport` supports only lines shaped like `12/31/2024, 3:04 PM - Alice: message`, with `dateOrder: "MDY"` or `"DMY"` explicitly supplied. Lines after a message header are preserved as continuations. Group/system/attachment lines without a matching header are reported as unsupported. This parser does not support localized WhatsApp export variants.
+- `normalizeTelegramUpdate` maps only Telegram `message` and `edited_message` payload fields. It preserves the raw message JSON and opaque photo descriptors but never downloads Telegram URLs/files.
+- `createPrivateFilesystemBlobStore` stores image bytes under a digest-derived key, with bounded size, PNG/JPEG/WebP magic validation, private modes and a same-directory temporary file followed by atomic rename.
+
+All imports need a trusted context injected by the caller. In particular, organization IDs and author-to-membership mappings are never read from the imported rows as authority. Every parser returns row errors and preserves duplicate-looking messages in `sources`; `ambiguousDuplicates` groups those rows for caller review. IDs and idempotency keys are deterministic for the same organization, import channel identity and provider identity (or content plus duplicate ordinal where no provider ID exists). The adapters do not persist sources, preview choices, blob metadata or account-link tokens.
+
+Telegram edits normalize as revision 2 replacing revision 1 because the v1 contract has no revision allocator port. A caller that accepts multiple edits of one Telegram message needs a persistence-backed revision allocator before exposing those edits; this pure adapter does not infer sequential revision numbers.
