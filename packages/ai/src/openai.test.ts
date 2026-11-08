@@ -40,6 +40,37 @@ describe("OpenAI structured extraction transport", () => {
     expect(body.tools).toBeUndefined();
     expect(body.instructions).toContain("untrusted");
   });
+  // The proposal schema is a discriminated union, so its JSON Schema contains
+  // `oneOf`, and the Responses API rejects strict mode outright:
+  //   "Invalid schema for response_format ... 'oneOf' is not permitted."
+  // Sending strict with a union made every extraction fail with HTTP 400. This
+  // guards the combination rather than the literal flag: if strict is ever
+  // turned back on, the schema has to be union-free first.
+  it("never asks for strict mode with a schema the API refuses", async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        status: "completed",
+        output: [
+          {
+            content: [
+              { type: "output_text", text: '{"items":[],"unresolved":[]}' },
+            ],
+          },
+        ],
+      }),
+    );
+    const provider = createOpenAIProvider({
+      apiKey: "synthetic",
+      fetch: request,
+    });
+    await provider.extract({ source, versions });
+    const body = JSON.parse(String(request.mock.calls[0]?.[1]?.body));
+    const format = body.text.format;
+    expect(format.type).toBe("json_schema");
+    if (format.strict)
+      expect(JSON.stringify(format.schema)).not.toContain('"oneOf"');
+    else expect(format.strict).toBe(false);
+  });
   it("classifies provider outage as retryable but incomplete output as permanent", async () => {
     const request = vi
       .fn<typeof fetch>()
@@ -53,6 +84,34 @@ describe("OpenAI structured extraction transport", () => {
     });
     await expect(provider.extract({ source, versions })).rejects.toMatchObject({
       retryable: true,
+    });
+    await expect(provider.extract({ source, versions })).rejects.toMatchObject({
+      retryable: false,
+    });
+  });
+  // Dropping strict mode removed the provider-side guarantee that the response
+  // matches the schema, so the adapter validates the whole draft itself. Without
+  // this, a response carrying extra root properties would be partially accepted
+  // because the service only validates individual items.
+  it("rejects a draft that does not match the extraction schema", async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        status: "completed",
+        output: [
+          {
+            content: [
+              {
+                type: "output_text",
+                text: '{"items":[],"unresolved":[],"unexpected":true}',
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const provider = createOpenAIProvider({
+      apiKey: "synthetic",
+      fetch: request,
     });
     await expect(provider.extract({ source, versions })).rejects.toMatchObject({
       retryable: false,

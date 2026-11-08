@@ -122,7 +122,12 @@ export function createOpenAIProvider(options: {
               format: {
                 type: "json_schema",
                 name: "volunteer_extraction",
-                strict: true,
+                // NOT strict: the proposal schema is a discriminated union, and
+                // strict mode rejects `oneOf` outright ("'oneOf' is not
+                // permitted"). The schema is still sent as guidance, and every
+                // response is validated against the zod schema below, so
+                // conformance is enforced on our side rather than the provider's.
+                strict: false,
                 schema,
               },
             },
@@ -181,13 +186,27 @@ export function createOpenAIProvider(options: {
         .filter((part) => part.type === "output_text")
         .map((part) => part.text ?? "")
         .join("");
+      let draft: unknown;
       try {
-        return JSON.parse(text);
+        draft = JSON.parse(text);
       } catch {
         throw new ExtractionProviderError("Invalid model response", {
           retryable: false,
         });
       }
+      // Strict mode was the provider-side promise that the response matches the
+      // schema. It cannot be used here — the schema is a discriminated union and
+      // strict mode rejects `oneOf` — so the same guarantee is enforced locally
+      // instead of trusting the response. Rejecting the whole draft matters: the
+      // service validates individual items, which would otherwise accept a
+      // response with unexpected root properties.
+      const validated = draftSchema.safeParse(draft);
+      if (!validated.success)
+        throw new ExtractionProviderError(
+          "Model response does not match the extraction schema",
+          { retryable: false },
+        );
+      return validated.data;
     },
   };
 }

@@ -156,11 +156,30 @@ try {
             await processing.markFailure(source, leaseToken);
             continue;
           }
+          let sent = false;
+          // One place that decides whether the charge can go back, and reports
+          // what actually happened rather than what was intended: a failed
+          // cancellation must not be logged as "released".
+          const releaseUnsent = async (): Promise<string> => {
+            if (sent) return "charged";
+            const cancelled = await budgets.cancelModelBudget(
+              reserved.value.reservationId,
+            );
+            if (!cancelled.ok) {
+              console.warn(
+                JSON.stringify({
+                  service: "worker",
+                  event: "reservation_release_failed",
+                }),
+              );
+              return "release_failed";
+            }
+            return "released";
+          };
           if (stopped) {
-            await budgets.cancelModelBudget(reserved.value.reservationId);
+            await releaseUnsent();
             break;
           }
-          let sent = false;
           try {
             const extraction = createExtractionService({
               maxAttempts: 1,
@@ -207,9 +226,28 @@ try {
               policy: policy.policyVersion,
             });
             if (!result.ok) {
-              if (!sent)
-                await budgets.cancelModelBudget(reserved.value.reservationId);
+              // Only an unsent reservation can be released: nothing was
+              // transmitted, so nothing can have been billed. Anything failing
+              // after the request starts may have consumed tokens we cannot see
+              // — a truncated body, invalid JSON, a schema rejection, a 4xx —
+              // and recording it as zero would let repeated failures spend past
+              // the cap. Those stay charged, which is the conservative
+              // direction; the per-source attempt limit bounds the exposure.
+              const reservation = await releaseUnsent();
               await processing.markFailure(source, leaseToken);
+              // This failure used to be silent: nothing logged, nothing stored,
+              // so a totally broken extraction looked healthy. Keep the record
+              // bounded — a code from the closed union, never provider text or
+              // source content.
+              console.warn(
+                JSON.stringify({
+                  service: "worker",
+                  event: "extraction_failed",
+                  reason: result.error.code,
+                  retryable: result.error.retryable,
+                  reservation,
+                }),
+              );
               continue;
             }
             const saved = await processing.persistProposal(
@@ -225,9 +263,18 @@ try {
             await processing.applyValidatedPolicy(source);
             await follow.processPendingNotifications(50);
           } catch {
-            if (!sent)
-              await budgets.cancelModelBudget(reserved.value.reservationId);
+            // An unexpected exception says nothing about billing, so only an
+            // unsent reservation is released; a sent one stays charged.
+            await releaseUnsent();
             await processing.markFailure(source, leaseToken);
+            // Fixed event only: an unexpected exception can carry provider text,
+            // and source content must never reach the logs.
+            console.warn(
+              JSON.stringify({
+                service: "worker",
+                event: "extraction_crashed",
+              }),
+            );
           }
         }
       }
