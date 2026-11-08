@@ -5,6 +5,8 @@ import {
   productEndpoints,
   type WorkspaceSnapshot,
 } from "@relay/contracts";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   type ReactNode,
   useCallback,
@@ -316,7 +318,31 @@ function NoOrganization() {
     </main>
   );
 }
-export function ProductWorkspace({ page }: { page: Page | "home" }) {
+const pages = new Set<string>([
+  "volunteer",
+  "inbox",
+  "activities",
+  "needs",
+  "reports",
+  "import",
+  "settings",
+  "members",
+  "notifications",
+  "history",
+  "delivery",
+  "retention",
+]);
+// One workspace instance lives in app/workspace/layout.tsx, so moving between
+// pages is a client navigation that keeps the loaded snapshot instead of
+// remounting, refetching and flashing a loading screen.
+function pageFromPath(pathname: string): Page {
+  const segment = pathname.replace(/\/+$/, "").split("/")[2] ?? "";
+  return pages.has(segment) ? (segment as Page) : "home";
+}
+export function ProductWorkspace({ page: pageProp }: { page?: Page }) {
+  const pathname = usePathname();
+  const page = pageProp ?? pageFromPath(pathname);
+  const firstPage = useRef(true);
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [orgOptions, setOrgOptions] = useState<readonly OrgOption[] | null>(
@@ -326,6 +352,17 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
   const [workspaceChanged, setWorkspaceChanged] = useState(false);
   const hintResolved = useRef(false);
   useEffect(() => onWorkspaceChanged(() => setWorkspaceChanged(true)), []);
+  useEffect(() => {
+    // Full page loads used to reset focus and per-page request attempts; a
+    // client navigation must do both explicitly.
+    void page;
+    if (firstPage.current) {
+      firstPage.current = false;
+      return;
+    }
+    attempts.current = {};
+    document.getElementById("workspace-main")?.focus({ preventScroll: true });
+  }, [page]);
   const [error, setError] = useState("");
   // Kept beside the message so the recovery link can match the reason: a
   // signed-in user without usable membership must not be sent to /sign-in,
@@ -565,9 +602,9 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
           tone="accent"
           title="Permission denied"
           actions={
-            <a className={styles.linkButton} href="/workspace">
+            <Link className={styles.linkButton} href="/workspace">
               Go to your workspace
-            </a>
+            </Link>
           }
         >
           <p>Your role does not have access to this page.</p>
@@ -607,9 +644,9 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
       mainId="workspace-main"
       account={
         <>
-          <a href="/workspace/volunteer">My updates</a>
+          <Link href="/workspace/volunteer">My updates</Link>
           {" · "}
-          <a href="/workspace/notifications">Notifications</a>
+          <Link href="/workspace/notifications">Notifications</Link>
           {" · "}
           <Organization />
         </>

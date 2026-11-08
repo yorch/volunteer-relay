@@ -1,3 +1,5 @@
+import type { Route } from "next";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { FoundationRoot, Icon, type IconName } from "../foundation";
 import styles from "./layout.module.css";
@@ -85,7 +87,7 @@ export function StaffShell({
             <Brand />
             <span className={styles.mobileOrganization}>{organization}</span>
           </div>
-          <details className={styles.menu}>
+          <details key={currentPath} className={styles.menu}>
             <summary className={styles.menuToggle}>
               <span>Menu</span>
               <span aria-hidden="true" className={styles.menuIcon}>
@@ -119,8 +121,8 @@ export function StaffShell({
                           {items.map((item) => {
                             return (
                               <li key={item.href}>
-                                <a
-                                  href={item.href}
+                                <Link
+                                  href={item.href as Route}
                                   aria-current={
                                     currentPath === item.href
                                       ? "page"
@@ -134,7 +136,7 @@ export function StaffShell({
                                       {item.count}
                                     </span>
                                   )}
-                                </a>
+                                </Link>
                               </li>
                             );
                           })}
