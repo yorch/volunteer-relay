@@ -1,6 +1,6 @@
 "use client";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
-import styles from "./product.module.css";
+import styles from "./admin.module.css";
 
 type Preview = {
   cutoff: string;
@@ -80,106 +80,245 @@ export function Retention({ mutate }: { mutate: Mutate }) {
     }
     setPending(false);
   }
+  function chooseSource(sourceId: string) {
+    setSelected((current) => (current === sourceId ? null : sourceId));
+    setReason("");
+    setAck(false);
+  }
   return (
-    <>
-      <h1>Retention</h1>
-      <p>
-        Review expired source evidence before redaction. Redaction is
-        irreversible; numeric ledger records are kept.
-      </p>
-      <p>
-        <a href="/api/product/retention-ledger">
-          Download signed retention ledger
+    <div className={styles.page}>
+      <header className={styles.pageHeading}>
+        <div>
+          <p className={styles.eyebrow}>PRIVACY AND RETENTION</p>
+          <h1>Retention review</h1>
+          <p>
+            Review evidence that has passed the organization’s retention period.
+          </p>
+        </div>
+      </header>
+      <div className={styles.retentionNotice}>
+        <span aria-hidden="true">!</span>
+        <p>
+          <strong>Redaction is permanent.</strong> It removes raw source and
+          derived data and queues private file erasure. Approved numeric ledger
+          records remain. Review each candidate and record a reason before
+          confirming.
+        </p>
+      </div>
+      <div className={styles.retentionTools}>
+        <a className={styles.ledgerLink} href="/api/product/retention-ledger">
+          Download signed retention ledger <span aria-hidden="true">↓</span>
         </a>
-      </p>
+        <p>
+          The signed ledger records completed retention actions for later
+          review.
+        </p>
+      </div>
       {loading ? (
-        <p aria-live="polite">Loading retention preview…</p>
+        <p aria-live="polite" className={styles.loading}>
+          Loading eligible evidence…
+        </p>
       ) : error ? (
-        <>
-          <p role="alert">{error}</p>
+        <section className={styles.card}>
+          <p role="alert" className={styles.error}>
+            {error}
+          </p>
           <button type="button" onClick={() => void refresh()}>
             Try again
           </button>
-        </>
+        </section>
       ) : (
         preview && (
           <>
-            <p>
-              Retention cutoff: {new Date(preview.cutoff).toLocaleString()}
-              {preview.truncated &&
-                " · Preview truncated; additional sources may be eligible."}
-            </p>
-            {preview.sources.length ? (
-              preview.sources.map((s) => (
-                <section className={styles.card} key={s.sourceId}>
-                  <h2>Source {s.sourceId}</h2>
-                  <p>
-                    Latest revision {s.latestRevision} · expired revisions{" "}
-                    {s.expiredRevisions} · {s.attachmentCount} attachments
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelected(s.sourceId);
-                      setReason("");
-                      setAck(false);
-                    }}
-                  >
-                    Review redaction
-                  </button>
-                </section>
-              ))
-            ) : (
-              <p>No sources currently eligible for redaction.</p>
-            )}
-            {source && (
-              <section className={styles.card}>
-                <h2>Redact source {source.sourceId}</h2>
-                <p>
-                  This irreversibly redacts raw source and derived data and
-                  queues private file erasure. Numeric ledger records are kept.
+            <section
+              className={styles.previewSummary}
+              aria-label="Retention preview summary"
+            >
+              <div>
+                <span className={styles.eyebrow}>ELIGIBILITY CUTOFF</span>
+                <strong>{new Date(preview.cutoff).toLocaleString()}</strong>
+              </div>
+              <div>
+                <span className={styles.eyebrow}>CANDIDATES</span>
+                <strong>
+                  {preview.sources.length}
+                  {preview.truncated ? "+" : ""}
+                </strong>
+              </div>
+              {preview.truncated && (
+                <p role="status" className={styles.truncationNote}>
+                  This preview is limited. Additional sources may be eligible.
                 </p>
-                <form onSubmit={redact}>
-                  <label>
-                    Reason for redaction
-                    <textarea
-                      required
-                      maxLength={2000}
-                      value={reason}
-                      onChange={(e) => setReason(e.target.value)}
-                    />
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center" }}>
-                    <input
-                      type="checkbox"
-                      checked={ack}
-                      onChange={(e) => setAck(e.target.checked)}
-                    />{" "}
-                    I understand this redaction is irreversible.
-                  </label>
-                  <button
-                    type="submit"
-                    disabled={pending || !ack || !reason.trim()}
-                  >
-                    Confirm redaction
-                  </button>
-                  <button
-                    type="button"
-                    disabled={pending}
-                    onClick={() => {
-                      setSelected(null);
-                      setReason("");
-                      setAck(false);
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </form>
+              )}
+            </section>
+            {preview.sources.length ? (
+              <div className={styles.retentionLayout}>
+                <section
+                  className={styles.retentionList}
+                  aria-labelledby="candidates-heading"
+                >
+                  <div className={styles.panelHeading}>
+                    <div>
+                      <p className={styles.eyebrow}>ELIGIBLE EVIDENCE</p>
+                      <h2 id="candidates-heading">Review candidates</h2>
+                    </div>
+                  </div>
+                  <ul className={styles.candidateList}>
+                    {preview.sources.map((s) => (
+                      <li key={s.sourceId}>
+                        <button
+                          type="button"
+                          className={`${styles.candidate} ${selected === s.sourceId ? styles.candidateSelected : ""}`}
+                          aria-pressed={selected === s.sourceId}
+                          onClick={() => chooseSource(s.sourceId)}
+                        >
+                          <span className={styles.candidateTitle}>
+                            Source <span>{s.sourceId.slice(0, 12)}</span>
+                          </span>
+                          <span className={styles.candidateMeta}>
+                            Latest revision {s.latestRevision}
+                          </span>
+                          <span className={styles.candidateStats}>
+                            <span>
+                              {s.expiredRevisions} expired{" "}
+                              {s.expiredRevisions === 1
+                                ? "revision"
+                                : "revisions"}
+                            </span>
+                            <span>
+                              {s.attachmentCount}{" "}
+                              {s.attachmentCount === 1
+                                ? "attachment"
+                                : "attachments"}
+                            </span>
+                          </span>
+                          <span className={styles.reviewAction}>
+                            {selected === s.sourceId
+                              ? "Selected for review"
+                              : "Review redaction →"}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+                <section
+                  className={styles.redactionReview}
+                  aria-labelledby="redaction-heading"
+                >
+                  {source ? (
+                    <>
+                      <div className={styles.panelHeading}>
+                        <div>
+                          <p className={styles.eyebrow}>
+                            CONFIRM A PERMANENT ACTION
+                          </p>
+                          <h2 id="redaction-heading">Review redaction</h2>
+                        </div>
+                      </div>
+                      <div className={styles.selectedSource}>
+                        <span>Selected source</span>
+                        <strong>{source.sourceId}</strong>
+                        <span>
+                          Revision {source.latestRevision} ·{" "}
+                          {source.expiredRevisions} expired revisions ·{" "}
+                          {source.attachmentCount} attachments
+                        </span>
+                      </div>
+                      <p className={styles.reviewExplanation}>
+                        This action redacts the source’s raw content and derived
+                        data, then queues private file erasure. The numeric
+                        contribution ledger remains available. This cannot be
+                        undone.
+                      </p>
+                      <form onSubmit={redact} className={styles.redactionForm}>
+                        <label htmlFor="redaction-reason">
+                          Why should this evidence be redacted?
+                        </label>
+                        <span
+                          id="redaction-reason-help"
+                          className={styles.help}
+                        >
+                          This reason becomes part of the retention record. Do
+                          not include more personal information than needed.
+                        </span>
+                        <textarea
+                          id="redaction-reason"
+                          aria-describedby="redaction-reason-help"
+                          required
+                          maxLength={2000}
+                          value={reason}
+                          onChange={(e) => setReason(e.target.value)}
+                          rows={4}
+                        />
+                        <label className={styles.acknowledgment}>
+                          <input
+                            type="checkbox"
+                            checked={ack}
+                            onChange={(e) => setAck(e.target.checked)}
+                          />
+                          <span>
+                            <strong>
+                              I understand this action is permanent.
+                            </strong>
+                            <small>
+                              The source and derived data will be redacted, and
+                              private file erasure will be queued.
+                            </small>
+                          </span>
+                        </label>
+                        <div className={styles.confirmFooter}>
+                          <button
+                            type="submit"
+                            disabled={pending || !ack || !reason.trim()}
+                          >
+                            {pending
+                              ? "Recording redaction…"
+                              : "Confirm permanent redaction"}
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            disabled={pending}
+                            onClick={() => {
+                              setSelected(null);
+                              setReason("");
+                              setAck(false);
+                            }}
+                          >
+                            Cancel review
+                          </button>
+                        </div>
+                      </form>
+                    </>
+                  ) : (
+                    <div className={styles.reviewPlaceholder}>
+                      <span className={styles.reviewIcon} aria-hidden="true">
+                        ↖
+                      </span>
+                      <h2 id="redaction-heading">Select a candidate</h2>
+                      <p>
+                        Choose a source from the list to review its revision,
+                        attachments and redaction requirements.
+                      </p>
+                    </div>
+                  )}
+                </section>
+              </div>
+            ) : (
+              <section className={styles.card}>
+                <div className={styles.empty}>
+                  <h2>No sources need review</h2>
+                  <p>
+                    There is no expired evidence eligible for redaction right
+                    now.
+                  </p>
+                </div>
               </section>
             )}
           </>
         )
       )}
-    </>
+    </div>
   );
 }

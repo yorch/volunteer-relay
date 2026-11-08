@@ -56,16 +56,20 @@ test("redaction requires reason and explicit acknowledgment", async ({
   ).toHaveAttribute("href", "/api/product/retention-ledger");
   await page.getByRole("button", { name: "Review redaction" }).click();
   await expect(
-    page.getByRole("button", { name: "Confirm redaction" }),
+    page.getByRole("button", { name: "Confirm permanent redaction" }),
   ).toBeDisabled();
   await page
-    .getByLabel("Reason for redaction")
+    .getByLabel("Why should this evidence be redacted?")
     .fill("Retention period expired");
   await expect(
-    page.getByRole("button", { name: "Confirm redaction" }),
+    page.getByRole("button", { name: "Confirm permanent redaction" }),
   ).toBeDisabled();
-  await page.getByLabel("I understand this redaction is irreversible.").check();
-  await page.getByRole("button", { name: "Confirm redaction" }).click();
+  await page
+    .getByRole("checkbox", { name: "I understand this action is permanent." })
+    .check();
+  await page
+    .getByRole("button", { name: "Confirm permanent redaction" })
+    .click();
   await expect.poll(() => body.sourceId).toBe("s1");
   expect(body).toMatchObject({
     sourceId: "s1",

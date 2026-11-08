@@ -5,7 +5,7 @@ import type {
   ProductAuditEntry,
 } from "@relay/contracts";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
-import styles from "./product.module.css";
+import styles from "./admin.module.css";
 
 type Result<T> =
   | { ok: true; value: T }
@@ -29,8 +29,16 @@ function message(code: string) {
       ? "Please sign in."
       : "Unable to load this information. Please try again.";
 }
-function Card({ children }: { children: ReactNode }) {
-  return <section className={styles.card}>{children}</section>;
+function Card({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string | undefined;
+}) {
+  return (
+    <section className={`${styles.card} ${className}`}>{children}</section>
+  );
 }
 function stamp(value: string | null) {
   return value ? new Date(value).toLocaleString() : "Not available";
@@ -40,28 +48,46 @@ function json(value: unknown) {
     ? "None"
     : JSON.stringify(value, null, 2);
 }
+function describeAction(action: string) {
+  const labels: Record<string, string> = {
+    created: "Record created",
+    updated: "Record updated",
+    assigned: "Work assigned",
+    acknowledged: "Need acknowledged",
+    resolved: "Need resolved",
+    redacted: "Source redacted",
+    role_changed: "Workspace access changed",
+    invited: "Member invited",
+    removed: "Member removed",
+  };
+  return (
+    labels[action] ??
+    action.replace(/[-_]+/g, " ").replace(/^\w/, (c) => c.toUpperCase())
+  );
+}
 function Actor({ actor }: { actor: unknown }) {
   if (actor && typeof actor === "object" && !Array.isArray(actor)) {
     const obj = actor as Record<string, unknown>;
+    const label =
+      obj.kind === "user"
+        ? "Team member"
+        : obj.kind === "system"
+          ? "Relay system"
+          : "Recorded actor";
+    const identifier =
+      typeof obj.membershipId === "string" ? obj.membershipId : null;
     return (
-      <>
-        <strong>
-          {obj.kind === "user"
-            ? "Person"
-            : obj.kind === "system"
-              ? "System"
-              : "Actor"}
-        </strong>
-        <pre className={styles.auditJson}>{json(actor)}</pre>
-      </>
+      <span>
+        {label}
+        {identifier ? (
+          <span className={styles.actorId}> · {identifier.slice(0, 8)}</span>
+        ) : (
+          ""
+        )}
+      </span>
     );
   }
-  return (
-    <>
-      <strong>Actor</strong>
-      <pre className={styles.auditJson}>{json(actor)}</pre>
-    </>
-  );
+  return <span>Recorded actor</span>;
 }
 export function History() {
   const [entries, setEntries] = useState<ProductAuditEntry[] | null>(null);
@@ -88,51 +114,155 @@ export function History() {
     setPending(false);
   }
   return (
-    <>
-      <h1>History</h1>
-      <p>
-        Find the latest 100 changes for a record, newest first. Use “Before” to
-        look at earlier changes.
-      </p>
-      <Card>
-        <form onSubmit={search}>
+    <div className={styles.page}>
+      <header className={styles.pageHeading}>
+        <div>
+          <p className={styles.eyebrow}>ACCOUNTABILITY</p>
+          <h1>History</h1>
+          <p>
+            Follow the changes made to a record, including who acted and why.
+          </p>
+        </div>
+      </header>
+      <Card className={styles.searchCard}>
+        <form className={styles.historySearch} onSubmit={search}>
           <label>
             Record ID
-            <input name="aggregateId" required />
+            <input
+              name="aggregateId"
+              required
+              placeholder="Paste a need, source or activity ID"
+            />
           </label>
           <label>
-            Before (optional)
+            Before <span className={styles.optional}>(optional)</span>
             <input name="before" type="datetime-local" />
           </label>
           <button type="submit" disabled={pending}>
-            {pending ? "Loading…" : "Find history"}
+            {pending ? "Loading history…" : "Find history"}
           </button>
         </form>
+        <p className={styles.help}>
+          Showing up to 100 changes, newest first. Add a date to look further
+          back.
+        </p>
       </Card>
-      {error && <p role="alert">{error}</p>}
+      {pending && (
+        <p aria-live="polite" className={styles.loading}>
+          Loading the record timeline…
+        </p>
+      )}
+      {error && (
+        <p role="alert" className={styles.error}>
+          {error}
+        </p>
+      )}
       {entries?.length ? (
-        entries.map((entry) => (
-          <Card key={JSON.stringify(entry)}>
-            <h2>{entry.action}</h2>
-            <p>
-              {entry.aggregateType} · {entry.aggregateId} · revision{" "}
-              {entry.revision} · {stamp(entry.occurredAt)}
-            </p>
-            <Actor actor={entry.actor} />
-            <p>Reason: {entry.reason ?? "Not provided"}</p>
-            <details>
-              <summary>Before and after</summary>
-              <h3>Before</h3>
-              <pre className={styles.auditJson}>{json(entry.before)}</pre>
-              <h3>After</h3>
-              <pre className={styles.auditJson}>{json(entry.after)}</pre>
-            </details>
-          </Card>
-        ))
+        <section className={styles.timeline} aria-label="Record history">
+          <div className={styles.timelineHeading}>
+            <h2>Change timeline</h2>
+            <span>
+              {entries.length} {entries.length === 1 ? "change" : "changes"}
+            </span>
+          </div>
+          {entries.map((entry) => (
+            <article
+              className={styles.timelineEntry}
+              key={`${entry.aggregateType}-${entry.aggregateId}-${entry.revision}-${entry.occurredAt}`}
+            >
+              <span className={styles.timelineDot} aria-hidden="true" />
+              <Card className={styles.auditCard}>
+                <div className={styles.auditTopline}>
+                  <span className={styles.eventBadge}>
+                    {entry.aggregateType.replace(/[-_]+/g, " ")}
+                  </span>
+                  <time dateTime={entry.occurredAt}>
+                    {stamp(entry.occurredAt)}
+                  </time>
+                </div>
+                <h3>{describeAction(entry.action)}</h3>
+                <dl className={styles.auditSummary}>
+                  <div>
+                    <dt>By</dt>
+                    <dd>
+                      <Actor actor={entry.actor} />
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Record</dt>
+                    <dd>
+                      {entry.aggregateType} · revision {entry.revision}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Reason</dt>
+                    <dd>{entry.reason ?? "No reason was recorded."}</dd>
+                  </div>
+                </dl>
+                <details className={styles.technicalDetails}>
+                  <summary>Technical record details</summary>
+                  <p className={styles.technicalNote}>
+                    Record identifiers and before/after data for audit review.
+                  </p>
+                  <dl className={styles.auditSummary}>
+                    <div>
+                      <dt>Record ID</dt>
+                      <dd>{entry.aggregateId}</dd>
+                    </div>
+                  </dl>
+                  <div className={styles.jsonGrid}>
+                    <section>
+                      <h4>Before</h4>
+                      <pre className={styles.auditJson}>
+                        {json(entry.before)}
+                      </pre>
+                    </section>
+                    <section>
+                      <h4>After</h4>
+                      <pre className={styles.auditJson}>
+                        {json(entry.after)}
+                      </pre>
+                    </section>
+                    <section>
+                      <h4>Actor record</h4>
+                      <pre className={styles.auditJson}>
+                        {json(entry.actor)}
+                      </pre>
+                    </section>
+                  </div>
+                </details>
+              </Card>
+            </article>
+          ))}
+        </section>
       ) : !pending && searched && !error ? (
-        <p>No history found for this record.</p>
+        <Card className={styles.empty}>
+          <h2>No changes found</h2>
+          <p>
+            Check the record ID or choose a later “Before” date and try again.
+          </p>
+        </Card>
       ) : null}
-    </>
+    </div>
+  );
+}
+function formatMoney(microUsd: number) {
+  return `$${(microUsd / 1_000_000).toFixed(6)}`;
+}
+function formatStorage(bytes: number | null) {
+  if (bytes === null) return "Unknown";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}
+function StatusBadge({ status }: { status: string }) {
+  return (
+    <span
+      className={`${styles.statusBadge} ${styles[`status_${status.replace(/[^a-z0-9]+/gi, "_").toLowerCase()}`] ?? ""}`}
+    >
+      {status.replace(/[-_]+/g, " ")}
+    </span>
   );
 }
 export function Delivery({ owner }: { owner: boolean }) {
@@ -161,89 +291,202 @@ export function Delivery({ owner }: { owner: boolean }) {
       active = false;
     };
   }, [owner]);
+  const failed = deliveries?.filter((d) => d.status === "failed").length ?? 0;
+  const accepted = deliveries?.filter((d) => d.acceptedAt !== null).length ?? 0;
   return (
-    <>
-      <h1>Delivery and operations</h1>
-      <p>
-        Provider acceptance means the provider accepted a delivery request. It
-        does not mean a person acknowledged the need.
-      </p>
-      <h2>Deliveries</h2>
-      {pending ? (
-        <p aria-live="polite">Loading deliveries…</p>
-      ) : error ? (
-        <p role="alert">{error}</p>
-      ) : deliveries?.length ? (
-        deliveries.map((d) => (
-          <Card key={d.id}>
-            <h3>
-              {d.channel} · {d.status}
-            </h3>
-            <p>
-              Need {d.needId} · recipient {d.recipientId} · template{" "}
-              {d.template}
+    <div className={styles.page}>
+      <header className={styles.pageHeading}>
+        <div>
+          <p className={styles.eyebrow}>SERVICE HEALTH</p>
+          <h1>Delivery and operations</h1>
+          <p>See where updates and notifications stand across the workspace.</p>
+        </div>
+      </header>
+      <aside className={styles.definitionNote}>
+        <strong>Delivery status has limits.</strong> Provider acceptance means a
+        delivery request was accepted for processing. It does not confirm that a
+        person received or acknowledged the need.
+      </aside>
+      {owner && (
+        <section className={styles.opsSection} aria-labelledby="ops-heading">
+          <div className={styles.panelHeading}>
+            <div>
+              <p className={styles.eyebrow}>OWNER VIEW</p>
+              <h2 id="ops-heading">Organization operations</h2>
+            </div>
+          </div>
+          {opsLoading ? (
+            <p aria-live="polite" className={styles.loading}>
+              Loading operations…
             </p>
+          ) : opsError ? (
+            <p role="alert" className={styles.error}>
+              {opsError}
+            </p>
+          ) : operations ? (
+            <div className={styles.opsGrid}>
+              <Card className={styles.metricCard}>
+                <span className={styles.metricLabel}>Source queue</span>
+                <strong className={styles.metricValue}>
+                  {operations.queuedSources}
+                </strong>
+                <span className={styles.metricCaption}>
+                  {operations.failedSources} failed · oldest queued{" "}
+                  {stamp(operations.oldestQueuedAt)}
+                </span>
+              </Card>
+              <Card className={styles.metricCard}>
+                <span className={styles.metricLabel}>Urgent needs</span>
+                <strong className={styles.metricValue}>
+                  {operations.unresolvedUrgentNeeds}
+                </strong>
+                <span className={styles.metricCaption}>
+                  {operations.overdueAcknowledgments} acknowledgments overdue
+                </span>
+              </Card>
+              <Card className={styles.metricCard}>
+                <span className={styles.metricLabel}>Failed deliveries</span>
+                <strong
+                  className={`${styles.metricValue} ${operations.failedDeliveries ? styles.metricWarn : ""}`}
+                >
+                  {operations.failedDeliveries}
+                </strong>
+                <span className={styles.metricCaption}>
+                  Requests that need attention
+                </span>
+              </Card>
+              <Card className={styles.metricCard}>
+                <span className={styles.metricLabel}>Model usage</span>
+                <strong className={styles.metricValue}>
+                  {formatMoney(operations.modelSettledMicroUsd)}
+                </strong>
+                <span className={styles.metricCaption}>
+                  Settled · {formatMoney(operations.modelReservedMicroUsd)}{" "}
+                  reserved
+                </span>
+              </Card>
+              <Card className={styles.metricCard}>
+                <span className={styles.metricLabel}>Available storage</span>
+                <strong className={styles.metricValue}>
+                  {formatStorage(operations.availableStorageBytes)}
+                </strong>
+                <span className={styles.metricCaption}>
+                  Current service estimate
+                </span>
+              </Card>
+            </div>
+          ) : null}
+        </section>
+      )}
+      <section
+        className={styles.deliverySection}
+        aria-labelledby="delivery-heading"
+      >
+        <div className={styles.panelHeading}>
+          <div>
+            <p className={styles.eyebrow}>NOTIFICATION ACTIVITY</p>
+            <h2 id="delivery-heading">Deliveries</h2>
+          </div>
+          {deliveries && (
+            <span className={styles.count}>{deliveries.length} total</span>
+          )}
+        </div>
+        {!pending && !error && deliveries?.length ? (
+          <div className={styles.deliverySummary}>
+            <span>
+              <strong>{accepted}</strong> provider accepted
+            </span>
+            <span>
+              <strong className={failed ? styles.metricWarn : ""}>
+                {failed}
+              </strong>{" "}
+              failed
+            </span>
+            <span>
+              {deliveries.length - accepted - failed} pending or other
+            </span>
+          </div>
+        ) : null}
+        {pending ? (
+          <p aria-live="polite" className={styles.loading}>
+            Loading deliveries…
+          </p>
+        ) : error ? (
+          <p role="alert" className={styles.error}>
+            {error}
+          </p>
+        ) : deliveries?.length ? (
+          <div className={styles.tableWrap}>
+            <table className={styles.deliveryTable} aria-label="Deliveries">
+              <thead>
+                <tr>
+                  <th scope="col">Channel</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Attempts</th>
+                  <th scope="col">Provider accepted</th>
+                  <th scope="col">Person acknowledgment</th>
+                  <th scope="col">Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deliveries.map((d) => (
+                  <tr key={d.id}>
+                    <td>
+                      <strong>{d.channel}</strong>
+                      <span className={styles.tableSub}>
+                        {d.template.replace(/[-_]+/g, " ")}
+                      </span>
+                    </td>
+                    <td>
+                      <StatusBadge status={d.status} />
+                    </td>
+                    <td>{d.attempts}</td>
+                    <td>
+                      {d.acceptedAt ? stamp(d.acceptedAt) : "Not accepted"}
+                    </td>
+                    <td>
+                      <span className={styles.notProvided}>
+                        Confirm with the need record
+                      </span>
+                    </td>
+                    <td>
+                      <details className={styles.technicalDetails}>
+                        <summary>View</summary>
+                        <dl className={styles.detailList}>
+                          <div>
+                            <dt>Need</dt>
+                            <dd>{d.needId}</dd>
+                          </div>
+                          <div>
+                            <dt>Recipient</dt>
+                            <dd>{d.recipientId}</dd>
+                          </div>
+                          <div>
+                            <dt>Retry after</dt>
+                            <dd>{stamp(d.retryAfter)}</dd>
+                          </div>
+                          <div>
+                            <dt>Provider accepted</dt>
+                            <dd>{stamp(d.acceptedAt)}</dd>
+                          </div>
+                        </dl>
+                      </details>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Card className={styles.empty}>
+            <h3>No deliveries yet</h3>
             <p>
-              Attempts: {d.attempts} · Provider accepted: {stamp(d.acceptedAt)}{" "}
-              · Retry after: {stamp(d.retryAfter)}
+              Notification attempts will appear here when the workspace sends an
+              update.
             </p>
           </Card>
-        ))
-      ) : (
-        <p>No deliveries found.</p>
-      )}
-      {owner && (
-        <>
-          <h2>Organization operations</h2>
-          {opsLoading ? (
-            <p aria-live="polite">Loading operations…</p>
-          ) : opsError ? (
-            <p role="alert">{opsError}</p>
-          ) : (
-            operations && (
-              <div className={styles.metrics}>
-                <Card>
-                  <h3>Source queue</h3>
-                  <p>
-                    {operations.queuedSources} queued ·{" "}
-                    {operations.failedSources} failed
-                  </p>
-                  <p>Oldest queued: {stamp(operations.oldestQueuedAt)}</p>
-                </Card>
-                <Card>
-                  <h3>Needs</h3>
-                  <p>
-                    {operations.unresolvedUrgentNeeds} unresolved urgent ·{" "}
-                    {operations.overdueAcknowledgments} overdue acknowledgments
-                  </p>
-                </Card>
-                <Card>
-                  <h3>Failed deliveries</h3>
-                  <p>{operations.failedDeliveries}</p>
-                </Card>
-                <Card>
-                  <h3>Model costs</h3>
-                  <p>
-                    Reserved:{" "}
-                    {(operations.modelReservedMicroUsd / 1_000_000).toFixed(6)}{" "}
-                    USD · settled:{" "}
-                    {(operations.modelSettledMicroUsd / 1_000_000).toFixed(6)}{" "}
-                    USD
-                  </p>
-                </Card>
-                <Card>
-                  <h3>Available storage</h3>
-                  <p>
-                    {operations.availableStorageBytes === null
-                      ? "Unknown"
-                      : `${operations.availableStorageBytes} bytes`}
-                  </p>
-                </Card>
-              </div>
-            )
-          )}
-        </>
-      )}
-    </>
+        )}
+      </section>
+    </div>
   );
 }
