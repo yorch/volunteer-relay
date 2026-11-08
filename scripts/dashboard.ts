@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readHeadless } from "./dashboard/headless.ts";
+import { createTraceStore, traceIdPattern } from "./operational-traces.ts";
 import { schedulingFingerprint, schedulingReason } from "./scheduling.ts";
 import type { Config, State } from "./supervisor.ts";
 
@@ -234,6 +235,17 @@ export async function snapshot(root: string) {
 }
 
 export function createDashboard(root: string) {
+  let traces: ReturnType<typeof createTraceStore> | undefined;
+  const getTraces = () =>
+    (traces ??= (async () => {
+      const { store } = JSON.parse(
+        execFileSync(process.execPath, [cli, "init"], {
+          cwd: root,
+          encoding: "utf8",
+        }),
+      );
+      return createTraceStore(join(store, "operational-traces"));
+    })());
   return createServer(async (request, response) => {
     const address = response.socket?.localPort;
     const expectedHost = `127.0.0.1:${address}`;
@@ -261,9 +273,60 @@ export function createDashboard(root: string) {
         response.end(JSON.stringify(await snapshot(root)));
         return;
       }
+      if (request.url?.startsWith("/api/runs")) {
+        const url = new URL(request.url, `http://${expectedHost}`);
+        const parts = url.pathname.split("/");
+        const number = (name: string, fallback: number) => {
+          const v = url.searchParams.get(name);
+          if (v !== null && !/^\d{1,8}$/.test(v)) throw Error("Invalid cursor");
+          return v === null ? fallback : Number(v);
+        };
+        try {
+          const store = await getTraces();
+          let value: unknown;
+          if (url.pathname === "/api/runs") {
+            const task = url.searchParams.get("task");
+            if (task && !/^P\d-\d{2}$/.test(task)) throw Error("Invalid task");
+            const lane = url.searchParams.get("lane"),
+              harness = url.searchParams.get("harness"),
+              before = url.searchParams.get("before");
+            if (
+              (lane && !/^[A-FRV]$/.test(lane)) ||
+              (harness && !["codex", "pi"].includes(harness))
+            )
+              throw Error("Invalid filter");
+            value = await store.list({
+              ...(lane ? { lane } : {}),
+              ...(task ? { task } : {}),
+              ...(harness ? { harness } : {}),
+              ...(before ? { before } : {}),
+              limit: number("limit", 20),
+            });
+          } else if (parts.length === 4 && traceIdPattern.test(parts[3] ?? ""))
+            value = await store.tail(
+              parts[3] ?? "",
+              number("after", 0),
+              number("limit", 100),
+            );
+          else {
+            response.writeHead(404).end("Not found");
+            return;
+          }
+          response.setHeader("Content-Type", "application/json; charset=utf-8");
+          response.end(JSON.stringify(value));
+        } catch {
+          response
+            .writeHead(400, { "Content-Type": "application/json" })
+            .end(
+              JSON.stringify({ error: "Run unavailable or invalid request" }),
+            );
+        }
+        return;
+      }
       const routes: Record<string, [string, string]> = {
         "/": ["index.html", "text/html"],
         "/dashboard.js": ["dashboard.js", "text/javascript"],
+        "/runs.js": ["run-viewer.js", "text/javascript"],
         "/dashboard.css": ["dashboard.css", "text/css"],
       };
       const route = routes[request.url ?? ""];

@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 import { createDashboard, parseTask, plannedTasks } from "./dashboard.ts";
+import { createTraceStore } from "./operational-traces.ts";
 
 it("keeps task scope notes while distinguishing acceptance, review and blocked work", () => {
   const markdown =
@@ -101,6 +102,45 @@ it("serves fresh tasks/messages without exposing files or allowing mutations/cro
     const initial = await (await fetch(`${url}/api/snapshot`)).json();
     expect(initial.tasks).toHaveLength(1);
     expect(initial.messages).toEqual([]);
+    const traceId = "1794100000001-00000000-0000-4000-8000-000000000001";
+    const traces = await createTraceStore(
+      join(root, ".relay-coordination/operational-traces"),
+    );
+    const writer = await traces.begin({
+      runId: traceId,
+      lane: "A",
+      task: "P1-08",
+      harness: "codex",
+    });
+    await writer.emit({ kind: "started" });
+    const history = await (
+      await fetch(`${url}/api/runs?lane=A&limit=1`)
+    ).json();
+    expect(history.runs[0].runId).toBe(traceId);
+    const tail = await (
+      await fetch(`${url}/api/runs/${traceId}?after=0&limit=10`)
+    ).json();
+    expect(tail.meta.status).toBe("running");
+    expect(tail.events[0].kind).toBe("started");
+    expect((await fetch(`${url}/api/runs/${traceId}?limit=1000`)).status).toBe(
+      400,
+    );
+    expect((await fetch(`${url}/api/runs/%2e%2e%2fsecret`)).status).toBe(404);
+    expect((await fetch(`${url}/api/runs`, { method: "POST" })).status).toBe(
+      405,
+    );
+    expect(
+      (
+        await fetch(`${url}/api/runs`, {
+          headers: { Origin: "https://foreign.invalid" },
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (await fetch(`${url}/.relay-coordination/supervisor/runs/raw.jsonl`))
+        .status,
+    ).toBe(404);
+    await writer.finish("finished", "waiting");
     await writeFile(
       join(root, "docs/tasks/P1-01.md"),
       "# P1-01 — Synthetic\nOwner lane: B. Status: complete; scope only\n",

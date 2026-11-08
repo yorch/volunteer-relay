@@ -227,6 +227,7 @@ if(!input.includes('dedicated headless lane A'))process.exit(2);
 const args=process.argv.slice(2);const out=args[args.indexOf('--output-last-message')+1];
 mkdirSync('.relay-local',{recursive:true});const file='.relay-local/args.json';const history=existsSync(file)?JSON.parse(readFileSync(file,'utf8')):[];history.push(args);writeFileSync(file,JSON.stringify(history));
 console.log(JSON.stringify({type:'thread.started',thread_id:'00000000-0000-4000-8000-000000000001'}));
+console.log(JSON.stringify({type:'item.completed',item:{type:'reasoning',text:'PRIVATE_THOUGHT_SENTINEL'}}));
 if (${JSON.stringify(harness)} === 'codex') {
 writeFileSync(out,JSON.stringify({state:'waiting',summary:'Controlled fixture completed'}));
 console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:5,output_tokens:2}}));
@@ -286,6 +287,17 @@ console.log(JSON.stringify({type:'agent_settled',aborted:false}));
       let first = Object.values((await load()).records)[0];
       expect(first?.sessionId).toBe("00000000-0000-4000-8000-000000000001");
       expect(first?.inputTokens).toBe(5);
+      const traceDirectory = join(
+        root,
+        ".relay-coordination/operational-traces",
+      );
+      const traceText = await readFile(
+        join(traceDirectory, `${first?.runId}.events.jsonl`),
+        "utf8",
+      );
+      expect(traceText).not.toContain("PRIVATE_THOUGHT_SENTINEL");
+      expect(traceText).toContain('"kind":"started"');
+      expect(traceText).toContain('"kind":"finished"');
       await writeFile(
         join(directory, "commands/00000000-0000-4000-8000-000000000002.json"),
         JSON.stringify({

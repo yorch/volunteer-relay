@@ -222,8 +222,14 @@ export function consumeEvent(
     if (message?.role !== "assistant") return;
     stream.inputTokens += tokens(message.usage?.input);
     stream.outputTokens += tokens(message.usage?.output);
-    if (message.model)
-      stream.observedModel = `${message.provider ?? "unknown"}/${message.model}`;
+    if (message.model) {
+      const observed = `${message.provider ?? "unknown"}/${message.model}`;
+      if (
+        /^[A-Za-z0-9_./:-]{1,100}$/.test(observed) &&
+        !/(sk-|token|secret|password|https?:)/i.test(observed)
+      )
+        stream.observedModel = observed;
+    }
     delete stream.final;
     try {
       const value: unknown = JSON.parse(

@@ -331,3 +331,54 @@ select {
 .agent-card dd {
   margin: 3px 0 0;
 }
+
+.run-history {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0;
+  max-height: 240px;
+  overflow: auto;
+}
+.run-history button {
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.run-history button[aria-pressed="true"] {
+  border-color: #38704e;
+  background: #eef5ee;
+}
+.run-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.run-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.run-controls input {
+  width: auto;
+}
+#run-events {
+  height: 260px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  padding: 10px;
+  border-radius: 6px;
+}
+
+#run-events {
+  width: 100%;
+  font:
+    12px / 1.6 ui-monospace,
+    monospace;
+  resize: vertical;
+}
+
+.run-history {
+  min-inline-size: 0;
+  border: 0;
+  padding: 0;
+}

@@ -3,7 +3,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import {
   mkdir,
-  open,
   readdir,
   readFile,
   rename,
@@ -25,6 +24,11 @@ import {
   validateHarness,
   validFinal,
 } from "./harness.ts";
+import {
+  createTraceStore,
+  nativeTrace,
+  type TraceInput,
+} from "./operational-traces.ts";
 import { type LoadedScheduling, loadedScheduling } from "./scheduling.ts";
 import { acquire } from "./watch.ts";
 
@@ -53,6 +57,8 @@ export interface RecordState {
   harness?: Harness;
   sessionEpoch?: string;
   observedModel?: string;
+  runId?: string;
+  traceLimited?: boolean;
   status: "running" | "idle" | "paused";
   reason: string;
   summary?: string;
@@ -393,6 +399,9 @@ export async function serve(
     return saving;
   };
   try {
+    const traces = await createTraceStore(
+      join(dirname(directory), "operational-traces"),
+    );
     const latest = new Map<Lane, RecordState>();
     for (const r of Object.values(state.records).sort((a, b) =>
       (a.startedAt ?? "").localeCompare(b.startedAt ?? ""),
@@ -562,11 +571,32 @@ export async function serve(
           await mkdir(logs, { recursive: true, mode: 0o700 });
           const output = join(logs, `${work.lane}-${runId}.result.json`);
           await writeFile(output, "", { flag: "wx", mode: 0o600 });
-          const log = await open(
-            join(logs, `${work.lane}-${runId}.jsonl`),
-            "wx",
-            0o600,
-          );
+          record.runId = runId;
+          let trace: Awaited<ReturnType<typeof traces.begin>>;
+          try {
+            trace = await traces.begin({
+              runId,
+              lane: work.lane,
+              task: work.task,
+              harness: record.harness ?? "codex",
+            });
+          } catch {
+            record.status = "paused";
+            record.reason =
+              "Operational trace storage unavailable; inspect private disk";
+            record.finishedAt = new Date().toISOString();
+            await save();
+            continue;
+          }
+          if (record.sessionId) trace.session(record.sessionId);
+          let traceIOFailed = false;
+          const emitTrace = (input: TraceInput) => {
+            void trace.emit(input).catch(() => {
+              traceIOFailed = true;
+              record.traceLimited = true;
+            });
+          };
+          emitTrace({ kind: "started" });
           const invocation = command(config, record, schema, output);
           if (invocation.harness === "pi")
             await mkdir(join(directory, "pi-sessions"), {
@@ -604,17 +634,9 @@ export async function serve(
           };
           let buffer = "";
           let timedOut = false;
-          let logBytes = 0;
-          const logChunk = (chunk: Buffer) => {
-            if (logBytes < 20 * 1024 * 1024) {
-              logBytes += chunk.length;
-              void log.write(chunk).catch(() => {
-                state.draining = true;
-              });
-            }
-          };
+          let stderrOmitted = false,
+            stdoutOmitted = false;
           child.stdout?.on("data", (chunk: Buffer) => {
-            logChunk(chunk);
             buffer += chunk.toString();
             let end = buffer.indexOf("\n");
             while (end >= 0) {
@@ -625,20 +647,31 @@ export async function serve(
                 const previousInput = stream.inputTokens,
                   previousOutput = stream.outputTokens;
                 consumeEvent(invocation.harness, stream, event);
-                if (stream.sessionId) record.sessionId = stream.sessionId;
+                if (stream.sessionId) {
+                  record.sessionId = stream.sessionId;
+                  trace.session(stream.sessionId);
+                }
+                for (const metadata of nativeTrace(invocation.harness, event))
+                  emitTrace(metadata);
                 if (stream.observedModel)
                   record.observedModel = stream.observedModel;
                 record.inputTokens += stream.inputTokens - previousInput;
                 record.outputTokens += stream.outputTokens - previousOutput;
               } catch {
-                /* non-event output is retained privately */
+                if (!stdoutOmitted) {
+                  stdoutOmitted = true;
+                  emitTrace({ kind: "omitted", channel: "stdout" });
+                }
               }
               end = buffer.indexOf("\n");
             }
             if (buffer.length > 4 * 1024 * 1024) buffer = "";
           });
-          child.stderr?.on("data", (chunk: Buffer) => {
-            logChunk(chunk);
+          child.stderr?.on("data", () => {
+            if (!stderrOmitted) {
+              stderrOmitted = true;
+              emitTrace({ kind: "omitted", channel: "stderr" });
+            }
           });
           let killTimer: ReturnType<typeof setTimeout> | undefined;
           const timer = setTimeout(() => {
@@ -669,7 +702,6 @@ export async function serve(
           const finish = async (code: number | null) => {
             clearTimeout(timer);
             clearTimeout(killTimer);
-            await log.close();
             children.delete(work.key);
             record.exitCode = code ?? 1;
             record.finishedAt = new Date().toISOString();
@@ -687,21 +719,27 @@ export async function serve(
             const after = progress(await snapshot(config.root), cwd);
             record.noProgress = after === before ? record.noProgress + 1 : 0;
             record.progress = after;
-            const pause = timedOut
-              ? "Time budget reached"
-              : code !== 0
-                ? "CLI run failed; inspect private log and retry"
-                : !valid
-                  ? "No valid final result; inspect before retry"
-                  : final.state === "needs_operator"
-                    ? "Operator input needed"
-                    : record.noProgress >= 2
-                      ? "Two runs without recorded progress; inspect before retry"
-                      : null;
+            const pause = traceIOFailed
+              ? "Operational trace persistence unavailable"
+              : timedOut
+                ? "Time budget reached"
+                : code !== 0
+                  ? "CLI run failed; inspect private log and retry"
+                  : !valid
+                    ? "No valid final result; inspect before retry"
+                    : final.state === "needs_operator"
+                      ? "Operator input needed"
+                      : record.noProgress >= 2
+                        ? "Two runs without recorded progress; inspect before retry"
+                        : null;
             record.summary = valid ? final.summary : "";
             record.status = pause ? "paused" : "idle";
             record.reason =
               pause ?? (valid ? final.summary.slice(0, 500) : "Turn complete");
+            await trace.finish(
+              pause ? "paused" : "finished",
+              valid ? final.state : null,
+            );
             console.log(
               JSON.stringify({
                 lane: work.lane,
