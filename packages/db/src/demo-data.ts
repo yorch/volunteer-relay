@@ -441,7 +441,7 @@ async function addNeed(
     status,
     ownerMembershipId: assigned ? membershipId : null,
     dueAt: null,
-    acknowledgeBy: assigned ? "2026-11-08T18:00:00.000Z" : null,
+    acknowledgeBy: null,
     acknowledgedAt: acknowledged ? "2026-11-07T13:00:00.000Z" : null,
     acknowledgedByMembershipId: acknowledged ? membershipId : null,
     resolvedAt: resolved ? "2026-11-07T15:00:00.000Z" : null,
