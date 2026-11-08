@@ -55,5 +55,6 @@ COPY --from=worker-deps /app/package.json /app/package.json
 COPY --from=worker-deps /app/apps/worker /app/apps/worker
 COPY --from=worker-deps /app/packages /app/packages
 COPY --from=worker-deps /app/scripts/retention.ts /app/scripts/provision-organization.ts /app/scripts/live-provider-smoke.ts /app/scripts/
+RUN chmod -R a+rX /app/apps/worker /app/packages /app/scripts
 USER node
 CMD ["node", "apps/worker/src/index.ts"]
