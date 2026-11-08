@@ -8,6 +8,8 @@ import {
   createProcessingRepository,
   createRetentionRepository,
   createSourceStore,
+  type Database,
+  pruneUnreferencedBlob,
   schema,
   sql,
 } from "../../../packages/db/src/index.ts";
@@ -524,4 +526,138 @@ it("database write fences reject new evidence on a redacted source", async () =>
       sql`insert into source_attachment(organization_id,source_id,revision,attachment_id) values ('tidepath','sensitive-source',1,'picture')`,
     ),
   ).rejects.toThrow();
+});
+
+it("prunes only when no tenant retains the blob", async () => {
+  await seedSource();
+  const nico = await context(
+    fixture.authorization,
+    "user-nico",
+    "harbor",
+    "source",
+  );
+  const sources = createSourceRepository({
+    authorization: fixture.authorization,
+    store: createSourceStore(fixture.db),
+  });
+  const second: SourceEnvelope = {
+    ...source,
+    organizationId: "harbor",
+    sourceId: "other-source",
+    channelIdentity: "harbor",
+    externalMessageId: "other",
+    idempotencyKey: "other",
+    author: { externalIdentity: "Nico", membershipId: "harbor-nico" },
+    attachments: source.attachments.map((a) => ({
+      ...a,
+      organizationId: "harbor",
+    })),
+  };
+  expect((await sources.accept(nico, second)).ok).toBe(true);
+  const owner = await context(
+    fixture.authorization,
+    "user-rae",
+    "tidepath",
+    "owner",
+  );
+  expect(
+    (
+      await retention().redactSource(owner, {
+        sourceId: source.sourceId,
+        expectedRevision: 1,
+        idempotencyKey: "redact",
+        reason: "expired",
+      })
+    ).ok,
+  ).toBe(true);
+  let calls = 0;
+  expect(
+    await pruneUnreferencedBlob(
+      fixture.db,
+      { storageKey: key, sha256: hash },
+      async () => {
+        calls += 1;
+      },
+    ),
+  ).toBe(false);
+  expect(calls).toBe(0);
+  await expect(
+    pruneUnreferencedBlob(
+      fixture.db,
+      { storageKey: "../unsafe", sha256: hash },
+      async () => {},
+    ),
+  ).rejects.toThrow("Invalid blob identity");
+});
+it("waits for a concurrent source acceptance before deciding whether to erase", async () => {
+  const mira = await context(
+    fixture.authorization,
+    "user-mira",
+    "tidepath",
+    "source",
+  );
+  let unlock = () => {};
+  let ready = () => {};
+  const gate = new Promise<void>((resolve) => {
+    unlock = resolve;
+  });
+  const accepted = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  const writer = fixture.db.transaction(async (tx) => {
+    const repo = createSourceRepository({
+      authorization: fixture.authorization,
+      store: createSourceStore(tx as unknown as Database),
+    });
+    const result = await repo.accept(mira, source);
+    if (!result.ok) throw new Error("source failed");
+    ready();
+    await gate;
+  });
+  await accepted;
+  let calls = 0;
+  const pruning = pruneUnreferencedBlob(
+    fixture.db,
+    { storageKey: key, sha256: hash },
+    async () => {
+      calls += 1;
+    },
+  );
+  try {
+    expect(
+      await Promise.race([
+        pruning.then(() => "finished"),
+        new Promise<string>((resolve) =>
+          setTimeout(() => resolve("blocked"), 50),
+        ),
+      ]),
+    ).toBe("blocked");
+  } finally {
+    unlock();
+  }
+  await writer;
+  expect(await pruning).toBe(false);
+  expect(calls).toBe(0);
+});
+it("erases a verified orphan and returns a fixed error on adapter failure", async () => {
+  let called = 0;
+  expect(
+    await pruneUnreferencedBlob(
+      fixture.db,
+      { storageKey: key, sha256: hash },
+      async () => {
+        called += 1;
+      },
+    ),
+  ).toBe(true);
+  expect(called).toBe(1);
+  await expect(
+    pruneUnreferencedBlob(
+      fixture.db,
+      { storageKey: key, sha256: hash },
+      async () => {
+        throw new Error("private detail");
+      },
+    ),
+  ).rejects.toThrow("Blob pruning unavailable");
 });
