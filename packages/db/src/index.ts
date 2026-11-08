@@ -18,6 +18,7 @@ export { and, desc, eq, sql } from "drizzle-orm";
 export * from "./migrations.ts";
 export * from "./repositories/attachments.ts";
 export * from "./repositories/domain.ts";
+export * from "./repositories/follow-through.ts";
 export * from "./repositories/memberships.ts";
 export * from "./repositories/processing.ts";
 export * from "./repositories/sources.ts";
