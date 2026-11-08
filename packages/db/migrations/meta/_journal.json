@@ -71,6 +71,13 @@
       "when": 1794140241259,
       "tag": "0009_greedy_snowbird",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794140241260,
+      "tag": "0010_redaction_write_fence",
+      "breakpoints": true
     }
   ]
 }

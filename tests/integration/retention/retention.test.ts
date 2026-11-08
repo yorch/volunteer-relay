@@ -486,3 +486,42 @@ it("redacts source-linked command and audit snapshots without changing ledger mi
   );
   expect(JSON.stringify(audit.rows)).not.toContain("Sensitive");
 });
+it("database write fences reject new evidence on a redacted source", async () => {
+  await seedSource();
+  const owner = await context(
+    fixture.authorization,
+    "user-rae",
+    "tidepath",
+    "owner",
+  );
+  expect(
+    (
+      await retention().redactSource(owner, {
+        sourceId: source.sourceId,
+        expectedRevision: 1,
+        idempotencyKey: "r",
+        reason: "expired",
+      })
+    ).ok,
+  ).toBe(true);
+  await expect(
+    fixture.db.execute(
+      sql`insert into source_revision (organization_id,source_id,revision,channel,channel_identity,external_message_id,idempotency_key,author_external_identity,author_membership_id,occurred_at,received_at,timezone,text_body,original_media_type,original_payload,reply_to_source_id,replaces_revision,canonical_digest,envelope,correlation_id) select organization_id,source_id,2,channel,channel_identity,external_message_id,'replay-key',author_external_identity,author_membership_id,occurred_at,received_at,timezone,text_body,original_media_type,original_payload,reply_to_source_id,1,canonical_digest,envelope,correlation_id from source_revision where organization_id='tidepath' and source_id='sensitive-source'`,
+    ),
+  ).rejects.toThrow();
+  await expect(
+    fixture.db.execute(
+      sql`insert into extraction_run(organization_id,run_id,source_id,source_revision,proposal) values ('tidepath','new-run','sensitive-source',1,'{}'::jsonb)`,
+    ),
+  ).rejects.toThrow();
+  await expect(
+    fixture.db.execute(
+      sql`insert into source_attachment_identity(organization_id,source_id,attachment_id,storage_key,sha256,mime_type,bytes) values ('tidepath','sensitive-source','other','other',${hash},'image/png',1)`,
+    ),
+  ).rejects.toThrow();
+  await expect(
+    fixture.db.execute(
+      sql`insert into source_attachment(organization_id,source_id,revision,attachment_id) values ('tidepath','sensitive-source',1,'picture')`,
+    ),
+  ).rejects.toThrow();
+});
