@@ -330,12 +330,19 @@ export function ProductWorkspace({ page }: { page: Page | "home" }) {
       navigation={nav}
       account={
         <>
-          <span>
-            {snapshot.members.find(
-              (m) => m.membershipId === snapshot.organization.membershipId,
-            )?.name ?? "Account"}{" "}
-            · {role}
-          </span>
+          {snapshot.members.find(
+            (m) => m.membershipId === snapshot.organization.membershipId,
+          )?.name && (
+            <span>
+              {
+                snapshot.members.find(
+                  (m) => m.membershipId === snapshot.organization.membershipId,
+                )?.name
+              }{" "}
+              · {role}
+              {" · "}
+            </span>
+          )}
           <Organization />
         </>
       }
