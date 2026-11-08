@@ -68,3 +68,39 @@ it("projects private health without raw notices, tolerates missing config and ch
     await rm(store, { recursive: true, force: true });
   }
 });
+
+it("keeps partially shaped private snapshots unknown-safe", async () => {
+  const store = await mkdtemp(join(tmpdir(), "relay-invalid-health-"));
+  try {
+    await mkdir(join(store, "supervisor"), { mode: 0o700 });
+    for (const decoded of [
+      null,
+      [],
+      "bad",
+      { records: { bad: null } },
+      { records: { p: { lane: "B", status: "paused" } } },
+      {
+        pid: "secret",
+        held: "secret",
+        scheduling: { fingerprint: "PRIVATE_SENTINEL" },
+        records: { p: { lane: "INVALID", status: "running", pid: -1 } },
+      },
+    ]) {
+      await writeFile(
+        join(store, "supervisor/state.json"),
+        JSON.stringify(decoded),
+        { mode: 0o600 },
+      );
+      const result = await readHealth(store);
+      expect(result.supervisor.alive).toBe("unknown");
+      expect(result.config.loaded).toBeNull();
+      expect(result.children).toEqual([]);
+      expect(
+        result.lanePauses?.every((pause) => pause.reason === "unknown"),
+      ).toBe(true);
+      expect(JSON.stringify(result)).not.toContain("PRIVATE_SENTINEL");
+    }
+  } finally {
+    await rm(store, { recursive: true, force: true });
+  }
+});

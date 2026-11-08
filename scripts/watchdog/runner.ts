@@ -3,7 +3,7 @@ import { mkdir, open, rename, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { schedulingFingerprint } from "../scheduling.ts";
-import type { Config, State } from "../supervisor.ts";
+import { type Config, validateConfig } from "../supervisor.ts";
 import type { Liveness, WatchdogInput, WatchdogSettings } from "./policy.ts";
 import { checkWatchdog, startWatchdog } from "./service.ts";
 
@@ -42,26 +42,49 @@ const time = (value: unknown): number | null =>
   typeof value === "string" && Number.isFinite(Date.parse(value))
     ? Date.parse(value)
     : null;
+const object = (value: unknown): Record<string, unknown> | null =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+const pidValue = (value: unknown): number | null =>
+  typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? value
+    : null;
+const fingerprint = (value: unknown): string | null =>
+  typeof value === "string" && /^[a-f0-9]{64}$/.test(value) ? value : null;
+const laneNames = ["A", "B", "C", "D", "E", "F", "R", "V"];
 export async function readHealth(
   store: string,
   now = Date.now(),
 ): Promise<WatchdogInput> {
-  const state = (await privateJson(
-    join(store, "supervisor/state.json"),
-  )) as State | null;
-  const config = (await privateJson(
-    join(store, "supervisor/config.json"),
-  )) as Config | null;
-  const desired = (await privateJson(
-    join(store, "supervisor/desired.json"),
-  )) as { desiredRunning?: unknown } | null;
-  const records = Object.values(state?.records ?? {}).slice(0, 128);
-  const pid = Number.isSafeInteger(state?.pid) ? (state?.pid ?? null) : null;
+  const state = object(await privateJson(join(store, "supervisor/state.json")));
+  const config = await privateJson(join(store, "supervisor/config.json"));
+  const desired = object(
+    await privateJson(join(store, "supervisor/desired.json")),
+  );
+  const records = Object.values(object(state?.records) ?? {})
+    .slice(0, 128)
+    .map(object)
+    .filter(
+      (r): r is Record<string, unknown> =>
+        r !== null &&
+        typeof r.lane === "string" &&
+        laneNames.includes(r.lane) &&
+        ["running", "idle", "paused"].includes(r.status as string),
+    );
+  const held =
+    Array.isArray(state?.held) &&
+    state.held.every(
+      (lane) => typeof lane === "string" && laneNames.includes(lane),
+    )
+      ? (state.held as string[])
+      : null;
+  const pid = pidValue(state?.pid);
   let disk: string | null = null;
   try {
-    if (config) disk = schedulingFingerprint(config);
+    disk = schedulingFingerprint(validateConfig(config as Config));
   } catch {
-    /* unknown */
+    /* unavailable configuration */
   }
   return {
     version: 1,
@@ -77,9 +100,15 @@ export async function readHealth(
       draining: state?.draining === true,
     },
     children: records
-      .filter((r) => r.status === "running" && Number.isSafeInteger(r.pid))
-      .map((r) => ({ pid: r.pid as number, alive: liveness(r.pid ?? null) })),
-    config: { loaded: state?.scheduling?.fingerprint ?? null, disk },
+      .filter((r) => r.status === "running" && pidValue(r.pid) !== null)
+      .map((r) => ({
+        pid: pidValue(r.pid) as number,
+        alive: liveness(pidValue(r.pid)),
+      })),
+    config: {
+      loaded: fingerprint(object(state?.scheduling)?.fingerprint),
+      disk,
+    },
     queue: [],
     coordinator: {
       turnStartedAt: time(
@@ -93,8 +122,8 @@ export async function readHealth(
       .filter((r) => r.status === "paused")
       .slice(0, 64)
       .map((r) => ({
-        lane: r.lane,
-        reason: state?.held.includes(r.lane) ? "operator" : "failure",
+        lane: r.lane as string,
+        reason: held?.includes(r.lane as string) ? "operator" : "unknown",
       })),
     pendingOperations: [],
   };
