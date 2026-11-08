@@ -675,7 +675,7 @@ export function createProcessingRepository(db: Database) {
         const actorId =
           context.actor.kind === "user" ? context.actor.membershipId : "";
         const rows = await db.execute(
-          sql`select s.source_id,s.revision,coalesce(r.status,case when w.failed then 'failed' else 'queued' end) as status from source_revision s left join extraction_run r on (r.organization_id,r.source_id,r.source_revision)=(s.organization_id,s.source_id,s.revision) left join processing_work w on (w.organization_id,w.source_id,w.source_revision)=(s.organization_id,s.source_id,s.revision) where s.organization_id=${context.organizationId} and (${staff(role)} or s.author_membership_id=${actorId}) and not exists (select 1 from source_revision n where n.organization_id=s.organization_id and n.source_id=s.source_id and n.revision>s.revision) order by s.received_at desc,s.source_id`,
+          sql`select s.source_id,s.revision,coalesce(r.status,case when w.failed or (w.attempts>=3 and (w.lease_until is null or w.lease_until<=now())) then 'failed' else 'queued' end) as status from source_revision s left join extraction_run r on (r.organization_id,r.source_id,r.source_revision)=(s.organization_id,s.source_id,s.revision) left join processing_work w on (w.organization_id,w.source_id,w.source_revision)=(s.organization_id,s.source_id,s.revision) where s.organization_id=${context.organizationId} and (${staff(role)} or s.author_membership_id=${actorId}) and not exists (select 1 from source_revision n where n.organization_id=s.organization_id and n.source_id=s.source_id and n.revision>s.revision) order by s.received_at desc,s.source_id`,
         );
         return success(
           rows.rows.map((row) => ({
@@ -734,6 +734,75 @@ export function createProcessingRepository(db: Database) {
       command: ReviewDecision,
     ): Promise<Result<ReviewOutcome>> {
       return executeDecision(context, command);
+    },
+    async retrySource(
+      context: TenantContext,
+      input: { sourceId: string; idempotencyKey: string },
+    ): Promise<Result<void>> {
+      if (
+        !input ||
+        typeof input.sourceId !== "string" ||
+        !input.sourceId ||
+        typeof input.idempotencyKey !== "string" ||
+        !input.idempotencyKey
+      )
+        return fail(context, "VALIDATION", "Invalid retry command");
+      try {
+        return await db.transaction(async (tx) => {
+          if (!staff(await authorize(tx, context)))
+            return fail(context, "FORBIDDEN", "Review authority required");
+          await tx.execute(
+            sql`select pg_advisory_xact_lock(hashtextextended(${json([context.organizationId, "retry", input.idempotencyKey])},0))`,
+          );
+          const prior = await tx.execute(
+            sql`select source_id from processing_retry where organization_id=${context.organizationId} and idempotency_key=${input.idempotencyKey}`,
+          );
+          if (prior.rows[0])
+            return prior.rows[0].source_id === input.sourceId
+              ? success(undefined)
+              : fail(context, "CONFLICT", "Idempotency key already used");
+          const locked = await tx.execute(
+            sql`select id from source where organization_id=${context.organizationId} and id=${input.sourceId} for update`,
+          );
+          if (!locked.rows.length)
+            throw new Abort("NOT_FOUND", "Source not found");
+          const latest = await tx.execute(
+            sql`select revision from source_revision where organization_id=${context.organizationId} and source_id=${input.sourceId} order by revision desc limit 1`,
+          );
+          const revision = latest.rows[0]?.revision as number | undefined;
+          if (!revision) throw new Abort("NOT_FOUND", "Source not found");
+          const proposal = await tx.execute(
+            sql`select 1 from extraction_run where organization_id=${context.organizationId} and source_id=${input.sourceId} and source_revision=${revision}`,
+          );
+          if (proposal.rows.length)
+            throw new Abort("CONFLICT", "Source already has a proposal");
+          const work = await tx.execute(
+            sql`select attempts,failed,lease_until,lease_until>now() as active from processing_work where organization_id=${context.organizationId} and source_id=${input.sourceId} and source_revision=${revision} for update`,
+          );
+          const row = work.rows[0];
+          if (
+            !row ||
+            row.active ||
+            (!row.failed && (row.attempts as number) < 3)
+          )
+            throw new Abort("CONFLICT", "Source is not available for retry");
+          await tx.execute(
+            sql`insert into processing_retry(organization_id,idempotency_key,source_id,source_revision,prior_attempts,actor,correlation_id) values (${context.organizationId},${input.idempotencyKey},${input.sourceId},${revision},${row.attempts as number},${json(context.actor)}::jsonb,${context.correlationId})`,
+          );
+          await tx.execute(
+            sql`update processing_work set attempts=0,failed=false,lease_until=null,lease_token=null,retry_after=null where organization_id=${context.organizationId} and source_id=${input.sourceId} and source_revision=${revision}`,
+          );
+          return success(undefined);
+        });
+      } catch (error) {
+        return error instanceof Abort
+          ? fail(context, error.code, error.message)
+          : fail(
+              context,
+              "DEPENDENCY_UNAVAILABLE",
+              "Processing storage unavailable",
+            );
+      }
     },
     async applyValidatedPolicy(
       source: SourceEnvelope,

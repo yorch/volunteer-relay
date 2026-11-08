@@ -1197,3 +1197,116 @@ it("leaves a plausible existing activity in review under validated policy", asyn
     value: { applied: false },
   });
 });
+it("allows audited, idempotent staff retry after exhausted processing", async () => {
+  const repo = createProcessingRepository(fixture.db);
+  const staff = await context(
+    fixture.authorization,
+    "user-kai",
+    "tidepath",
+    "retry",
+  );
+  const volunteer = await context(
+    fixture.authorization,
+    "user-mira",
+    "tidepath",
+    "retry",
+  );
+  for (let i = 0; i < 3; i += 1) {
+    const [lease] = await repo.pendingSources(1);
+    if (!lease) throw new Error("missing lease");
+    await repo.markFailure(source, lease.leaseToken);
+    await fixture.db.execute(
+      sql`update processing_work set retry_after=now()-interval '1 second'`,
+    );
+  }
+  expect(
+    await repo.retrySource(volunteer, {
+      sourceId: "s1",
+      idempotencyKey: "retry",
+    }),
+  ).toMatchObject({ ok: false, error: { code: "FORBIDDEN" } });
+  const command = { sourceId: "s1", idempotencyKey: "retry" };
+  expect(await repo.retrySource(staff, command)).toEqual({
+    ok: true,
+    value: undefined,
+  });
+  expect(await repo.retrySource(staff, command)).toEqual({
+    ok: true,
+    value: undefined,
+  });
+  expect(
+    await repo.retrySource(staff, { ...command, sourceId: "other" }),
+  ).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+  const rows = await fixture.db.execute(
+    sql`select source_id,source_revision,prior_attempts,actor from processing_retry`,
+  );
+  expect(rows.rows).toMatchObject([
+    {
+      source_id: "s1",
+      source_revision: 1,
+      prior_attempts: 3,
+      actor: { kind: "user", membershipId: "tidepath-kai" },
+    },
+  ]);
+  await expect(
+    fixture.db.execute(sql`update processing_retry set prior_attempts=1`),
+  ).rejects.toThrow();
+  expect((await repo.pendingSources(1))[0]?.source).toEqual(source);
+  await fixture.db
+    .delete(schema.member)
+    .where(sql`${schema.member.id}='tidepath-kai'`);
+  expect(await repo.retrySource(staff, command)).toMatchObject({
+    ok: false,
+    error: { code: "FORBIDDEN" },
+  });
+});
+it("does not reset an active lease, but permits retry of an exhausted crashed lease", async () => {
+  const repo = createProcessingRepository(fixture.db);
+  const staff = await context(
+    fixture.authorization,
+    "user-kai",
+    "tidepath",
+    "retry",
+  );
+  const [lease] = await repo.pendingSources(1);
+  if (!lease) throw new Error("missing lease");
+  expect(
+    await repo.retrySource(staff, { sourceId: "s1", idempotencyKey: "active" }),
+  ).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+  await fixture.db.execute(
+    sql`update processing_work set attempts=3,failed=false,lease_until=now()-interval '1 second'`,
+  );
+  expect(await repo.listSourceStatuses(staff)).toEqual({
+    ok: true,
+    value: [{ sourceId: "s1", revision: 1, status: "failed" }],
+  });
+  expect(
+    await repo.retrySource(staff, { sourceId: "s1", idempotencyKey: "crash" }),
+  ).toEqual({ ok: true, value: undefined });
+  const [fresh] = await repo.pendingSources(1);
+  if (!fresh) throw new Error("missing fresh lease");
+  expect(
+    await repo.persistProposal(
+      systemContext("tidepath"),
+      source,
+      proposal,
+      lease.leaseToken,
+    ),
+  ).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+  expect(
+    (
+      await repo.persistProposal(
+        systemContext("tidepath"),
+        source,
+        proposal,
+        fresh.leaseToken,
+      )
+    ).ok,
+  ).toBe(true);
+  expect(
+    await repo.retrySource(staff, {
+      sourceId: "s1",
+      idempotencyKey: "complete",
+    }),
+  ).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+});

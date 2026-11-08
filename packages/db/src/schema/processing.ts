@@ -125,3 +125,30 @@ export const reviewEffect = pgTable(
     }),
   ],
 );
+// Immutable staff-authorized retry history; no source text is copied here.
+export const processingRetry = pgTable(
+  "processing_retry",
+  {
+    organizationId: text("organization_id").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    sourceId: text("source_id").notNull(),
+    sourceRevision: integer("source_revision").notNull(),
+    priorAttempts: integer("prior_attempts").notNull(),
+    actor: jsonb("actor").$type<TenantContext["actor"]>().notNull(),
+    correlationId: text("correlation_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.organizationId, t.idempotencyKey] }),
+    foreignKey({
+      columns: [t.organizationId, t.sourceId, t.sourceRevision],
+      foreignColumns: [
+        sourceRevision.organizationId,
+        sourceRevision.sourceId,
+        sourceRevision.revision,
+      ],
+    }),
+  ],
+);

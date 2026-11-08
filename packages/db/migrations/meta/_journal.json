@@ -57,6 +57,13 @@
       "when": 1794139486072,
       "tag": "0007_bitter_black_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794139929735,
+      "tag": "0008_familiar_puma",
+      "breakpoints": true
     }
   ]
 }
