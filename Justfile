@@ -67,9 +67,15 @@ env: _pinned
       echo ".env.local already exists; preserving it (this recipe never overwrites)."
       exit 0
     fi
-    cp .env.example .env.local
-    node -e 'const fs = require("node:fs"); const path = require("node:path"); const crypto = require("node:crypto"); const file = ".env.local"; const env = fs.readFileSync(file, "utf8").replace(/^ATTACHMENT_ROOT=.*$/m, "ATTACHMENT_ROOT=" + JSON.stringify(path.resolve(".relay-local/attachments"))); fs.writeFileSync(file, env + "\nBETTER_AUTH_SECRET=" + crypto.randomBytes(32).toString("hex") + "\nRETENTION_LEDGER_KEY=" + crypto.randomBytes(32).toString("hex") + "\n", { mode: 0o600 });'
-    chmod 600 .env.local
+    # Build the file completely under a temporary name, then rename it into
+    # place, so an interrupted run never leaves a half-written .env.local.
+    tmp=".env.local.tmp.$$"
+    trap 'rm -f "$tmp"' EXIT
+    cp .env.example "$tmp"
+    ENV_TMP="$tmp" node -e 'const fs = require("node:fs"); const path = require("node:path"); const crypto = require("node:crypto"); const file = process.env.ENV_TMP; const env = fs.readFileSync(file, "utf8").replace(/^ATTACHMENT_ROOT=.*$/m, "ATTACHMENT_ROOT=" + JSON.stringify(path.resolve(".relay-local/attachments"))); fs.writeFileSync(file, env + "\nBETTER_AUTH_SECRET=" + crypto.randomBytes(32).toString("hex") + "\nRETENTION_LEDGER_KEY=" + crypto.randomBytes(32).toString("hex") + "\n", { mode: 0o600 });'
+    chmod 600 "$tmp"
+    mv "$tmp" .env.local
+    trap - EXIT
     echo "Created .env.local with generated local secrets and .relay-local/attachments."
 
 # Full local setup: tools, dependencies, .env.local, services, test database and migrations.
@@ -302,7 +308,7 @@ watch *args:
 # Remove generated build and test output; keeps node_modules and local data.
 [group('Maintenance')]
 clean:
-    rm -rf .next apps/web/.next apps/worker/dist coverage test-results playwright-report
+    rm -rf .next .next-e2e apps/web/.next apps/worker/dist coverage test-results playwright-report
 
 # Check the Justfile is formatted without rewriting it.
 [group('Maintenance')]

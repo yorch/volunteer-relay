@@ -1,13 +1,32 @@
 FROM node:26.11.1-bookworm-slim@sha256:86f07bc9c5dce4578cf37e5a418b7bfc7f817cda25cde66e2b66e95ed86c4567 AS node
 WORKDIR /app
-FROM node AS build
+
+# Shared tooling for every install stage. Bun is pinned here once; the optional
+# proxy CA is only read from the build secret and is never persisted.
+FROM node AS tooling
 RUN --mount=type=secret,id=proxy_ca \
     if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca SSL_CERT_FILE=/run/secrets/proxy_ca; fi; \
     npm install --global bun@1.4.1
-COPY . .
+
+# Install layers depend only on the root manifest, the lockfile and the
+# workspace manifests, so source edits do not invalidate the dependency layer.
+# Keep this list in sync with the workspaces in the root package.json.
+FROM tooling AS build
+COPY package.json bun.lock ./
+COPY apps/web/package.json apps/web/
+COPY apps/worker/package.json apps/worker/
+COPY packages/ai/package.json packages/ai/
+COPY packages/blob/package.json packages/blob/
+COPY packages/config/package.json packages/config/
+COPY packages/contracts/package.json packages/contracts/
+COPY packages/db/package.json packages/db/
+COPY packages/domain/package.json packages/domain/
+COPY packages/intake/package.json packages/intake/
+COPY packages/notifications/package.json packages/notifications/
 RUN --mount=type=secret,id=proxy_ca \
     if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca SSL_CERT_FILE=/run/secrets/proxy_ca; fi; \
     node -e 'if(process.versions.node!=="26.11.1")process.exit(1)' && bun install --frozen-lockfile
+COPY . .
 RUN bun run build
 
 # Local development topology (Compose); not published. Runs next dev as the
@@ -21,16 +40,28 @@ RUN mkdir -p /data/attachments \
 USER node
 CMD ["node", "apps/web/node_modules/next/dist/bin/next", "dev", "apps/web", "--hostname", "0.0.0.0"]
 
-# Production-scoped worker dependency install: workspace sources are needed for
-# the install layout, but only @relay/worker's dependency tree is kept.
-FROM node AS worker-deps
-RUN --mount=type=secret,id=proxy_ca \
-    if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca SSL_CERT_FILE=/run/secrets/proxy_ca; fi; \
-    npm install --global bun@1.4.1
-COPY . .
+# Production-scoped worker dependency install: only the manifests feed the
+# install layer, then the worker sources are copied and test files are pruned
+# so they never reach the worker image.
+FROM tooling AS worker-deps
+COPY package.json bun.lock ./
+COPY apps/web/package.json apps/web/
+COPY apps/worker/package.json apps/worker/
+COPY packages/ai/package.json packages/ai/
+COPY packages/blob/package.json packages/blob/
+COPY packages/config/package.json packages/config/
+COPY packages/contracts/package.json packages/contracts/
+COPY packages/db/package.json packages/db/
+COPY packages/domain/package.json packages/domain/
+COPY packages/intake/package.json packages/intake/
+COPY packages/notifications/package.json packages/notifications/
 RUN --mount=type=secret,id=proxy_ca \
     if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca SSL_CERT_FILE=/run/secrets/proxy_ca; fi; \
     bun install --frozen-lockfile --production --filter @relay/worker
+COPY apps/worker apps/worker
+COPY packages packages
+COPY scripts/retention.ts scripts/provision-organization.ts scripts/live-provider-smoke.ts scripts/
+RUN find apps/worker packages -type f -name '*.test.ts' -not -path '*/node_modules/*' -print -delete
 
 # Minimal production base: node only, no bun, no sources. Only the private
 # attachment volume is writable; everything else stays root-owned.

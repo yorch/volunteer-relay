@@ -164,5 +164,4 @@ jobs:
           try { await db.execute("CREATE DATABASE relay_ci_test"); } finally { await close(); }'
       - run: bun run db:migrate
       - run: bun run db:seed
-      - run: bun run db:migrate && bun run db:seed
       - run: bun run test:product:integration

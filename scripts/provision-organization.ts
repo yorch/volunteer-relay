@@ -1,5 +1,25 @@
 import { randomUUID } from "node:crypto";
+import {
+  automationPolicySchema,
+  organizationSettingsSchema,
+} from "../packages/contracts/src/index.ts";
 import { createDatabase, sql } from "../packages/db/src/index.ts";
+
+// Initial settings are validated against the canonical contract rather than
+// restated as SQL literals. The repository's own defaults are not exported, so
+// keep these values in step with packages/db/src/repositories/follow-through.ts.
+function initialSettings(timezone: string) {
+  return organizationSettingsSchema.parse({
+    revision: 1,
+    timezone,
+    automationPolicy: automationPolicySchema.parse("review-all"),
+    policyVersion: "1",
+    routing: {},
+    fallbackMembershipId: null,
+    ackMinutes: 60,
+    retentionDays: 365,
+  });
+}
 
 const usage =
   "Usage: node scripts/provision-organization.ts --email <verified account email> --name <organization name> --slug <new slug> --timezone <IANA timezone>";
@@ -78,8 +98,9 @@ async function main() {
       await tx.execute(
         sql`insert into member (id,organization_id,user_id,role,created_at) values (${randomUUID()},${organizationId},${userId},'owner',now())`,
       );
+      const settings = initialSettings(input.timezone);
       await tx.execute(
-        sql`insert into organization_settings (organization_id,revision,timezone,automation_policy,policy_version,routing,fallback_membership_id,ack_minutes,retention_days) values (${organizationId},1,${input.timezone},'review-all','1','{}'::jsonb,null,60,365)`,
+        sql`insert into organization_settings (organization_id,revision,timezone,automation_policy,policy_version,routing,fallback_membership_id,ack_minutes,retention_days) values (${organizationId},${settings.revision},${settings.timezone},${settings.automationPolicy},${settings.policyVersion},${JSON.stringify(settings.routing)}::jsonb,${settings.fallbackMembershipId},${settings.ackMinutes},${settings.retentionDays})`,
       );
     });
     process.stdout.write(`${JSON.stringify({ organizationId })}\n`);

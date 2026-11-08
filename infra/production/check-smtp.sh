@@ -45,6 +45,10 @@ import ssl
 import sys
 
 path, send_to = sys.argv[1], sys.argv[2]
+# This is a literal KEY=VALUE reader. Unlike Compose's env_file parser it does
+# not strip surrounding quotes or inline comments, so SMTP values in the runtime
+# env file must be unquoted and carry no trailing comment; otherwise this check
+# can pass or fail on a different value than the containers receive.
 cfg = {}
 for raw in open(path, encoding="utf-8"):
     line = raw.strip()

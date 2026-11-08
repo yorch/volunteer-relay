@@ -1,15 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import {
-  mkdir,
-  readdir,
-  readFile,
-  rename,
-  unlink,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { atomicJson } from "./atomic-json.ts";
 import { monitorStatus, snapshot } from "./dashboard.ts";
 
 type Snapshot = Awaited<ReturnType<typeof snapshot>>;
@@ -131,21 +125,6 @@ async function json<T>(path: string): Promise<T | null> {
     throw error;
   }
 }
-async function atomic(path: string, data: unknown) {
-  const temp = `${path}.${randomUUID()}.tmp`;
-  try {
-    await writeFile(temp, `${JSON.stringify(data, null, 2)}\n`, {
-      flag: "wx",
-      mode: 0o600,
-      flush: true,
-    });
-    await rename(temp, path);
-  } finally {
-    await unlink(temp).catch((e: NodeJS.ErrnoException) => {
-      if (e.code !== "ENOENT") throw e;
-    });
-  }
-}
 export async function acquire(directory: string) {
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const path = join(directory, "watcher.lock");
@@ -235,7 +214,7 @@ export async function poll(
     };
     const events = join(directory, "events");
     await mkdir(events, { recursive: true, mode: 0o700 });
-    await atomic(
+    await atomicJson(
       join(events, `${checkedAt.replaceAll(":", "-")}-${randomUUID()}.json`),
       event,
     );
@@ -244,7 +223,7 @@ export async function poll(
       .sort();
     for (const file of files.slice(0, -200)) await unlink(join(events, file));
   }
-  await atomic(path, observation);
+  await atomicJson(path, observation);
   return { observation, changed };
 }
 
@@ -282,7 +261,7 @@ export async function run(
           checkedAt: new Date().toISOString(),
           error: "Board read failed; showing last successful observation",
         };
-        await atomic(join(directory, "latest.json"), last);
+        await atomicJson(join(directory, "latest.json"), last);
         console.error(last.error);
       }
       if (once || signal.aborted) break;
@@ -300,7 +279,7 @@ export async function run(
   } finally {
     try {
       if (last)
-        await atomic(join(directory, "latest.json"), {
+        await atomicJson(join(directory, "latest.json"), {
           ...last,
           running: false,
         });

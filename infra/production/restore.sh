@@ -13,8 +13,15 @@ objects=$(compose --profile tools run --rm -T --no-deps tools psql -At -v ON_ERR
 [ "$objects" = 0 ] || { echo "Restore target database is not empty" >&2; exit 1; }
 compose --profile tools run --rm -T --no-deps tools sh -c '[ -z "$(ls -A /data/attachments)" ]' || { echo "Restore target attachments are not empty" >&2; exit 1; }
 # Restrict archive members to relative paths and reject links and special files.
-tar -tf "$backup_dir/attachments.tar" | awk 'substr($0,1,1)=="/" || $0 ~ /(^|\/)\.\.(\/|$)/ {exit 1}' || { echo "Unsafe attachment archive path" >&2; exit 1; }
-tar -tvf "$backup_dir/attachments.tar" | awk 'substr($0,1,1)!="-" && substr($0,1,1)!="d" {exit 1}' || { echo "Unsupported attachment archive member" >&2; exit 1; }
+# POSIX sh has no pipefail, so a failing tar would be hidden by a pipeline's
+# final command. Capture each listing first and check tar's status on its own.
+listing=$(mktemp)
+verbose=$(mktemp)
+trap 'rm -f "$listing" "$verbose"' EXIT
+tar -tf "$backup_dir/attachments.tar" > "$listing" || { echo "Unreadable attachment archive" >&2; exit 1; }
+tar -tvf "$backup_dir/attachments.tar" > "$verbose" || { echo "Unreadable attachment archive" >&2; exit 1; }
+awk 'substr($0,1,1)=="/" || $0 ~ /(^|\/)\.\.(\/|$)/ {exit 1}' "$listing" || { echo "Unsafe attachment archive path" >&2; exit 1; }
+awk 'substr($0,1,1)!="-" && substr($0,1,1)!="d" {exit 1}' "$verbose" || { echo "Unsupported attachment archive member" >&2; exit 1; }
 compose --profile tools run --rm -T --no-deps tools sh -c 'exec pg_restore --exit-on-error --single-transaction --no-owner --no-privileges -d "$PGDATABASE"' < "$backup_dir/database.dump"
 compose --profile tools run --rm -T --no-deps tools tar -C /data/attachments --no-same-owner -xf - < "$backup_dir/attachments.tar"
 compose run --rm -T --no-deps runtime-grants
