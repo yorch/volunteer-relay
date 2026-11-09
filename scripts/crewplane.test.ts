@@ -304,9 +304,12 @@ it("preserves child exit codes and forwards shutdown while waiting for settlemen
   try {
     const fake = join(f.outer, "controlled-cli"),
       marker = join(f.outer, "settled");
+    // The fixture registers its SIGTERM handler BEFORE printing "ready": the test
+    // signals as soon as it reads "ready", so announcing first lets a descheduled
+    // fixture take the default action (exit 143) instead of settling.
     writeFileSync(
       fake,
-      `#!${process.execPath}\nif(process.argv[2]==='--version'){console.log('0.2.0');}else if(process.argv.includes('exit-fixture'))process.exit(7);else if(process.argv.includes('kill-fixture'))process.kill(process.pid,'SIGKILL');else{console.log('ready');process.on('SIGTERM',()=>setTimeout(()=>{require('node:fs').writeFileSync(${JSON.stringify(marker)},'settled');process.exit(0)},80));setInterval(()=>{},1000);}\n`,
+      `#!${process.execPath}\nif(process.argv[2]==='--version'){console.log('0.2.0');}else if(process.argv.includes('exit-fixture'))process.exit(7);else if(process.argv.includes('kill-fixture'))process.kill(process.pid,'SIGKILL');else{process.on('SIGTERM',()=>setTimeout(()=>{require('node:fs').writeFileSync(${JSON.stringify(marker)},'settled');process.exit(0)},80));console.log('ready');setInterval(()=>{},1000);}\n`,
       { mode: 0o700 },
     );
     const result = spawnSync(process.execPath, [f.launcher, "exit-fixture"], {
