@@ -1,20 +1,40 @@
-# P1-12 auth HTTP checks
+# Auth HTTP checks
 
-Run under Node 26.11.1 from the task checkout. Root verification does not select this suite.
+Run under Node 26.11.1. Root `bun run test` does not select this suite; CI runs
+it in the `postgres-integration` job after the product integration suites.
 
 ```sh
-# Controlled inputs, headers, status mapping and privacy; no database or server.
-node node_modules/vitest/vitest.mjs run --config tests/integration/http-auth/vitest.config.ts tests/integration/http-auth/handlers.test.ts
+# Whole suite (what CI runs). Needs TEST_DATABASE_URL and a production build.
+bun run build
+bun run test:http-auth:integration
 
-# Build first. Required separate private database: 127.0.0.1:55465/relay_b_p1_12_test.
-# The suite migrates and truncates only the verified test database.
-# It refuses an occupied port3186, starts its own production Next process,
-# uses synthetic accounts and stops that process after the suite.
-bun run verify
-node --env-file=.env.local node_modules/vitest/vitest.mjs run --config tests/integration/http-auth/vitest.config.ts
-
-# Run separately/serially: these suites share the private test database.
-node --env-file=.env.local node_modules/vitest/vitest.mjs run --config packages/db/vitest.integration.config.ts
+# Database-free files only: controlled inputs, headers, status mapping, privacy.
+node node_modules/vitest/vitest.mjs run --config tests/integration/http-auth/vitest.config.ts \
+  tests/integration/http-auth/handlers.test.ts tests/integration/http-auth/auth-hardening.test.ts
 ```
 
-The production composition has no mail transport and returns uniform unavailable errors for public mail requests. The controlled suite checks helper invocation and fixed destinations; the existing auth suite owns token/mail lifecycle behavior. No live provider, SMTP or real account is used.
+| File                                                                                                                                           | Needs                                                                                            |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `handlers.test.ts`, `auth-hardening.test.ts`                                                                                                   | nothing: controlled synthetic adapters                                                           |
+| `last-organization-repository.test.ts`, `last-organization-sign-in.test.ts`, `pending-invitations.test.ts`, `invitation-accept-errors.test.ts` | `TEST_DATABASE_URL`: real Better Auth in process, no server                                      |
+| `local-http.test.ts`                                                                                                                           | `TEST_DATABASE_URL` and a production build (`apps/web/.next/BUILD_ID`, or `RELAY_NEXT_DIST_DIR`) |
+
+Environment:
+
+- `TEST_DATABASE_URL` (required by the DB-backed files): a private database
+  whose name ends in `_test` and that differs from `DATABASE_URL`, the same
+  guard as every DB-backed suite (`tests/integration/auth/support.ts`). The
+  suites migrate it and truncate only its auth tables. Files share it, so the
+  config runs them serially; do not run another suite against it concurrently.
+- `HTTP_AUTH_TEST_PORT` (optional, default `3186`): the port for the private
+  `next start` that `local-http.test.ts` spawns. An occupied port is refused,
+  never reused. Choose a free one when another checkout uses 3186.
+- `BETTER_AUTH_SECRET` (optional): passed to that server; a synthetic secret
+  is used when unset.
+
+`local-http.test.ts` starts the production composition, which includes the SMTP
+transport (`apps/web/lib/mail/production.ts`). It aims SMTP at a closed local
+port, so delivery fails and the suite checks that the failure stays invisible:
+reset and verification requests for known and unknown accounts get the same
+accepted response. It uses synthetic accounts and stops the server after the
+suite. No live provider, SMTP server or real account is used.

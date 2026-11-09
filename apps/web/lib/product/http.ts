@@ -5,6 +5,7 @@ import {
   type AuthorizationService,
   contributionTransitionSchema,
   createNeedCommandSchema,
+  errorCodeHttpStatus,
   type LedgerService,
   type NeedService,
   needTransitionSchema,
@@ -61,15 +62,7 @@ export interface ProductHttpDependencies {
     request: Request,
   ): Promise<Result<unknown> | Response | null>;
 }
-const statuses = {
-  UNAUTHENTICATED: 401,
-  FORBIDDEN: 403,
-  NOT_FOUND: 404,
-  VALIDATION: 422,
-  CONFLICT: 409,
-  RATE_LIMITED: 429,
-  DEPENDENCY_UNAVAILABLE: 503,
-};
+const statuses = errorCodeHttpStatus;
 export function productFailure(
   code: ApiError["error"]["code"],
   correlationId: string,
@@ -87,6 +80,10 @@ export function productFailure(
         CONFLICT: "The record changed. Refresh and try again",
         RATE_LIMITED: "Try again later",
         DEPENDENCY_UNAVAILABLE: "The service is temporarily unavailable",
+        // Auth-only codes (invitation acceptance); never emitted by product routes.
+        EMAIL_NOT_VERIFIED: "Verify your email to continue",
+        INVITATION_EXPIRED: "This invitation has expired",
+        NOT_AVAILABLE: "Resource is not available",
       }[code],
       retryable: code === "DEPENDENCY_UNAVAILABLE" || code === "RATE_LIMITED",
     },

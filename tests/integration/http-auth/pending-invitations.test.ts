@@ -188,7 +188,8 @@ describe("pending invitations for the signed-in recipient", () => {
         body: JSON.stringify({ invitationId: "foreign" }),
       }),
     );
-    expect(foreign.status).toBe(403);
+    expect(foreign.status).toBe(404);
+    expect((await foreign.json()).error.code).toBe("NOT_AVAILABLE");
 
     const accepted = await handlers.acceptInvitation(
       new Request(`${appUrl}/api/auth/invitations/accept`, {

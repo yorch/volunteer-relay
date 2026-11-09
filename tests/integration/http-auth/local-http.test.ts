@@ -1,5 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { once } from "node:events";
+import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 import { setTimeout } from "node:timers/promises";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
@@ -10,9 +11,20 @@ import {
   seedOrganizations,
   sql,
 } from "../../../packages/db/src/index.ts";
-import { openTestDatabase, resetAuthTables } from "../auth/support.ts";
+import {
+  openTestDatabase,
+  resetAuthTables,
+  resolveTestDatabaseUrl,
+} from "../auth/support.ts";
 
-const origin = "http://localhost:3186";
+// Starts its own production `next start` against the verified private *_test
+// database. The port is configurable so parallel checkouts never collide; an
+// occupied port is refused rather than reused.
+const port = Number(process.env.HTTP_AUTH_TEST_PORT ?? "3186");
+if (!Number.isInteger(port) || port < 1024 || port > 65535)
+  throw new Error("HTTP_AUTH_TEST_PORT must be an unprivileged TCP port");
+const distDir = process.env.RELAY_NEXT_DIST_DIR ?? ".next";
+const origin = `http://localhost:${port}`;
 const password = "synthetic-http-password-12";
 let db: Database;
 let close: (() => Promise<void>) | undefined;
@@ -64,20 +76,39 @@ async function signup(email = "http-person@example.invalid") {
   expect(rows).toHaveLength(1);
   return rows[0]?.id as string;
 }
+// Binds a port only to learn a free one, then releases it. Nothing listens
+// there afterwards, so mail delivery fails fast with a refused connection and
+// never reaches a developer's local SMTP catcher.
+function closedPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const probe = createServer();
+    probe.on("error", reject);
+    probe.listen(0, "127.0.0.1", () => {
+      const address = probe.address();
+      probe.close(() =>
+        typeof address === "object" && address
+          ? resolve(address.port)
+          : reject(new Error("No probe port")),
+      );
+    });
+  });
+}
 beforeAll(async () => {
-  const url = new URL(process.env.TEST_DATABASE_URL ?? "");
-  if (
-    url.hostname !== "127.0.0.1" ||
-    url.port !== "55465" ||
-    url.pathname !== "/relay_b_p1_12_test"
-  )
-    throw new Error("Use the assigned P1-12 private test database only");
+  // Same guard as every DB-backed suite: a *_test name distinct from DATABASE_URL.
+  const testDatabaseUrl = resolveTestDatabaseUrl();
+  if (!existsSync(`apps/web/${distDir}/BUILD_ID`))
+    throw new Error(
+      `No production build in apps/web/${distDir}: run \`bun run build\` first`,
+    );
   // Refuse an occupied application port without disturbing its owner.
   await new Promise<void>((resolve, reject) => {
     const probe = createServer();
-    probe.on("error", reject);
-    probe.listen(3186, "127.0.0.1", () => probe.close(() => resolve()));
+    probe.on("error", () =>
+      reject(new Error(`Port ${port} is in use; set HTTP_AUTH_TEST_PORT`)),
+    );
+    probe.listen(port, "127.0.0.1", () => probe.close(() => resolve()));
   });
+  const smtpPort = await closedPort();
   const opened = await openTestDatabase();
   db = opened.db;
   close = opened.close;
@@ -90,20 +121,26 @@ beforeAll(async () => {
       "--hostname",
       "127.0.0.1",
       "--port",
-      "3186",
+      String(port),
     ],
     {
       env: {
         ...process.env,
         NODE_ENV: "production",
-        DATABASE_URL: process.env.TEST_DATABASE_URL,
+        DATABASE_URL: testDatabaseUrl,
         APP_URL: origin,
+        // A synthetic per-suite secret unless the caller supplies one.
+        BETTER_AUTH_SECRET:
+          process.env.BETTER_AUTH_SECRET ??
+          "local-http-synthetic-secret-".padEnd(48, "x"),
+        SMTP_HOST: "127.0.0.1",
+        SMTP_PORT: String(smtpPort),
         NEXT_TELEMETRY_DISABLED: "1",
       },
       stdio: "ignore",
     },
   );
-  for (let attempt = 0; attempt < 100; attempt++) {
+  for (let attempt = 0; attempt < 300; attempt++) {
     if (server.exitCode !== null) throw new Error("Private Next server exited");
     try {
       const health = await fetch(`${origin}/api/health`);
@@ -213,18 +250,29 @@ it("lists live memberships, selects only own tenant and drops revoked selection"
     await call("organizations/select", { organizationId: "harbor" }),
   ).toEqual({ status: 200, body: { ok: true } });
 });
-it("production unavailable mail is uniform and invalid confirmations stay bounded", async () => {
+// Production composes an SMTP transport (apps/web/lib/mail/production.ts), so
+// public mail requests are no longer refused as "not configured". This suite
+// points SMTP at a closed local port: delivery fails for the known account
+// only, and that failure must stay invisible, so the known and unknown
+// accounts receive the same accepted response (no account enumeration).
+it("production mail requests are uniform when delivery fails and invalid confirmations stay bounded", async () => {
   await signup();
   for (const email of [
     "http-person@example.invalid",
     "unknown@example.invalid",
   ]) {
     for (const path of ["reset/request", "verification/request"]) {
-      const response = await call(path, { email });
-      expect(response.status).toBe(503);
-      expect(response.body.error.code).toBe("DEPENDENCY_UNAVAILABLE");
+      expect(await call(path, { email }), `${path} ${email}`).toEqual({
+        status: 200,
+        body: { ok: true },
+      });
     }
   }
+  // The known account's tokens persist for a retry despite the failed send.
+  const pending = await db.execute(
+    sql`select count(*)::int as count from verification`,
+  );
+  expect((pending.rows[0] as { count: number }).count).toBeGreaterThan(0);
   expect(
     (await call("reset/confirm", { token: "invalid", newPassword: password }))
       .status,
@@ -243,10 +291,11 @@ it("requires verified matching invitation recipient and does not expose SDK resp
     expiresAt: new Date(Date.now() + 60000),
     inviterId: "user-rae",
   });
-  expect(
-    (await call("invitations/accept", { invitationId: "http-invitation" }))
-      .status,
-  ).toBe(403);
+  const unverified = await call("invitations/accept", {
+    invitationId: "http-invitation",
+  });
+  expect(unverified.status).toBe(403);
+  expect(unverified.body.error.code).toBe("EMAIL_NOT_VERIFIED");
   await db
     .update(schema.user)
     .set({ emailVerified: true })
@@ -259,10 +308,12 @@ it("requires verified matching invitation recipient and does not expose SDK resp
       (o: { organizationId: string }) => o.organizationId,
     ),
   ).toEqual(["tidepath"]);
-  expect(
-    (await call("invitations/accept", { invitationId: "http-invitation" }))
-      .status,
-  ).toBe(403);
+  // Single use: a replay is the neutral answer, like an unknown id.
+  const replay = await call("invitations/accept", {
+    invitationId: "http-invitation",
+  });
+  expect(replay.status).toBe(404);
+  expect(replay.body.error.code).toBe("NOT_AVAILABLE");
 });
 it("enforces strict inputs and configured origin on real explicit routes", async () => {
   expect(

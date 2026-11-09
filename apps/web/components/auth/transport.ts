@@ -4,6 +4,7 @@ import {
   apiErrorSchema,
   authOrganizationChoicesSchema,
   authPendingInvitationsSchema,
+  errorCodeHttpStatus,
   type Result,
 } from "@relay/contracts";
 import { fetchJson } from "../api-client";
@@ -17,15 +18,27 @@ const unavailable = (): Result<never> => ({
     retryable: true,
   },
 });
-const statuses = {
-  UNAUTHENTICATED: 401,
-  FORBIDDEN: 403,
-  NOT_FOUND: 404,
-  VALIDATION: 422,
-  CONFLICT: 409,
-  RATE_LIMITED: 429,
-  DEPENDENCY_UNAVAILABLE: 503,
-} as const;
+// A code is trusted only with its canonical status.
+const statuses = errorCodeHttpStatus;
+
+/**
+ * User copy for an `invitations/accept` refusal, or null for a code that is
+ * not invitation-specific. NOT_AVAILABLE deliberately covers unknown, used,
+ * withdrawn and other-recipient invitations alike: the server does not tell
+ * them apart, so neither does the message.
+ */
+export function invitationAcceptMessage(code: string): string | null {
+  switch (code) {
+    case "EMAIL_NOT_VERIFIED":
+      return "Verify your email to accept this invitation.";
+    case "INVITATION_EXPIRED":
+      return "This invitation has expired. Ask the organization to send a new invitation.";
+    case "NOT_AVAILABLE":
+      return "This invitation is not available to this account. It may have been used or withdrawn, or sent to a different email address.";
+    default:
+      return null;
+  }
+}
 type Mutation =
   | "sign-in"
   | "sign-up"
