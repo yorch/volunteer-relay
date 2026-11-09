@@ -143,3 +143,51 @@ describe("production secrets and connection settings", () => {
     ).toBe("k".repeat(32));
   });
 });
+
+describe("operator allowlist configuration", () => {
+  it("is absent by default", () => {
+    expect(parseEnvironment({}).OPERATOR_ACCOUNTS).toBeUndefined();
+  });
+
+  it("accepts userId:email entries", () => {
+    expect(
+      parseEnvironment({
+        OPERATOR_ACCOUNTS: "user-1:owner@example.org",
+      }).OPERATOR_ACCOUNTS,
+    ).toBe("user-1:owner@example.org");
+  });
+
+  it("refuses a malformed list at boot instead of granting nothing quietly", () => {
+    for (const value of [
+      "owner@example.org",
+      "user-1:",
+      ":owner@example.org",
+      "user 1:owner@example.org",
+      "user-1:not-an-email",
+      "user-1:a@example.org,user-2:a@example.org",
+      "user-1:a@example.org,user-1:b@example.org",
+      "user-1:a@example.invalid",
+      Array.from(
+        { length: 21 },
+        (_, index) => `user-${index}:person${index}@example.org`,
+      ).join(","),
+    ])
+      expect(() => parseEnvironment({ OPERATOR_ACCOUNTS: value })).toThrow(
+        /OPERATOR_ACCOUNTS/,
+      );
+  });
+
+  it("cannot coexist with the public demo credentials", () => {
+    expect(() =>
+      parseEnvironment({
+        DEMO_MODE: "true",
+        OPERATOR_ACCOUNTS: "user-1:owner@example.org",
+      }),
+    ).toThrow(/OPERATOR_ACCOUNTS/);
+    // Blank entries count as "not configured", not as an enabled console.
+    expect(
+      parseEnvironment({ DEMO_MODE: "true", OPERATOR_ACCOUNTS: "  " })
+        .OPERATOR_ACCOUNTS,
+    ).toBe("  ");
+  });
+});
