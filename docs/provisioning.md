@@ -1,6 +1,8 @@
 # Provisioning the first organization
 
-A deployment operator can create a new organization for an existing verified credential account. The person first signs up through the application, requests email verification, and completes the verification link. Production SMTP delivery and the person's registered email address must be configured and working for that process. This command does not create an account, set a password, verify email, send mail, or change an existing organization's membership.
+A deployment operator can create a new organization for an existing verified credential account. When the deployment has a [platform operator console](operations.md#platform-operator-console) configured, the same creation is available in the application at `/operator`, with the same rules and the same resulting shape (one owner, default settings, `review-all` policy). Use this command to bootstrap the first organization, or whenever no operator is configured yet.
+
+The person first signs up through the application, requests email verification, and completes the verification link. Production SMTP delivery and the person's registered email address must be configured and working for that process. This command does not create an account, set a password, verify email, send mail, or change an existing organization's membership.
 
 After migrations have been applied, run the command with Node 26.11.1 in a trusted operator environment. Provide a privileged `DATABASE_URL` through the environment or deployment secret mechanism; do not put database credentials in command arguments or logs. The production runtime database role may not have the necessary provisioning permissions.
 

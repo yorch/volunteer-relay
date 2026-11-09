@@ -176,6 +176,25 @@ truth. Remove it in your own deployment manifest (or drop the volume) so it
 cannot be mistaken for live storage, and remember that the bundled backup script
 still archives that volume if the mount remains.
 
+## Platform operator console
+
+A deployment may configure a small number of **platform operators** who can see every organization, create one with its first owner, and grant or revoke ownership. The console is served at `/operator`; the decision record is [ADR 0012](adr/0012-platform-operator-console.md).
+
+It is off until configured. Set `OPERATOR_ACCOUNTS` in the runtime environment file as comma-separated `userId:email` pairs (at most 20). Both values must match, because an address alone is not ownership of an account: public sign-up lets anyone register an address that is not yet registered and wait for the real person to click the verification link, which verifies the squatter's account without rotating its password or sessions. `.invalid` addresses are refused, and the setting is refused while `DEMO_MODE` is true. An absent or empty value is the safe default: `/api/operator` answers 404 and opens no database connection.
+
+Enrollment order matters:
+
+1. The person signs up, verifies their own address, and sets their own password through the reset link. Do not enroll an address whose password was chosen by someone else, and do not enroll before verification.
+2. Read the immutable id through authorized operational access, for example `select id, email from "user" where lower(email) = '<their address>';`.
+3. Add `userId:email` to `OPERATOR_ACCOUNTS` and restart the **web** service. The parsed list is cached per process, so an edited file has no effect until restart; the worker never reads it.
+4. Confirm the console works by opening `/operator` as that account, and confirm it is unavailable (`404`) for an ordinary account.
+
+To revoke, remove the entry and restart web. There is no in-app operator administration: the environment file is the only grant and revoke path, and it never changes tenant memberships.
+
+What the console may do: grant ownership to an existing member of an organization, revoke an owner back to coordinator, and create an organization with its first verified owner. It refuses changes to the operator's own membership and to any organization the operator belongs to, refuses a revocation that would leave zero owners, shows only masked addresses, requires a session created in the last 30 minutes for a mutation, and is rate limited per operator. Every change is written to that organization's audit history as "Ownership changed by a platform operator" with the operator's user id but not their address, and a failed audit write rolls the change back. Operator reads are not audited, and the console opens its own connection pool.
+
+Two follow-ups still need an owner-gated migration: a dedicated `organization.create` audit action, and a database trigger that makes the last-owner rule hold against a concurrent self-demotion through the tenant UI. Both are recorded in the ADR.
+
 ## Backup
 
 Backups contain private source evidence, identity data and attachments. Encrypt them at rest and in transit, restrict access, retain according to policy, and regularly test restoration in a separate environment. The scripts require Docker access and an explicit project and environment file. Never point them at a shared or unintended project. The backup directory must not exist and is created with restrictive permissions. Check exit status; discard any incomplete directory.
