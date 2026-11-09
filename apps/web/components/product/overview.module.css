@@ -73,6 +73,11 @@
     background-color var(--relay-duration) var(--relay-ease),
     transform var(--relay-duration) var(--relay-ease);
 }
+/* `.card a` (teal link text) outranks `.primaryLink`; without this the button
+   text is teal on a teal background inside cards. */
+.card a.primaryLink {
+  color: #fff;
+}
 .primaryLink:hover {
   background: var(--relay-teal-hover);
   transform: translateY(-1px);
