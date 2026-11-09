@@ -1,11 +1,49 @@
 {
-  "version": 1,
+  "version": 2,
   "coordinator": "A",
   "reviewers": ["R", "V"],
-  "reviewerRoles": { "R": "code", "V": "visual" },
+  "reviewerRoles": {
+    "R": "code",
+    "V": "visual"
+  },
   "tasksPath": "docs/tasks",
   "planPath": "IMPLEMENTATION-PLAN.md",
   "statusPath": "docs/STATUS.md",
   "instructionsPath": "AGENTS.md",
-  "roadmapFormat": "relay"
+  "roadmapFormat": "relay",
+  "requiredVersion": "0.3.0",
+  "promptFiles": {
+    "A": [
+      "docs/agents/BOOTSTRAP.md",
+      "docs/agents/COMMON.md",
+      "docs/agents/prompts/A.md"
+    ],
+    "B": [
+      "docs/agents/BOOTSTRAP.md",
+      "docs/agents/COMMON.md",
+      "docs/agents/prompts/B.md"
+    ],
+    "C": [
+      "docs/agents/BOOTSTRAP.md",
+      "docs/agents/COMMON.md",
+      "docs/agents/prompts/C.md"
+    ],
+    "D": [
+      "docs/agents/BOOTSTRAP.md",
+      "docs/agents/COMMON.md",
+      "docs/agents/prompts/D.md"
+    ],
+    "E": [
+      "docs/agents/BOOTSTRAP.md",
+      "docs/agents/COMMON.md",
+      "docs/agents/prompts/E.md"
+    ],
+    "F": [
+      "docs/agents/BOOTSTRAP.md",
+      "docs/agents/COMMON.md",
+      "docs/agents/prompts/F.md"
+    ],
+    "R": ["docs/agents/prompts/R.md"],
+    "V": ["docs/agents/prompts/V.md"]
+  }
 }
