@@ -10,6 +10,7 @@ import {
   authSignUpCommandSchema,
   authVerificationConfirmSchema,
   authVerificationRequestSchema,
+  errorCodeHttpStatus,
   type Result,
 } from "@relay/contracts";
 import type { Auth, SessionResolver } from "../auth/index.ts";
@@ -68,15 +69,9 @@ export const defaultAuthRateRules = {
   invitationListPerAddress: { limit: 60, windowMs: 15 * minute },
 } satisfies Record<string, RateRule>;
 export type AuthRateRules = typeof defaultAuthRateRules;
-const status: Record<Code, number> = {
-  UNAUTHENTICATED: 401,
-  FORBIDDEN: 403,
-  NOT_FOUND: 404,
-  VALIDATION: 422,
-  CONFLICT: 409,
-  RATE_LIMITED: 429,
-  DEPENDENCY_UNAVAILABLE: 503,
-};
+const status: Record<Code, number> = errorCodeHttpStatus;
+// Fixed per-code text: a response body is a function of its code alone, so two
+// failures with the same code are indistinguishable apart from correlationId.
 const messages: Record<Code, string> = {
   UNAUTHENTICATED: "Sign-in is required",
   FORBIDDEN: "Request is not permitted",
@@ -85,6 +80,9 @@ const messages: Record<Code, string> = {
   CONFLICT: "Request conflicts with current state",
   RATE_LIMITED: "Try again later",
   DEPENDENCY_UNAVAILABLE: "Authentication service is unavailable",
+  EMAIL_NOT_VERIFIED: "Email verification is required",
+  INVITATION_EXPIRED: "Invitation has expired",
+  NOT_AVAILABLE: "Invitation is not available",
 };
 function failure(code: Code, correlationId: string): Result<never> {
   return {

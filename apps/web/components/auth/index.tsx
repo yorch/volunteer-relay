@@ -15,11 +15,14 @@ import type {
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { Button, Card, Field, Select, TextInput } from "../foundation";
 import styles from "./auth.module.css";
+import { invitationAcceptMessage } from "./transport";
 
 type Command<T> = (command: T) => Promise<Result<void>>;
 
 // Never render arbitrary transport messages/fields: they may contain secrets.
 function safeError(result: Extract<Result<void>, { ok: false }>): string {
+  const invitation = invitationAcceptMessage(result.error.code);
+  if (invitation) return invitation;
   switch (result.error.code) {
     case "NOT_FOUND":
       return "This invitation or link is unavailable or expired. Request a new link or invitation.";
@@ -265,7 +268,7 @@ export function InvitationAcceptanceForm({
           </a>
         </p>
       )}
-      {code === "FORBIDDEN" && (
+      {code === "EMAIL_NOT_VERIFIED" && (
         <p>
           <a href="/verify-email">Verify your email address</a>, then try again.
         </p>

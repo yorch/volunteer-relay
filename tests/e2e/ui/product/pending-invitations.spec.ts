@@ -157,6 +157,50 @@ test("a refused acceptance shows a neutral error and keeps the list", async ({
   ).toBeEnabled();
 });
 
+test("specific acceptance refusals show their own copy and keep the list", async ({
+  page,
+}) => {
+  await zeroOrganizations(page, { emailVerified: true, invitations });
+  let reply: { status: number; code: string } = {
+    status: 410,
+    code: "INVITATION_EXPIRED",
+  };
+  await page.route("**/api/auth/invitations/accept", (route) =>
+    route.fulfill({
+      status: reply.status,
+      json: {
+        ok: false,
+        error: {
+          code: reply.code,
+          message: "PRIVATE-DETAIL",
+          correlationId: "c",
+          retryable: false,
+        },
+      },
+    }),
+  );
+  await page.goto("/workspace");
+  const accept = page.getByRole("button", {
+    name: "Accept invitation to Synthetic Garden",
+  });
+  await accept.click();
+  const alert = page.getByRole("alert").first();
+  await expect(alert).toHaveText(
+    "This invitation has expired. Ask the organization to send a new invitation.",
+  );
+  reply = { status: 404, code: "NOT_AVAILABLE" };
+  await accept.click();
+  await expect(alert).toHaveText(
+    "This invitation is not available to this account. It may have been used or withdrawn, or sent to a different email address.",
+  );
+  await expect(page.getByText("PRIVATE-DETAIL")).toHaveCount(0);
+  await expect(
+    page
+      .getByRole("region", { name: "Invitations waiting for you" })
+      .getByRole("listitem"),
+  ).toHaveCount(2);
+});
+
 test("an unverified user sees the verify link and no invitation list", async ({
   page,
 }) => {

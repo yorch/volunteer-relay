@@ -31,6 +31,7 @@ import { createFollowThroughHttp } from "./follow-through.ts";
 import { createProductHandler, productFailure } from "./http.ts";
 import { createOperationsHttp } from "./operations.ts";
 import { createRetentionHttp } from "./retention.ts";
+import { productSessionUser } from "./session-gate.ts";
 import { createWorkspaceActivityReader } from "./workspace-projections.ts";
 
 let handler: ReturnType<typeof createProductHandler> | undefined;
@@ -109,17 +110,16 @@ export async function productHandler(request: Request) {
           });
           for (const cookie of session.headers.getSetCookie())
             responseHeaders.append("set-cookie", cookie);
-          if (!session.response?.user)
-            return productFailure("UNAUTHENTICATED", correlationId);
+          // A session without a verified email never reaches tenant data.
+          const gate = productSessionUser(session.response);
+          if (!gate.ok) return productFailure(gate.code, correlationId);
           // The session was verified above; list memberships directly instead
           // of re-reading the session (a second read duplicates set-cookie).
           let rows: Awaited<
             ReturnType<typeof memberships.listMembershipsForUser>
           >;
           try {
-            rows = await memberships.listMembershipsForUser(
-              session.response.user.id,
-            );
+            rows = await memberships.listMembershipsForUser(gate.userId);
           } catch {
             return productFailure("DEPENDENCY_UNAVAILABLE", correlationId);
           }
@@ -132,13 +132,13 @@ export async function productHandler(request: Request) {
               slug: row.organizationSlug,
               role: row.role as AuthOrganizationOption["role"],
             }));
-          const selected = session.response.session.activeOrganizationId;
+          const selected = session.response?.session.activeOrganizationId;
           const organization =
             organizations.find((o) => o.organizationId === selected) ??
             (organizations.length === 1 ? organizations[0] : undefined);
           if (!organization) return productFailure("FORBIDDEN", correlationId);
           const context = await authorization.resolve(
-            session.response.user.id,
+            gate.userId,
             organization.organizationId,
             correlationId,
           );

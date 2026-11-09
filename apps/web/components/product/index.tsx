@@ -21,6 +21,7 @@ import {
   setRenderedOrganization,
 } from "../api-client";
 import {
+  invitationAcceptMessage,
   loadOrganizations,
   loadPendingInvitations,
   mutateAuth,
@@ -211,8 +212,10 @@ const invitationRole: Record<AuthPendingInvitation["role"], string> = {
   volunteer: "Volunteer",
   "report-reader": "Report reader",
 };
-// One neutral message for every refusal: it never says whether the invitation
-// exists, was withdrawn, expired or belongs to someone else.
+// Fallback for a refusal with no invitation-specific code. The specific codes
+// (invitationAcceptMessage) distinguish only what the server tells the
+// verified recipient: expiry of their own invitation, or their own unverified
+// email; unknown, used, withdrawn and foreign invitations share one message.
 const invitationAcceptFailed =
   "This invitation could not be accepted. It may have expired or been withdrawn. Open the link in your invitation email, or ask for a new invitation.";
 const invitationsUnavailable =
@@ -299,7 +302,10 @@ function NoOrganization() {
                         window.location.assign("/workspace");
                         return;
                       }
-                      setAcceptError(invitationAcceptFailed);
+                      setAcceptError(
+                        invitationAcceptMessage(result.error.code) ??
+                          invitationAcceptFailed,
+                      );
                       setAccepting(null);
                     }}
                   >

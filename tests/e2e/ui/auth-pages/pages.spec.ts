@@ -443,15 +443,56 @@ test("invitation failures offer sign-in with next or email verification", async 
     route.fulfill({
       status: 403,
       contentType: "application/json",
-      body: JSON.stringify(failure("FORBIDDEN")),
+      body: JSON.stringify(failure("EMAIL_NOT_VERIFIED")),
     }),
   );
   await page
     .getByRole("button", { name: "Accept invitation", exact: true })
     .click();
+  await expect(page.getByRole("main").getByRole("alert")).toContainText(
+    "Verify your email to accept this invitation.",
+  );
   await expect(
     page.getByRole("link", { name: "Verify your email address" }),
   ).toHaveAttribute("href", "/verify-email");
+});
+
+test("expired and unavailable invitations get distinct, non-leaking copy", async ({
+  page,
+}) => {
+  const cases = [
+    [
+      410,
+      "INVITATION_EXPIRED",
+      "This invitation has expired. Ask the organization to send a new invitation.",
+    ],
+    [
+      404,
+      "NOT_AVAILABLE",
+      "This invitation is not available to this account. It may have been used or withdrawn, or sent to a different email address.",
+    ],
+  ] as const;
+  await page.goto("/invitations/synthetic-invitation");
+  for (const [status, code, copy] of cases) {
+    await page.unroute("**/api/auth/invitations/accept");
+    await page.route("**/api/auth/invitations/accept", (route) =>
+      route.fulfill({
+        status,
+        contentType: "application/json",
+        body: JSON.stringify(failure(code)),
+      }),
+    );
+    await page
+      .getByRole("button", { name: "Accept invitation", exact: true })
+      .click();
+    const alert = page.getByRole("main").getByRole("alert");
+    await expect(alert).toHaveText(copy);
+    await expect(alert).not.toContainText("PRIVATE");
+    // Only an unverified email is offered the verification link.
+    await expect(
+      page.getByRole("link", { name: "Verify your email address" }),
+    ).toHaveCount(0);
+  }
 });
 
 test("confirmation and invitation success, expired reset and network failure remain safe", async ({

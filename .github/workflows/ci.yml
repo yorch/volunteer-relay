@@ -171,3 +171,8 @@ jobs:
       - run: bun run db:migrate
       - run: bun run db:seed
       - run: bun run test:product:integration
+      # Auth HTTP suites against TEST_DATABASE_URL. local-http.test.ts serves a
+      # real production build with its own `next start` (port 3186, SMTP aimed
+      # at a closed local port), so the build runs here first.
+      - run: bun run build
+      - run: bun run test:http-auth:integration

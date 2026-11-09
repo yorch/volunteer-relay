@@ -435,13 +435,91 @@ export function createSessionResolver({
     },
 
     // Accepts the emailed secret only for the verified matching recipient; the
-    // library enforces recipient, expiry, single-use and email verification.
+    // library still enforces recipient, expiry, single-use and verification.
+    // Failures are classified here, before the SDK call, so that only facts the
+    // caller is entitled to are distinguishable:
+    // - EMAIL_NOT_VERIFIED: the caller's own email is unverified. Decided
+    //   before any invitation lookup, so it says nothing about the invitation.
+    // - INVITATION_EXPIRED: a pending invitation addressed to the caller's own
+    //   verified email has expired.
+    // - NOT_AVAILABLE: every other refusal (unknown id, another recipient,
+    //   already used, canceled, or a library refusal). The lookup is scoped to
+    //   the caller's own email, so an unknown id and a foreign recipient's id
+    //   take the same path and return the same response.
     async acceptInvitation(input: {
       headers: Headers;
       responseHeaders?: Headers;
       invitationId: string;
       correlationId: string;
+      now?: Date;
     }): Promise<Result<{ organizationId: string | null }>> {
+      let user: { id?: string; email?: string; emailVerified?: boolean };
+      try {
+        const current = await auth.api.getSession({
+          headers: input.headers,
+          returnHeaders: true,
+        });
+        collectHeaders(current.headers, input.responseHeaders);
+        if (!current.response?.user?.id || !current.response.user.email)
+          return failure(
+            "UNAUTHENTICATED",
+            "Sign-in is required",
+            input.correlationId,
+          );
+        user = current.response.user;
+      } catch {
+        return failure(
+          "DEPENDENCY_UNAVAILABLE",
+          "Session service is unavailable",
+          input.correlationId,
+          true,
+        );
+      }
+      if (user.emailVerified !== true)
+        return failure(
+          "EMAIL_NOT_VERIFIED",
+          "Email verification is required",
+          input.correlationId,
+        );
+      let own: InvitationRow | undefined;
+      try {
+        // Better Auth queries by the session's own lowercased email and keeps
+        // pending rows, expired ones included.
+        const rows: InvitationRow[] = await auth.api.listUserInvitations({
+          headers: input.headers,
+        });
+        const recipient = (user.email ?? "").toLowerCase();
+        own = rows.find(
+          (row) =>
+            row.id === input.invitationId &&
+            row.status === "pending" &&
+            typeof row.email === "string" &&
+            row.email.toLowerCase() === recipient,
+        );
+      } catch {
+        return failure(
+          "DEPENDENCY_UNAVAILABLE",
+          "Invitation lookup is unavailable",
+          input.correlationId,
+          true,
+        );
+      }
+      if (!own)
+        return failure(
+          "NOT_AVAILABLE",
+          "Invitation is not available",
+          input.correlationId,
+        );
+      const expires = new Date(own.expiresAt).getTime();
+      if (
+        !Number.isFinite(expires) ||
+        expires <= (input.now ?? new Date()).getTime()
+      )
+        return failure(
+          "INVITATION_EXPIRED",
+          "Invitation has expired",
+          input.correlationId,
+        );
       try {
         const response = await auth.api.acceptInvitation({
           body: { invitationId: input.invitationId },
@@ -464,9 +542,10 @@ export function createSessionResolver({
           },
         };
       } catch {
+        // A concurrent acceptance, cancellation or library rule refused it.
         return failure(
-          "FORBIDDEN",
-          "Invitation cannot be accepted",
+          "NOT_AVAILABLE",
+          "Invitation is not available",
           input.correlationId,
         );
       }

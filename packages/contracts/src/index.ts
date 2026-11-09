@@ -307,7 +307,29 @@ export const errorCodeSchema = z.enum([
   "CONFLICT",
   "RATE_LIMITED",
   "DEPENDENCY_UNAVAILABLE",
+  // Additive, emitted only by `POST /api/auth/invitations/accept`; see
+  // docs/CONTRACTS.md. EMAIL_NOT_VERIFIED (403) describes only the caller's own
+  // email. INVITATION_EXPIRED (410) is returned only to the verified recipient.
+  // NOT_AVAILABLE (404) is the single indistinguishable answer for unknown,
+  // foreign-recipient, used and canceled invitations.
+  "EMAIL_NOT_VERIFIED",
+  "INVITATION_EXPIRED",
+  "NOT_AVAILABLE",
 ]);
+export type ErrorCode = z.infer<typeof errorCodeSchema>;
+/** The one HTTP status for each error code, shared by every JSON Result route. */
+export const errorCodeHttpStatus = {
+  UNAUTHENTICATED: 401,
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  VALIDATION: 422,
+  CONFLICT: 409,
+  RATE_LIMITED: 429,
+  DEPENDENCY_UNAVAILABLE: 503,
+  EMAIL_NOT_VERIFIED: 403,
+  INVITATION_EXPIRED: 410,
+  NOT_AVAILABLE: 404,
+} as const satisfies Record<ErrorCode, number>;
 export const apiErrorSchema = z
   .object({
     error: z
