@@ -29,6 +29,9 @@ function describeAction(action: string) {
     resolved: "Need resolved",
     redacted: "Source redacted",
     role_changed: "Workspace access changed",
+    // Written by the platform operator console (docs/adr/0012-…): the row is
+    // attributed to an operator, not to a member of this organization.
+    "member.role:applied": "Ownership changed by a platform operator",
     invited: "Member invited",
     removed: "Member removed",
   };
@@ -45,7 +48,9 @@ function Actor({ actor }: { actor: unknown }) {
         ? "Team member"
         : obj.kind === "system"
           ? "Relay system"
-          : "Recorded actor";
+          : obj.kind === "operator"
+            ? "Platform operator"
+            : "Recorded actor";
     const identifier =
       typeof obj.membershipId === "string" ? obj.membershipId : null;
     return (

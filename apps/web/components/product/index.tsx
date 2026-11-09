@@ -395,6 +395,19 @@ export function ProductWorkspace({ page: pageProp }: { page?: Page }) {
   const [orgOptions, setOrgOptions] = useState<readonly OrgOption[] | null>(
     null,
   );
+  // The operator console is a separate surface, so the workspace asks once
+  // whether this account is configured as an operator before offering a link.
+  // A refusal (including "no operators on this deployment") leaves no trace.
+  const [operatorAccount, setOperatorAccount] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void request<{ operator: true }>("/api/operator/session").then((result) => {
+      if (live && result.ok) setOperatorAccount(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
   const [noOrganization, setNoOrganization] = useState(false);
   const [workspaceChanged, setWorkspaceChanged] = useState(false);
   const hintResolved = useRef(false);
@@ -643,6 +656,16 @@ export function ProductWorkspace({ page: pageProp }: { page?: Page }) {
           label: "Notifications",
         },
       ];
+  const navigation = operatorAccount
+    ? [
+        ...nav,
+        {
+          href: "/operator",
+          icon: "settings" as const,
+          label: "Organizations",
+        },
+      ]
+    : nav;
   const content = (
     <div
       className={styles.page}
@@ -719,6 +742,12 @@ export function ProductWorkspace({ page: pageProp }: { page?: Page }) {
           {" · "}
           <Link href="/workspace/notifications">Notifications</Link>
           {" · "}
+          {operatorAccount ? (
+            <>
+              <Link href="/operator">Organizations</Link>
+              {" · "}
+            </>
+          ) : null}
           <Organization />
         </>
       }
@@ -732,10 +761,10 @@ export function ProductWorkspace({ page: pageProp }: { page?: Page }) {
       currentPath={
         activePage === "home" ? "/workspace" : `/workspace/${activePage}`
       }
-      navigation={nav}
+      navigation={navigation}
       topbar={
         <Topbar
-          pages={nav}
+          pages={navigation}
           needs={openNeeds.map((n) => ({ id: n.needId, label: n.summary }))}
           members={
             role === "owner"
