@@ -84,8 +84,19 @@ jobs:
           docker logs relay-web-ci || true; docker rm -f relay-web-ci >/dev/null 2>&1 || true;
           docker compose logs && docker compose down
 
+  # One leg per Playwright project (viewport). The suite is serial per project
+  # (workers: 1), so splitting by viewport cuts wall-clock to the slowest leg
+  # without raising any timeout. Each leg builds its own app and uses its own
+  # runner, so ports and .next-e2e never collide. Legs appear as checks named
+  # "browser (<project>)"; the `publish` needs entry on `browser` waits for all.
   browser:
+    name: browser (${{ matrix.project }})
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [desktop-1440, tablet-1024, mobile-390, narrow-320]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -96,7 +107,17 @@ jobs:
           bun-version: 1.4.1
       - run: bun install --frozen-lockfile
       - run: node node_modules/@playwright/test/cli.js install --with-deps chromium
-      - run: bun run test:e2e
+      - run: bun run test:e2e -- --project=${{ matrix.project }}
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-${{ matrix.project }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
 
   # Publishes ghcr.io/<owner>/<repo>-{web,worker} for linux/amd64 and
   # linux/arm64 on native runners, only after every gate passes on main or a
