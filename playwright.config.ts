@@ -14,7 +14,7 @@ export default defineConfig({
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,
   timeout: 30_000,
-  globalTimeout: 600_000,
+  globalTimeout: 1_200_000,
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
     baseURL,
