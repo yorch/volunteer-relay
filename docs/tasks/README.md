@@ -52,3 +52,5 @@ See docs/agents/README.md and P0-06 for the harness-neutral operating kit. A sta
 ## External coordination adoption
 
 [P0-33](P0-33.md) adopts the separately released Crewplane CLI through a pinned project adapter. It replaces duplicated tooling only; product phase gates and explicit live activation remain separate. Historical orchestration cards retain their original evidence, not current implementation ownership.
+
+[P0-34](P0-34.md) removes the temporary adapter introduced in P0-33 after upstream native policy v2 ships. Required versions and full prompts are declarative project configuration; legacy cutover warnings remain documentation.
