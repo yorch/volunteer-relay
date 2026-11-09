@@ -282,24 +282,24 @@ test-live: _pinned _require-env
 [positional-arguments]
 [script("sh", "-eu")]
 agents *args:
-    exec node scripts/agents.mjs "$@"
+    exec crewplane agents "$@"
 
 # Show the shared local coordination board.
 [group('Agents')]
 board:
-    node scripts/agents.mjs board
+    crewplane agents board
 
 # Serve the read-only coordination dashboard on loopback.
 [group('Agents')]
 dashboard:
-    node scripts/crewplane.mjs dashboard
+    crewplane dashboard
 
 # Run the shared board watcher.
 [group('Agents')]
 [positional-arguments]
 [script("sh", "-eu")]
 watch *args:
-    exec node scripts/crewplane.mjs monitor "$@"
+    exec crewplane monitor "$@"
 
 # ---------------------------------------------------------------------------
 # Maintenance

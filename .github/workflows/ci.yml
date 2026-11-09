@@ -47,9 +47,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="v$(cat .crewplane-version)"
+          version="v$(node -p "require('./crewplane.json').requiredVersion")"
           curl -fsSL --retry 3 "https://raw.githubusercontent.com/yorch/crewplane/${version}/install.sh" -o "$RUNNER_TEMP/crewplane-install.sh"
-          echo "36a4d111feb09e25cd5fd7e4046a3f1543cbbc78fe6df7bc58d6cdc7019be9f2  $RUNNER_TEMP/crewplane-install.sh" | sha256sum --check --strict
+          echo "3eaf983526f6c491b65fe7e4c4a4cefd02856af787b126d6031fdf61996e4559  $RUNNER_TEMP/crewplane-install.sh" | sha256sum --check --strict
           CREWPLANE_VERSION="$version" CREWPLANE_INSTALL_DIR="$RUNNER_TEMP/crewplane" sh "$RUNNER_TEMP/crewplane-install.sh"
           echo "$RUNNER_TEMP/crewplane" >> "$GITHUB_PATH"
       - run: bun run test

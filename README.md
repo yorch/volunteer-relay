@@ -61,9 +61,9 @@ The [interactive prototype](design/reference/prototype.html) is a standalone vis
 
 ## Running multiple agents
 
-Coordination uses the separately installed [Crewplane](https://github.com/yorch/crewplane) release pinned in `.crewplane-version`. Relay keeps its project policy and harness prompts; it no longer carries a second orchestration engine. See the [installation and cutover guide](docs/agents/README.md). After installing the pinned binary, `bun run crewplane init`, `bun run agents prompt A`, `bun run agents board` and `bun run agents:dashboard` use the shared private Crewplane store. The dashboard is read-only at http://127.0.0.1:4310. Initialization does not launch agents.
+Use the separately installed [Crewplane](https://github.com/yorch/crewplane) CLI directly. `crewplane.json` contains Relay's roles, document paths, exact `requiredVersion` and per-agent `promptFiles`; no project adapter or copied orchestration runtime is needed. See the [native operating guide](docs/agents/README.md). `crewplane agents prompt A`, `crewplane agents board` and `crewplane dashboard` work from any linked checkout. Existing bun/just entries are plain aliases; initialization/inspection never enables agents.
 
-Existing `.relay-coordination` data stays untouched. Start with a fresh stopped namespace; do not resume old sessions or copy their private configuration. Explicit supervised activation is a separate operator action. Relay continues to use Node 26.11.1 for application processes/scripts/tests and Bun 1.4.1 for installation/script dispatch; the external standalone tool bundles its own runtime.
+Install the exact required release before use. Policy v2 makes older clients fail closed. Legacy `.relay-coordination` data and resources remain untouched; new sessions/activation require deliberate stopped-state inspection and fresh phase-gate-approved assignments. Relay application processes/scripts/tests still use Node26.11.1 with Bun1.4.1 for packages; Crewplane itself is a standalone executable.
 
 ## Browser smoke checks
 
