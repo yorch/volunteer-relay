@@ -6,16 +6,13 @@ import {
   type Receipt,
   type WorkspaceSnapshot,
 } from "@relay/contracts";
-import { type FormEvent, type ReactNode, useRef, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 import { errorMessage, request } from "../api-client";
-import { Card as BaseCard, Live } from "../card";
+import { Card, Live } from "../card";
 import { Badge, Button, Field, Icon, TextArea } from "../foundation";
 import { date, key, type Mutate, PendingSource } from "./shared";
 import styles from "./volunteer.module.css";
 
-function Card({ children }: { children: ReactNode }) {
-  return <BaseCard className={styles.card}>{children}</BaseCard>;
-}
 export function Volunteer({
   snapshot,
   mutate,
@@ -92,7 +89,7 @@ export function Volunteer({
         <h1>How did you help today?</h1>
         <p>Share an update with your team.</p>
       </header>
-      <BaseCard className={`${styles.card} ${styles.composeCard}`}>
+      <Card className={`${styles.card} ${styles.composeCard}`}>
         <form className={styles.volunteerForm} onSubmit={submit}>
           <Field id="update" label="Your update">
             <TextArea
@@ -154,8 +151,8 @@ export function Volunteer({
             ""
           )}
         </Live>
-      </BaseCard>
-      <Card>
+      </Card>
+      <Card className={styles.card}>
         <h2>Your updates</h2>
         {snapshot.sources.length ? (
           <ul className={styles.updateList}>
@@ -212,7 +209,7 @@ export function Volunteer({
           }}
         />
       )}
-      <Card>
+      <Card className={styles.card}>
         <h2>Your contributions</h2>
         <ContributionList
           contributions={snapshot.contributions}

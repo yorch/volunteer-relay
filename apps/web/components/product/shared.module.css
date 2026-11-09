@@ -1,14 +1,9 @@
 .card {
   display: grid;
-  gap: var(--relay-space-3, 12px);
-  min-width: 0;
-  margin: var(--relay-space-4, 16px) 0;
-  padding: var(--relay-space-5, 24px);
-  border: 1px solid var(--relay-line, #dce5dc);
-  border-radius: var(--relay-radius-lg, 14px);
-  background: var(--relay-paper, #fff);
-  box-shadow: var(--relay-shadow-sm, 0 1px 2px rgb(16 48 42 / 7%));
-  color: var(--relay-ink, #172b26);
+  gap: var(--relay-space-3);
+  margin: var(--relay-space-4) 0;
+  padding: var(--relay-space-5);
+  color: var(--relay-ink);
   overflow-wrap: anywhere;
 }
 .card > * {
@@ -16,74 +11,74 @@
   margin: 0;
 }
 .card h2 {
-  font-family: var(--relay-font-display, inherit);
-  font-size: var(--relay-text-lg, 1.25rem);
+  font-family: var(--relay-font-display);
+  font-size: var(--relay-text-lg);
   font-weight: 750;
   letter-spacing: -0.035em;
   line-height: 1.25;
 }
 .card h3 {
-  font-size: var(--relay-text-md, 1.0625rem);
+  font-size: var(--relay-text-md);
   font-weight: 700;
 }
 .card p {
   line-height: 1.6;
 }
 .card a {
-  color: var(--relay-teal, #196c5b);
+  color: var(--relay-teal);
   font-weight: 650;
 }
 .card button {
   justify-self: start;
   min-height: 44px;
-  padding: 0 var(--relay-space-4, 16px);
-  border: 1px solid var(--relay-teal, #196c5b);
-  border-radius: var(--relay-radius-md, 10px);
-  background: var(--relay-teal, #196c5b);
+  padding: 0 var(--relay-space-4);
+  border: 1px solid var(--relay-teal);
+  border-radius: var(--relay-radius-md);
+  background: var(--relay-teal);
   color: #fff;
   font: inherit;
-  font-size: var(--relay-text-sm, 0.875rem);
+  font-size: var(--relay-text-sm);
   font-weight: 650;
   cursor: pointer;
   transition:
-    background-color var(--relay-duration, 140ms) var(--relay-ease, ease),
-    border-color var(--relay-duration, 140ms) var(--relay-ease, ease),
-    box-shadow var(--relay-duration, 140ms) var(--relay-ease, ease);
+    background-color var(--relay-duration) var(--relay-ease),
+    border-color var(--relay-duration) var(--relay-ease),
+    box-shadow var(--relay-duration) var(--relay-ease);
 }
 .card button:hover:not(:disabled) {
-  border-color: var(--relay-teal-hover, #145a4c);
-  background: var(--relay-teal-hover, #145a4c);
+  border-color: var(--relay-teal-hover);
+  background: var(--relay-teal-hover);
 }
 .card button:disabled {
-  border-color: var(--relay-line-strong, #c5d0c6);
-  background: var(--relay-sage, #e9eee6);
-  color: var(--relay-neutral, #40564c);
+  border-color: var(--relay-line-strong);
+  background: var(--relay-sage);
+  color: var(--relay-neutral);
   cursor: not-allowed;
 }
 .card button:focus-visible {
-  outline: 3px solid var(--relay-focus, #895311);
+  outline: 3px solid var(--relay-focus);
   outline-offset: 4px;
 }
 .card details > summary {
   min-height: 44px;
-  padding: var(--relay-space-3, 12px) 0;
-  color: var(--relay-teal, #196c5b);
+  padding: var(--relay-space-3) 0;
+  color: var(--relay-teal);
   font-weight: 650;
   cursor: pointer;
 }
 .card details > summary:focus-visible {
-  outline: 3px solid var(--relay-focus, #895311);
+  outline: 3px solid var(--relay-focus);
   outline-offset: 4px;
 }
 .meta {
-  color: var(--relay-muted, #4d6058);
-  font-size: var(--relay-text-sm, 0.875rem);
+  color: var(--relay-muted);
+  font-size: var(--relay-text-sm);
 }
 .source {
-  padding: var(--relay-space-4, 16px);
-  border: 1px solid var(--relay-line, #dce5dc);
-  border-radius: var(--relay-radius-md, 10px);
-  background: var(--relay-sage, #e9eee6);
+  padding: var(--relay-space-4);
+  border: 1px solid var(--relay-line);
+  border-radius: var(--relay-radius-md);
+  background: var(--relay-sage);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -92,34 +87,34 @@
   width: auto;
   max-width: 100%;
   max-height: 32rem;
-  border: 1px solid var(--relay-line, #dce5dc);
-  border-radius: var(--relay-radius-md, 10px);
+  border: 1px solid var(--relay-line);
+  border-radius: var(--relay-radius-md);
   object-fit: contain;
 }
 .card figure {
   display: grid;
-  gap: var(--relay-space-2, 8px);
+  gap: var(--relay-space-2);
   margin: 0;
 }
 .card figcaption {
-  color: var(--relay-muted, #4d6058);
-  font-size: var(--relay-text-sm, 0.875rem);
+  color: var(--relay-muted);
+  font-size: var(--relay-text-sm);
 }
 .evidenceHeading {
-  scroll-margin-top: var(--relay-space-8, 72px);
+  scroll-margin-top: var(--relay-space-8);
 }
 .evidenceHeading:focus-visible {
-  outline: 3px solid var(--relay-focus, #895311);
+  outline: 3px solid var(--relay-focus);
   outline-offset: 4px;
 }
 @media (min-width: 1024px) {
   .card {
-    margin: var(--relay-space-5, 24px) 0;
+    margin: var(--relay-space-5) 0;
   }
 }
 @media (max-width: 390px) {
   .card {
-    padding: var(--relay-space-4, 16px);
+    padding: var(--relay-space-4);
   }
 }
 @media (prefers-reduced-motion: reduce) {

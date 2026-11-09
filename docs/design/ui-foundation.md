@@ -30,6 +30,14 @@ The product now implements source selection, optimistic reviews, uploads, shared
 
 Historical foundation-only verification on 2026-11-07: frozen install and Chromium installation succeeded. Final `fnm exec --using=26.11.1 bun run verify` passed (Biome, strict root/web types, 4 Vitest files/11 tests, web/worker builds). Full `PLAYWRIGHT_PORT=3193 ... bun run test:e2e` passed 16/16; following the skip-link clipping refinement, scoped foundation checks passed 12/12 again. Both audiences were inspected in screenshots across all four widths; no clipped content or horizontal overflow, with clear field labels/focus and wrapping controls. Next development overlay remains in screenshots; no production overlay is shipped. Temporary production Next start under Node `--env-file=.env.local` returned 404 without specimen content for both preview variants, then stopped cleanly. The initial production probe omitted explicit env loading and could not pass health; no production-preview result was claimed from it. All temporary servers stopped; no database/provider services were started.
 
+## Cleanup decisions (2026-11)
+
+- Loading skeleton: `ShellSkeleton` takes a `shape` (`staff` default, `volunteer`). The workspace remembers the last role shape in `localStorage` (key `relay.shellShape`, every access guarded; the server render and any storage failure use the staff shape). The skeleton keeps exactly one announced status text.
+- Accent contrast: marigold `--relay-accent` (2.16:1 on white) is kept for fills and for marks on the dark sidebar (5.55:1 on `--relay-evergreen-2`). Informative cues on light surfaces (quote rules, evidence rules, citation chips, edited-action border, mark underline) use `--relay-accent-strong` `#a8690f`: 4.48:1 on white, 4.00:1 on `--relay-accent-soft`, 4.03:1 on the page background.
+- Sidebar width is the `--relay-sidebar-w` token (15.5rem at 1024px and above, 13.5rem from 761px to 1023px). Layout breakpoints follow the contract set 760/761/1024/1200.
+- Inbox provenance: no hover/focus preview. Click-to-reveal evidence highlighting is the only mechanism; `useProvenance` and `HighlightedText` stay in `components/review` solely for the dev review preview.
+- Notifications: the topbar "Unread alerts" link and the sidebar "Notifications" link deliberately both stay, with different accessible names; revisit with any topbar redesign.
+
 ## Follow-ups and known gaps
 
 Unverified areas, planned cleanups, known gaps and deliberate non-goals from the 2026-11 UI work are tracked, with stable IDs, in [UI follow-ups and known gaps](ui-followups.md).

@@ -9,8 +9,8 @@ import {
 import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, type ReactNode, useEffect, useState } from "react";
-import { Card as BaseCard } from "../card";
+import { type FormEvent, useEffect, useState } from "react";
+import { Card } from "../card";
 import {
   Badge,
   Button,
@@ -21,10 +21,6 @@ import {
 } from "../foundation";
 import styles from "./ledger.module.css";
 import { key, type Mutate, PendingSource } from "./shared";
-
-function Card({ children }: { children: ReactNode }) {
-  return <BaseCard className={styles.card}>{children}</BaseCard>;
-}
 
 /**
  * Deep-link filter for the contribution ledger. `membership` is a membership
@@ -127,7 +123,6 @@ export function Activities({
   snapshot: WorkspaceSnapshot;
   mutate: Mutate;
 }) {
-  const [formKey, setFormKey] = useState(0);
   const router = useRouter();
   // The workspace renders client-side only, so the URL is readable on first
   // render; back/forward navigation re-reads it.
@@ -178,7 +173,6 @@ export function Activities({
       )
     ) {
       form.reset();
-      setFormKey((n) => n + 1);
     }
   }
   return (
@@ -249,9 +243,9 @@ export function Activities({
       )}
       <details className={styles.utilityDisclosure}>
         <summary>Record an activity</summary>
-        <Card>
+        <Card className={styles.card}>
           <h2>Record an activity</h2>
-          <form key={formKey} onSubmit={create}>
+          <form onSubmit={create}>
             <div className={styles.field}>
               <label htmlFor="activity-kind">Activity type</label>
               <TextInput

@@ -5,15 +5,9 @@ import {
   reportQuerySchema,
   type WorkspaceSnapshot,
 } from "@relay/contracts";
-import {
-  type FormEvent,
-  type ReactNode,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { errorMessage, request } from "../api-client";
-import { Card as BaseCard, Live } from "../card";
+import { Card, Live } from "../card";
 import { Button, Icon, Meter, Select, TextInput } from "../foundation";
 import { duration } from "./shared";
 import styles from "./summary.module.css";
@@ -105,17 +99,6 @@ export function UpdatedStatus({
   );
 }
 
-function Card({
-  children,
-  className = "",
-}: {
-  children: ReactNode;
-  className?: string | undefined;
-}) {
-  return (
-    <BaseCard className={`${styles.card} ${className}`}>{children}</BaseCard>
-  );
-}
 /** Renders a possibly-unknown value; unknown is hatched, never zero. */
 function Value({ text }: { text: string }) {
   return text === "Unknown" ? (
@@ -284,7 +267,7 @@ export function Summary({
         <h1>Summary</h1>
         <p>Only approved contributions count toward recorded time.</p>
       </header>
-      <Card className={styles.noPrint}>
+      <Card className={`${styles.card} ${styles.noPrint}`}>
         <h2>Filter report</h2>
         <form className={styles.reportFilters} onSubmit={apply}>
           <div className={styles.field}>
@@ -381,35 +364,35 @@ export function Summary({
             </div>
           </div>
           <div className={styles.metrics}>
-            <Card>
+            <Card className={styles.card}>
               <h2>Approved hours</h2>
               <p className={styles.metricValue}>
                 <Value text={hours(report.approvedHours)} />
               </p>
               <p>Recorded time</p>
             </Card>
-            <Card>
+            <Card className={styles.card}>
               <h2>Activities with approved contributions</h2>
               <p className={styles.metricValue}>
                 {s.activitiesWithApprovedContributions}
               </p>
               <p>Activities in the ledger</p>
             </Card>
-            <Card>
+            <Card className={styles.card}>
               <h2>Open needs</h2>
               <p className={styles.metricValue}>{report.openNeeds}</p>
               <p>{report.resolvedNeeds} resolved</p>
             </Card>
-            <Card>
+            <Card className={styles.card}>
               <h2>Pending contributions</h2>
               <p className={styles.metricValue}>{s.pendingContributions}</p>
               <p>Awaiting complete information</p>
             </Card>
           </div>
-          <Card className={styles.avoidBreak}>
+          <Card className={`${styles.card} ${styles.avoidBreak}`}>
             <CompositionBar ledger={s} />
           </Card>
-          <Card className={styles.avoidBreak}>
+          <Card className={`${styles.card} ${styles.avoidBreak}`}>
             <div className={styles.sectionHeading}>
               <div>
                 <span className={styles.eyebrow}>Report details</span>
@@ -538,7 +521,7 @@ export function Summary({
           {report.volunteers === undefined &&
             report.topContributors &&
             report.topContributors.length > 0 && (
-              <Card className={styles.avoidBreak}>
+              <Card className={`${styles.card} ${styles.avoidBreak}`}>
                 <div className={styles.sectionHeading}>
                   <div>
                     <span className={styles.eyebrow}>Approved time</span>

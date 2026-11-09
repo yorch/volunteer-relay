@@ -63,10 +63,30 @@ export function Brand() {
 export function ShellSkeleton({
   mainId,
   children,
+  shape = "staff",
 }: {
   mainId: string;
   children: ReactNode;
+  /** "volunteer" mirrors VolunteerShell (no sidebar); anything else is the staff shell. */
+  shape?: "staff" | "volunteer";
 }) {
+  if (shape === "volunteer")
+    return (
+      <FoundationRoot>
+        <header className={styles.volunteerHeader}>
+          <Brand />
+        </header>
+        <main id={mainId} tabIndex={-1} className={styles.volunteerContent}>
+          {children}
+          <div className={styles.skeletonPage} aria-hidden="true">
+            <Skeleton width="min(320px, 60%)" height={36} />
+            <Skeleton width="min(480px, 90%)" height={16} />
+            <Skeleton height={160} />
+            <Skeleton height={160} />
+          </div>
+        </main>
+      </FoundationRoot>
+    );
   return (
     <FoundationRoot>
       <div className={styles.staff}>

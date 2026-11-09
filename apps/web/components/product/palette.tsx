@@ -48,6 +48,14 @@ export function CommandPalette({
       if (opener?.isConnected) opener.focus();
     };
   }, []);
+  // Lock page scroll while the palette is open; restore the prior value.
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, []);
   useEffect(() => {
     document
       .getElementById(`${listId}-${current}`)

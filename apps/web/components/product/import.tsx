@@ -5,9 +5,9 @@ import type {
   SourceEnvelope,
   WorkspaceSnapshot,
 } from "@relay/contracts";
-import { type FormEvent, type ReactNode, useRef, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 import { errorMessage, request } from "../api-client";
-import { Card as BaseCard, Live } from "../card";
+import { Card, Live } from "../card";
 import {
   Badge,
   Button,
@@ -20,9 +20,6 @@ import {
 import styles from "./import.module.css";
 import { key } from "./shared";
 
-function Card({ children }: { children: ReactNode }) {
-  return <BaseCard className={styles.card}>{children}</BaseCard>;
-}
 type ImportDraft = {
   format: "json" | "csv" | "whatsapp";
   text: string;
@@ -198,7 +195,7 @@ export function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
           ))}
         </ol>
       </header>
-      <Card>
+      <Card className={styles.card}>
         <form
           className={styles.form}
           onSubmit={previewImport}
@@ -211,7 +208,6 @@ export function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
                 value={format}
                 onChange={(e) => {
                   setFormat(e.target.value as ImportDraft["format"]);
-                  invalidate();
                 }}
               >
                 <option value="csv">CSV</option>
@@ -225,7 +221,6 @@ export function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
                 value={dateFormat}
                 onChange={(e) => {
                   setDateFormat(e.target.value as ImportDraft["dateFormat"]);
-                  invalidate();
                 }}
               >
                 <option>ISO</option>
@@ -353,7 +348,6 @@ export function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
                     value={row.filenames}
                     onChange={(e) => {
                       const value = e.target.value;
-                      invalidate();
                       setPhotoRows((rows) =>
                         rows.map((r, i) =>
                           i === index ? { ...r, filenames: value } : r,
@@ -422,7 +416,6 @@ export function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
                     value={row.member}
                     onChange={(e) => {
                       const value = e.target.value;
-                      invalidate();
                       setAuthorRows((rows) =>
                         rows.map((r, i) =>
                           i === index ? { ...r, member: value } : r,
@@ -478,7 +471,7 @@ export function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
         {error}
       </Live>
       {preview && (
-        <Card>
+        <Card className={styles.card}>
           <h2>Preview</h2>
           <p>{preview.sources.length} sources ready to review.</p>
           <div className={styles.tableScroll}>
@@ -570,7 +563,7 @@ export function Import({ members }: { members: WorkspaceSnapshot["members"] }) {
         </Card>
       )}
       {receipts && (
-        <Card>
+        <Card className={styles.card}>
           <h2>Import received</h2>
           <p>{receipts.length} updates received.</p>
           <ul className={styles.receiptList}>

@@ -301,7 +301,7 @@ export function Retention({ mutate }: { mutate: Mutate }) {
                 </section>
               </div>
             ) : (
-              <section className={styles.card}>
+              <Card className={styles.card}>
                 <div className={styles.empty}>
                   <h2>No sources need review</h2>
                   <p>
@@ -309,7 +309,7 @@ export function Retention({ mutate }: { mutate: Mutate }) {
                     now.
                   </p>
                 </div>
-              </section>
+              </Card>
             )}
           </>
         )

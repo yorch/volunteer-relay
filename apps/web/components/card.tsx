@@ -1,6 +1,10 @@
 import type { ReactNode } from "react";
+import styles from "./card.module.css";
 
-/** The one product card; each surface supplies its own module class. */
+/**
+ * The one product card. It carries the shared surface (paper, hairline border,
+ * radius, shadow); each screen passes its own module class for what differs.
+ */
 export function Card({
   children,
   className,
@@ -8,7 +12,13 @@ export function Card({
   children: ReactNode;
   className?: string | undefined;
 }) {
-  return <section className={className}>{children}</section>;
+  return (
+    <section
+      className={className ? `${styles.surface} ${className}` : styles.surface}
+    >
+      {children}
+    </section>
+  );
 }
 
 /**

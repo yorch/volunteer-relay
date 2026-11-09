@@ -1,11 +1,11 @@
 /* Form markup classes (used by index.tsx). */
 .form {
   display: grid;
-  gap: var(--relay-space-4, 1rem);
+  gap: var(--relay-space-4);
 }
 .fields {
   display: grid;
-  gap: var(--relay-space-4, 1rem);
+  gap: var(--relay-space-4);
   border: 0;
   padding: 0;
   margin: 0;
@@ -23,7 +23,7 @@
   clip-path: inset(50%);
 }
 .feedback:focus-visible {
-  outline: 3px solid var(--relay-focus, #895311);
+  outline: 3px solid var(--relay-focus);
   outline-offset: 4px;
 }
 
@@ -34,20 +34,16 @@
   min-height: 100dvh;
   min-width: 0;
   background:
-    radial-gradient(
-      ellipse at 15% 0%,
-      var(--relay-sage, #e9eee6),
-      transparent 48%
-    ),
-    var(--relay-bg, #f6f5f0);
+    radial-gradient(ellipse at 15% 0%, var(--relay-sage), transparent 48%),
+    var(--relay-bg);
 }
 .authHeader {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: var(--relay-space-3, 0.75rem) var(--relay-space-4, 1rem);
-  padding: var(--relay-space-4, 1rem) clamp(16px, 4vw, 40px);
+  gap: var(--relay-space-3) var(--relay-space-4);
+  padding: var(--relay-space-4) clamp(16px, 4vw, 40px);
 }
 .authHeader > * {
   min-width: 0;
@@ -56,8 +52,8 @@
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  color: var(--relay-teal, #196c5b);
-  font-size: var(--relay-text-sm, 0.875rem);
+  color: var(--relay-teal);
+  font-size: var(--relay-text-sm);
 }
 .authHeader > a:last-child:hover {
   text-decoration: underline;
@@ -72,11 +68,11 @@
   margin: 0 auto;
   padding: clamp(24px, 6vw, 48px) clamp(16px, 4vw, 40px);
   display: grid;
-  gap: var(--relay-space-5, 1.5rem);
+  gap: var(--relay-space-5);
 }
 .intro {
   display: grid;
-  gap: var(--relay-space-2, 0.5rem);
+  gap: var(--relay-space-2);
   text-align: center;
   min-width: 0;
 }
@@ -84,11 +80,11 @@
   display: block;
 }
 .intro p {
-  margin: var(--relay-space-2, 0.5rem) 0 0;
+  margin: var(--relay-space-2) 0 0;
 }
 .eyebrow {
-  color: var(--relay-teal, #196c5b);
-  font-size: var(--relay-text-xs, 0.75rem);
+  color: var(--relay-teal);
+  font-size: var(--relay-text-xs);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -97,14 +93,14 @@
 /* The single form card. Inner Card sections lose their own chrome so there is never a nested card. */
 .authCard {
   display: grid;
-  gap: var(--relay-space-4, 1rem);
+  gap: var(--relay-space-4);
   min-width: 0;
   overflow-wrap: anywhere;
-  background: var(--relay-paper, #fff);
-  border: 1px solid var(--relay-line, #dce5dc);
-  border-radius: var(--relay-radius-xl, 20px);
-  box-shadow: var(--relay-shadow-lg, 0 18px 48px rgb(31 53 49 / 10%));
-  padding: var(--relay-space-5, 1.5rem);
+  background: var(--relay-paper);
+  border: 1px solid var(--relay-line);
+  border-radius: var(--relay-radius-xl);
+  box-shadow: var(--relay-shadow-lg);
+  padding: var(--relay-space-5);
 }
 .authCard > section {
   background: transparent;
@@ -116,7 +112,7 @@
 }
 .authCard > p {
   margin: 0;
-  color: var(--relay-muted, #4d6058);
+  color: var(--relay-muted);
 }
 
 /* Quiet account navigation below the card. */
@@ -124,16 +120,16 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  column-gap: var(--relay-space-2, 0.5rem);
-  font-size: var(--relay-text-sm, 0.875rem);
+  column-gap: var(--relay-space-2);
+  font-size: var(--relay-text-sm);
   min-width: 0;
 }
 .navigation a {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  padding-inline: var(--relay-space-2, 0.5rem);
-  color: var(--relay-teal, #196c5b);
+  padding-inline: var(--relay-space-2);
+  color: var(--relay-teal);
   text-underline-offset: 0.2em;
 }
 .navigation a:hover {
@@ -147,7 +143,7 @@
 
 @media (max-width: 390px) {
   .authCard {
-    padding: var(--relay-space-4, 1rem);
+    padding: var(--relay-space-4);
   }
 }
 
@@ -172,8 +168,8 @@
     grid-column: 2;
     grid-row: 1 / span 2;
     overflow: hidden;
-    background: var(--relay-evergreen, #10302a);
-    color: var(--relay-on-dark, #f3f7f4);
+    background: var(--relay-evergreen);
+    color: var(--relay-on-dark);
   }
   .brandPanel::before,
   .brandPanel::after {
@@ -192,6 +188,6 @@
     top: -12%;
     left: -10%;
     width: 52%;
-    background: var(--relay-evergreen-2, #173d35);
+    background: var(--relay-evergreen-2);
   }
 }

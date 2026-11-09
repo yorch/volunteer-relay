@@ -82,6 +82,11 @@ export type SelectProps = Omit<
 
 const MAX_LIST = 288;
 
+const nativeValueSetter =
+  typeof HTMLInputElement === "undefined"
+    ? undefined
+    : Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+
 function isPrintable(event: KeyboardEvent<HTMLButtonElement>) {
   return (
     event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey
@@ -109,7 +114,9 @@ export function Select({
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const mirrorRef = useRef<HTMLInputElement>(null);
   const typeahead = useRef({ text: "", timer: 0 });
+  const [, setResetTick] = useState(0);
 
   const firstEnabled = options.find((option) => !option.disabled);
   const [inner, setInner] = useState<string>(
@@ -124,6 +131,10 @@ export function Select({
     : innerValid
       ? inner
       : (firstEnabled?.value ?? options[0]?.value ?? inner);
+  const resetValue =
+    defaultValue ?? firstEnabled?.value ?? options[0]?.value ?? "";
+  const resetRef = useRef({ controlled, value: resetValue });
+  resetRef.current = { controlled, value: resetValue };
   const selectedIndex = options.findIndex((option) => option.value === current);
   const selected = selectedIndex >= 0 ? options[selectedIndex] : undefined;
 
@@ -163,6 +174,16 @@ export function Select({
     if (!option || option.disabled) return;
     if (!controlled) setInner(option.value);
     if (option.value !== current) {
+      // Mirror the value into the form-associated input and emit bubbling
+      // input + change events so form-level listeners (and React's form
+      // onChange) observe the change like a native select. The prototype
+      // setter bypasses React's value tracker, which would swallow the event.
+      const mirror = mirrorRef.current;
+      if (mirror) {
+        nativeValueSetter?.call(mirror, option.value);
+        mirror.dispatchEvent(new Event("input", { bubbles: true }));
+        mirror.dispatchEvent(new Event("change", { bubbles: true }));
+      }
       onChange?.({
         target: { value: option.value, name },
         currentTarget: { value: option.value, name },
@@ -210,6 +231,44 @@ export function Select({
     document.addEventListener("pointerdown", handler);
     return () => document.removeEventListener("pointerdown", handler);
   }, [open]);
+
+  // Keep the form-associated input in step with the displayed value (a
+  // native form reset restores its default attribute, and a controlled parent
+  // may decline a change).
+  useEffect(() => {
+    const mirror = mirrorRef.current;
+    if (mirror && mirror.value !== current) {
+      // Assign through the instance setter so React's value tracker stays in
+      // step; only commit() uses the prototype setter to force an event.
+      mirror.value = current;
+    }
+  });
+
+  // Restore the initial value when the owning form is reset. A controlled
+  // select is the parent's to reset.
+  useEffect(() => {
+    const onReset = (event: Event) => {
+      const form = triggerRef.current?.form;
+      if (!form || event.target !== form || event.defaultPrevented) return;
+      if (!resetRef.current.controlled) setInner(resetRef.current.value);
+      setResetTick((n) => n + 1);
+    };
+    document.addEventListener("reset", onReset);
+    return () => document.removeEventListener("reset", onReset);
+  }, []);
+
+  // A native select's label focuses it on click rather than opening it.
+  useEffect(() => {
+    const onClick = (event: MouseEvent) => {
+      const label = (event.target as Element | null)?.closest?.("label");
+      if (label && label.control === triggerRef.current) {
+        event.preventDefault();
+        triggerRef.current?.focus();
+      }
+    };
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, []);
 
   useEffect(() => {
     const state = typeahead.current;
@@ -341,9 +400,18 @@ export function Select({
           <Icon name="chevronDown" size={16} />
         </span>
       </button>
-      {name && (
-        <input type="hidden" name={name} value={current} disabled={disabled} />
-      )}
+      {/* A text input (not type=hidden) so React's form onChange sees it. */}
+      <input
+        ref={mirrorRef}
+        hidden
+        readOnly
+        tabIndex={-1}
+        aria-hidden="true"
+        autoComplete="off"
+        name={name || undefined}
+        defaultValue={current}
+        disabled={disabled}
+      />
       {open && (
         <div
           ref={listRef}
@@ -358,7 +426,8 @@ export function Select({
             // biome-ignore lint/a11y/useFocusableInteractive: options are driven by aria-activedescendant on the trigger (APG select-only combobox)
             // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard is handled on the combobox trigger
             <div
-              key={option.value}
+              // biome-ignore lint/suspicious/noArrayIndexKey: index-qualified so duplicate option values cannot collide
+              key={`${index}:${option.value}`}
               id={`${listId}-${index}`}
               role="option"
               data-value={option.value}

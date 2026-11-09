@@ -6,8 +6,8 @@ import type {
   WorkspaceSnapshot,
 } from "@relay/contracts";
 import Link from "next/link";
-import { type ReactNode, useEffect, useId, useState } from "react";
-import { Card as BaseCard, Live } from "../card";
+import { useEffect, useId, useState } from "react";
+import { Card, Live } from "../card";
 import { Button, Select, TextInput } from "../foundation";
 import { ledgerHref } from "./ledger";
 import {
@@ -35,17 +35,6 @@ function hoursCell(minutes: number | null) {
     <span className={styles.unknownChip}>Unknown</span>
   ) : (
     `${hoursFormat.format(minutes / 60)} h`
-  );
-}
-function Card({
-  children,
-  className = "",
-}: {
-  children: ReactNode;
-  className?: string | undefined;
-}) {
-  return (
-    <BaseCard className={`${styles.card} ${className}`}>{children}</BaseCard>
   );
 }
 
@@ -168,7 +157,7 @@ export function VolunteerRoster({
   const sortValue = `${state.sort}-${state.dir}`;
 
   return (
-    <Card className={styles.rosterCard}>
+    <Card className={`${styles.card} ${styles.rosterCard}`}>
       <section aria-labelledby="volunteer-roster-title">
         <div className={styles.sectionHeading}>
           <div>
@@ -437,7 +426,7 @@ export function VolunteerDetailPanel({
     .filter(Boolean)
     .join(", ");
   return (
-    <Card className={styles.detailCard}>
+    <Card className={`${styles.card} ${styles.detailCard}`}>
       <section aria-labelledby="volunteer-detail-title">
         <div className={styles.sectionHeading}>
           <div>

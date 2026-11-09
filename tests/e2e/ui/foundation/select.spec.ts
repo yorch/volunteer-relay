@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { expectOption } from "../helpers/controls.js";
+import { chooseOption, expectOption } from "../helpers/controls.js";
 
 test("custom select follows the APG select-only combobox pattern", async ({
   page,
@@ -74,4 +74,44 @@ test("custom select fits at 320px without horizontal overflow", async ({
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
+});
+
+test("custom select resets with its form, emits form-level events and label click only focuses", async ({
+  page,
+}) => {
+  await page.goto("/dev/foundation?audience=staff");
+  const trigger = page.getByRole("combobox", { name: "Display state" });
+  // The dev page has no form: move the select into one so form behaviour can
+  // be observed. The reset listener resolves the form at event time.
+  await trigger.evaluate((node) => {
+    const form = document.createElement("form");
+    form.id = "select-harness";
+    document.body.append(form);
+    form.append(node.parentElement as HTMLElement);
+    const seen: string[] = [];
+    (window as unknown as { __selectEvents: string[] }).__selectEvents = seen;
+    for (const type of ["input", "change"]) {
+      form.addEventListener(type, () => seen.push(type));
+    }
+  });
+
+  // Form-level listeners see a bubbling input + change event on user change.
+  await chooseOption(trigger, "pending");
+  await expectOption(trigger, "pending");
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __selectEvents: string[] }).__selectEvents,
+    ),
+  ).toEqual(["input", "change"]);
+
+  // form.reset() restores the initial value.
+  await page.evaluate(() =>
+    (document.getElementById("select-harness") as HTMLFormElement).reset(),
+  );
+  await expectOption(trigger, "unknown");
+
+  // Clicking the label focuses the trigger without opening the list.
+  await page.locator('label[for="preview-state"]').click();
+  await expect(trigger).toBeFocused();
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
 });

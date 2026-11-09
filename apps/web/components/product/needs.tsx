@@ -5,15 +5,12 @@ import {
   productEndpoints,
   type WorkspaceSnapshot,
 } from "@relay/contracts";
-import { type FormEvent, type ReactNode, useState } from "react";
-import { Card as BaseCard } from "../card";
+import { type FormEvent, useState } from "react";
+import { Card } from "../card";
 import { Badge, Field, Icon, Select } from "../foundation";
 import styles from "./needs.module.css";
 import { date, key, type Mutate } from "./shared";
 
-function Card({ children }: { children: ReactNode }) {
-  return <BaseCard className={styles.card}>{children}</BaseCard>;
-}
 const requiredText = (message: string) => (value: string) =>
   value.trim() ? "" : message;
 const describedBy = (id: string, error?: string) =>
@@ -100,7 +97,7 @@ export function Needs({
       <p>Track ownership, acknowledgment and resolution.</p>
       <details className={styles.utilityDisclosure}>
         <summary>Create a need</summary>
-        <Card>
+        <Card className={styles.card}>
           <h2>Create a need</h2>
           <form onSubmit={create} className={styles.form} noValidate>
             <div className={styles.fieldWrap}>
@@ -348,7 +345,7 @@ function Need({
     n.status === "assigned" ||
     n.status === "acknowledged";
   return (
-    <Card>
+    <Card className={styles.card}>
       <h2 className={styles.needTitle}>{n.summary}</h2>
       <div className={styles.badges}>
         <Badge tone={n.urgency === "urgent" ? "danger" : "neutral"}>

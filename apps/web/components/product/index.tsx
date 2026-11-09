@@ -13,6 +13,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import {
   errorMessage,
@@ -363,10 +364,30 @@ function pageFromPath(pathname: string): Page {
   const segment = pathname.replace(/\/+$/, "").split("/")[2] ?? "";
   return pages.has(segment) ? (segment as Page) : "home";
 }
+const shapeKey = "relay.shellShape";
+type SkeletonShape = "staff" | "volunteer";
+// The loading skeleton's shape is a hint only: the last role seen on this
+// browser. Storage may be missing or throw, so every access is guarded and the
+// server snapshot (and any failure) falls back to the staff shape.
+function readShape(): SkeletonShape {
+  try {
+    return window.localStorage.getItem(shapeKey) === "volunteer"
+      ? "volunteer"
+      : "staff";
+  } catch {
+    return "staff";
+  }
+}
+const subscribeNothing = () => () => {};
 export function ProductWorkspace({ page: pageProp }: { page?: Page }) {
   const pathname = usePathname();
   const page = pageProp ?? pageFromPath(pathname);
   const firstPage = useRef(true);
+  const lastShape = useSyncExternalStore<SkeletonShape>(
+    subscribeNothing,
+    readShape,
+    () => "staff",
+  );
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   // Monotonic: bumps on every successful refresh so report views refetch.
   const [snapshotVersion, setSnapshotVersion] = useState(0);
@@ -492,9 +513,21 @@ export function ProductWorkspace({ page: pageProp }: { page?: Page }) {
     await refresh();
     return true;
   };
+  const knownRole = snapshot?.organization.role;
+  useEffect(() => {
+    if (!knownRole) return;
+    try {
+      window.localStorage.setItem(
+        shapeKey,
+        knownRole === "volunteer" ? "volunteer" : "staff",
+      );
+    } catch {
+      // Storage unavailable: the skeleton just defaults to the staff shape.
+    }
+  }, [knownRole]);
   if (loading)
     return (
-      <ShellSkeleton mainId="workspace-main">
+      <ShellSkeleton mainId="workspace-main" shape={lastShape}>
         <p className={styles.loadingText} aria-live="polite">
           Loading workspace…
         </p>

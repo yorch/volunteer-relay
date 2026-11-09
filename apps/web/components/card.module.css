@@ -1,0 +1,13 @@
+/*
+ * The shared product card surface. Zero specificity (`:where`), so a screen
+ * rule on the same element, such as a dashed empty state, always wins no
+ * matter which stylesheet loads first. Screens add only what differs:
+ * padding, margin, layout.
+ */
+:where(.surface) {
+  min-width: 0;
+  border: 1px solid var(--relay-line);
+  border-radius: var(--relay-radius-lg);
+  background: var(--relay-paper);
+  box-shadow: var(--relay-shadow-sm);
+}

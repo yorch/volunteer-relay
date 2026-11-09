@@ -4,25 +4,14 @@ import type {
   OperationalStatus,
   ProductAuditEntry,
 } from "@relay/contracts";
-import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { errorMessage, request } from "../api-client";
-import { Card as BaseCard, Live } from "../card";
+import { Card, Live } from "../card";
 import { Button, Icon, TextInput } from "../foundation";
 import styles from "./operations.module.css";
 
 const load = <T,>(url: string) => request<T>(url);
 const message = errorMessage;
-function Card({
-  children,
-  className = "",
-}: {
-  children: ReactNode;
-  className?: string | undefined;
-}) {
-  return (
-    <BaseCard className={`${styles.card} ${className}`}>{children}</BaseCard>
-  );
-}
 function stamp(value: string | null) {
   return value ? new Date(value).toLocaleString() : "Not available";
 }
@@ -114,7 +103,7 @@ export function History() {
           </p>
         </div>
       </header>
-      <Card className={styles.searchCard}>
+      <Card className={`${styles.card} ${styles.searchCard}`}>
         <form className={styles.historySearch} onSubmit={search}>
           <label className={styles.field} htmlFor="history-record-id">
             Record ID
@@ -165,7 +154,7 @@ export function History() {
               key={`${entry.aggregateType}:${entry.aggregateId}:${entry.revision}:${entry.occurredAt}`}
             >
               <span className={styles.timelineDot} aria-hidden="true" />
-              <Card className={styles.auditCard}>
+              <Card className={`${styles.card} ${styles.auditCard}`}>
                 <div className={styles.auditTopline}>
                   <span className={styles.eventBadge}>
                     {entry.aggregateType.replace(/[-_]+/g, " ")}
@@ -230,7 +219,7 @@ export function History() {
           ))}
         </section>
       ) : !pending && searched && !error ? (
-        <Card className={styles.empty}>
+        <Card className={`${styles.card} ${styles.empty}`}>
           <h2>No changes found</h2>
           <p>
             Check the record ID or choose a later “Before” date and try again.
@@ -320,7 +309,7 @@ export function Delivery({ owner }: { owner: boolean }) {
           </Live>
           {opsLoading || opsError ? null : operations ? (
             <div className={styles.opsGrid}>
-              <Card className={styles.metricCard}>
+              <Card className={`${styles.card} ${styles.metricCard}`}>
                 <span className={styles.metricLabel}>Source queue</span>
                 <strong className={styles.metricValue}>
                   {operations.queuedSources}
@@ -330,7 +319,7 @@ export function Delivery({ owner }: { owner: boolean }) {
                   {stamp(operations.oldestQueuedAt)}
                 </span>
               </Card>
-              <Card className={styles.metricCard}>
+              <Card className={`${styles.card} ${styles.metricCard}`}>
                 <span className={styles.metricLabel}>Urgent needs</span>
                 <strong className={styles.metricValue}>
                   {operations.unresolvedUrgentNeeds}
@@ -339,7 +328,7 @@ export function Delivery({ owner }: { owner: boolean }) {
                   {operations.overdueAcknowledgments} acknowledgments overdue
                 </span>
               </Card>
-              <Card className={styles.metricCard}>
+              <Card className={`${styles.card} ${styles.metricCard}`}>
                 <span className={styles.metricLabel}>Failed deliveries</span>
                 <strong
                   className={`${styles.metricValue} ${operations.failedDeliveries ? styles.metricWarn : ""}`}
@@ -350,7 +339,7 @@ export function Delivery({ owner }: { owner: boolean }) {
                   Requests that need attention
                 </span>
               </Card>
-              <Card className={styles.metricCard}>
+              <Card className={`${styles.card} ${styles.metricCard}`}>
                 <span className={styles.metricLabel}>Model usage</span>
                 <strong className={styles.metricValue}>
                   {formatMoney(operations.modelSettledMicroUsd)}
@@ -360,7 +349,7 @@ export function Delivery({ owner }: { owner: boolean }) {
                   reserved
                 </span>
               </Card>
-              <Card className={styles.metricCard}>
+              <Card className={`${styles.card} ${styles.metricCard}`}>
                 <span className={styles.metricLabel}>Available storage</span>
                 <strong className={styles.metricValue}>
                   {formatStorage(operations.availableStorageBytes)}
@@ -471,7 +460,7 @@ export function Delivery({ owner }: { owner: boolean }) {
             </table>
           </div>
         ) : (
-          <Card className={styles.empty}>
+          <Card className={`${styles.card} ${styles.empty}`}>
             <h3>No deliveries yet</h3>
             <p>
               Notification attempts will appear here when the workspace sends an
