@@ -86,7 +86,7 @@ jobs:
 
   # One leg per Playwright project (viewport). The suite is serial per project
   # (workers: 1), so splitting by viewport cuts wall-clock to the slowest leg
-  # without raising any timeout. Each leg builds its own app and uses its own
+  # without raising any timeout. Each leg starts its own dev server on its own
   # runner, so ports and .next-e2e never collide. Legs appear as checks named
   # "browser (<project>)"; the `publish` needs entry on `browser` waits for all.
   browser:
