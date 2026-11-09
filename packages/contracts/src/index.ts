@@ -20,13 +20,10 @@ export const contributionStatusSchema = z.enum([
 ]);
 const id = z.string().min(1);
 const instant = z.iso.datetime({ offset: true });
-export const roleSchema = z.enum([
-  "owner",
-  "coordinator",
-  "volunteer",
-  "report-reader",
-]);
-export type ContractRole = z.infer<typeof roleSchema>;
+
+import { type ContractRole, roleSchema } from "./roles.ts";
+
+export { type ContractRole, roleSchema };
 export const authOrganizationOptionSchema = z
   .object({
     organizationId: id,
@@ -940,6 +937,7 @@ export interface NeedService {
   ): Promise<Result<NeedRecord[]>>;
 }
 export * from "./operations.ts";
+export * from "./operator.ts";
 export * from "./organization-hint.ts";
 export * from "./reports.ts";
 export * from "./retention.ts";

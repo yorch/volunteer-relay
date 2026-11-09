@@ -85,6 +85,66 @@ export const environmentSchema = z
      * export and redaction answer DEPENDENCY_UNAVAILABLE.
      */
     RETENTION_LEDGER_KEY: z.string().min(32).optional(),
+    /**
+     * Platform operator allowlist: comma-separated `userId:email` entries.
+     * Absent or empty disables the operator console. The user id is immutable,
+     * the email is an independent check on configuration mistakes; an address
+     * alone is not ownership of an account. Parsed by @relay/contracts at
+     * composition time; mirrored here so a malformed list fails at boot.
+     */
+    OPERATOR_ACCOUNTS: z
+      .string()
+      .max(4096)
+      .optional()
+      .superRefine((value, ctx) => {
+        const entries = (value ?? "")
+          .split(",")
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0);
+        if (entries.length > 20)
+          ctx.addIssue({
+            code: "custom",
+            message: "At most 20 operator accounts are configured",
+          });
+        const seen = new Set<string>();
+        const emails = new Set<string>();
+        for (const entry of entries) {
+          const separator = entry.indexOf(":");
+          const userId = separator > 0 ? entry.slice(0, separator).trim() : "";
+          const email =
+            separator > 0
+              ? entry
+                  .slice(separator + 1)
+                  .trim()
+                  .toLowerCase()
+              : "";
+          if (
+            !/^[A-Za-z0-9_-]{1,128}$/.test(userId) ||
+            !z.email().safeParse(email).success
+          )
+            ctx.addIssue({
+              code: "custom",
+              message: "Operator entries must be userId:email",
+            });
+          else if (email.endsWith(".invalid"))
+            ctx.addIssue({
+              code: "custom",
+              message: "A reserved demonstration domain cannot be an operator",
+            });
+          else if (seen.has(userId))
+            ctx.addIssue({
+              code: "custom",
+              message: "Operator accounts must be unique by user id",
+            });
+          else if (emails.has(email))
+            ctx.addIssue({
+              code: "custom",
+              message: "Operator accounts must be unique by address",
+            });
+          seen.add(userId);
+          emails.add(email);
+        }
+      }),
   })
   .superRefine((env, ctx) => {
     if (
@@ -119,6 +179,18 @@ export const environmentSchema = z
           message: "BLOB_FALLBACK_ROOT must be an absolute path",
         });
     }
+    // A demonstration deployment must not carry a live operator console: the
+    // demo credentials are public, so an allowlist there would be a shared
+    // root account.
+    if (
+      env.DEMO_MODE === "true" &&
+      (env.OPERATOR_ACCOUNTS ?? "").trim().length > 0
+    )
+      ctx.addIssue({
+        code: "custom",
+        path: ["OPERATOR_ACCOUNTS"],
+        message: "OPERATOR_ACCOUNTS is refused while DEMO_MODE is enabled",
+      });
     if (env.BLOB_STORE !== "s3") return;
     if (!env.S3_BUCKET)
       ctx.addIssue({
