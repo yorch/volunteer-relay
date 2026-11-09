@@ -28,6 +28,8 @@
   --relay-focus-on-dark: #f2b45a;
   --relay-accent: #e8a33d;
   --relay-accent-soft: #fdf1dc;
+  /* Non-text cues on light surfaces: 4.48:1 on white, 4.00:1 on accent-soft. */
+  --relay-accent-strong: #a8690f;
   --relay-accent-ink: #7a4a06;
   --relay-info: #24577a;
   --relay-info-bg: #e6f0f6;
@@ -72,7 +74,7 @@
   --relay-ease: cubic-bezier(0.2, 0, 0, 1);
   --relay-duration: 140ms;
   --relay-duration-slow: 220ms;
-  --relay-sidebar-w: 17rem;
+  --relay-sidebar-w: 15.5rem;
   --relay-content-max: 76rem;
   accent-color: var(--relay-teal);
   color: var(--relay-ink);
@@ -85,6 +87,12 @@
 .root *::before,
 .root *::after {
   box-sizing: border-box;
+}
+/* Default flow margins sit at zero specificity so any screen's own
+   `> * { margin: 0 }` reset (grid cards) wins instead of stacking on the gap.
+   Declared before the heading rules so specificity never descends. */
+:where(.root) h2 {
+  margin: 0 0 1rem;
 }
 .root h1,
 .root h2,
@@ -101,11 +109,6 @@
 }
 .root h2 {
   font-size: 1.2rem;
-}
-/* Default flow margins sit at zero specificity so any screen's own
-   `> * { margin: 0 }` reset (grid cards) wins instead of stacking on the gap. */
-:where(.root) h2 {
-  margin: 0 0 1rem;
 }
 .root h3 {
   font-size: 1rem;

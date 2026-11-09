@@ -1,21 +1,21 @@
 .search {
   display: inline-flex;
   align-items: center;
-  gap: var(--relay-space-2, 0.5rem);
+  gap: var(--relay-space-2);
   min-width: 0;
   min-height: 44px;
-  padding: 0 var(--relay-space-3, 0.75rem);
-  color: var(--relay-muted, #4d6058);
+  padding: 0 var(--relay-space-3);
+  color: var(--relay-muted);
   font: inherit;
-  background-color: var(--relay-paper, #fff);
-  border: 1px solid var(--relay-line-strong, #c2cfc4);
-  border-radius: var(--relay-radius-md, 10px);
+  background-color: var(--relay-paper);
+  border: 1px solid var(--relay-line-strong);
+  border-radius: var(--relay-radius-md);
   cursor: pointer;
 }
 
 .search:hover {
-  color: var(--relay-ink, #172b26);
-  border-color: var(--relay-teal, #196c5b);
+  color: var(--relay-ink);
+  border-color: var(--relay-teal);
 }
 
 .searchLabel {
@@ -23,15 +23,15 @@
 }
 
 .hint {
-  padding: 0 var(--relay-space-2, 0.5rem);
-  color: var(--relay-muted, #4d6058);
+  padding: 0 var(--relay-space-2);
+  color: var(--relay-muted);
   font: inherit;
   font-size: 0.75rem;
   font-weight: 700;
   white-space: nowrap;
-  background-color: var(--relay-sage, #e9eee6);
-  border: 1px solid var(--relay-line, #dbe3da);
-  border-radius: var(--relay-radius-sm, 6px);
+  background-color: var(--relay-sage);
+  border: 1px solid var(--relay-line);
+  border-radius: var(--relay-radius-sm);
 }
 
 .alerts {
@@ -41,14 +41,14 @@
   justify-content: center;
   width: 44px;
   height: 44px;
-  color: var(--relay-ink, #172b26);
-  background-color: var(--relay-paper, #fff);
-  border: 1px solid var(--relay-line-strong, #c2cfc4);
-  border-radius: var(--relay-radius-md, 10px);
+  color: var(--relay-ink);
+  background-color: var(--relay-paper);
+  border: 1px solid var(--relay-line-strong);
+  border-radius: var(--relay-radius-md);
 }
 
 .alerts:hover {
-  border-color: var(--relay-teal, #196c5b);
+  border-color: var(--relay-teal);
 }
 
 .badge {
@@ -62,8 +62,8 @@
   font-weight: 700;
   line-height: 20px;
   text-align: center;
-  background-color: var(--relay-teal, #196c5b);
-  border-radius: var(--relay-radius-pill, 999px);
+  background-color: var(--relay-teal);
+  border-radius: var(--relay-radius-pill);
 }
 
 @media (max-width: 480px) {

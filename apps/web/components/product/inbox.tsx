@@ -7,7 +7,7 @@ import {
 } from "@relay/contracts";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { errorMessage, request } from "../api-client";
-import { Card as BaseCard, Live } from "../card";
+import { Card, Live } from "../card";
 import { Badge, EmptyState, Icon, Select } from "../foundation";
 import { ShortcutLegend, useShortcuts } from "../review";
 import { DemoReplay } from "./demo-replay";
@@ -33,9 +33,6 @@ const flagTone = (flag: InboxFlag) =>
       ? "info"
       : "warning";
 
-function Card({ children }: { children: ReactNode }) {
-  return <BaseCard className={styles.card}>{children}</BaseCard>;
-}
 const fieldLabel = (value: string) =>
   value
     .replace(/([a-z])([A-Z])/g, "$1 $2")
@@ -155,7 +152,7 @@ export function Inbox({
       )}
       <details className={styles.utilityDisclosure}>
         <summary>Processing and reprocessing</summary>
-        <Card>
+        <Card className={styles.card}>
           <h2>Processing failures</h2>
           {failed.length ? (
             <>
@@ -208,7 +205,7 @@ export function Inbox({
             <p>No processing failures.</p>
           )}
         </Card>
-        <Card>
+        <Card className={styles.card}>
           <h2>Queued updates</h2>
           {queued.length ? (
             <ul className={styles.list}>
@@ -234,7 +231,7 @@ export function Inbox({
             <p>No updates awaiting processing.</p>
           )}
         </Card>
-        <Card>
+        <Card className={styles.card}>
           <h2>Reprocess an update</h2>
           <p>
             Run the current model and policy again. The original history stays
@@ -297,7 +294,7 @@ export function Inbox({
         />
       )}
       {statusFilter !== "review" && (
-        <Card>
+        <Card className={styles.card}>
           <h2>
             {statusFilter === "queued"
               ? "Queued updates"
@@ -333,7 +330,7 @@ export function Inbox({
       )}
       {statusFilter === "review" &&
         (snapshot.queue.length === 0 ? (
-          <Card>
+          <Card className={styles.card}>
             <EmptyState title="Inbox is clear" icon="check">
               No sources awaiting review.
             </EmptyState>
@@ -348,7 +345,7 @@ export function Inbox({
             className={`${styles.columns} ${entry ? styles.hasSelection : ""}`}
           >
             <div className={styles.inboxList}>
-              <Card>
+              <Card className={styles.card}>
                 <h2 className={styles.paneTitle}>
                   Awaiting review{" "}
                   <span className={styles.count}>{snapshot.queue.length}</span>
@@ -719,7 +716,7 @@ function ReviewEditor({
     : undefined;
   return (
     <div className={styles.reviewPanels}>
-      <Card>
+      <Card className={styles.card}>
         <div className={styles.sourcePane} ref={sourceRef}>
           <span className={styles.eyebrow}>Source evidence</span>
           <h2>Original update</h2>
@@ -876,7 +873,7 @@ function ReviewEditor({
           }}
         />
       )}
-      <Card>
+      <Card className={styles.card}>
         <span className={styles.eyebrow}>Review and decide</span>
         <h2>Proposed fields</h2>
         <div className={styles.summaryBadges}>

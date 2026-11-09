@@ -2,7 +2,7 @@
 
 import { type FormEvent, useEffect, useState } from "react";
 import { request } from "../api-client";
-import { Card, Live } from "../card";
+import { Live } from "../card";
 import { Button, Select } from "../foundation";
 import styles from "./demo-replay.module.css";
 import type { Mutate } from "./shared";
@@ -82,7 +82,7 @@ export function DemoReplay({ mutate }: { mutate: Mutate }) {
     setPending(false);
   }
   return (
-    <Card className={styles.card}>
+    <section className={styles.card}>
       <h2 id="demo-replay-heading">Replay a sample message</h2>
       <p className={styles.hint}>
         Demo mode only. Sends one fictional message through normal intake; no
@@ -122,6 +122,6 @@ export function DemoReplay({ mutate }: { mutate: Mutate }) {
       <Live kind="polite" className={styles.status}>
         {status}
       </Live>
-    </Card>
+    </section>
   );
 }

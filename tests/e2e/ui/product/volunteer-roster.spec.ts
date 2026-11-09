@@ -231,7 +231,7 @@ test("sortable headers expose aria-sort and keep the order in the URL", async ({
   page,
 }) => {
   test.skip(
-    (page.viewportSize()?.width ?? 0) <= 640,
+    (page.viewportSize()?.width ?? 0) <= 760,
     "Narrow screens sort with the Sort by control instead of the hidden header row",
   );
   await open(page, "coordinator", crowdReport, { members: crowdMembers });

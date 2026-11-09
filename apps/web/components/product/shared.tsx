@@ -1,14 +1,11 @@
 "use client";
 
 import type { SourceEnvelope } from "@relay/contracts";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { errorMessage, request } from "../api-client";
-import { Card as BaseCard, Live } from "../card";
+import { Card, Live } from "../card";
 import styles from "./shared.module.css";
 
-function Card({ children }: { children: ReactNode }) {
-  return <BaseCard className={styles.card}>{children}</BaseCard>;
-}
 export const key = () => crypto.randomUUID();
 export const date = (value: string | null) =>
   value ? new Date(value).toLocaleString() : "Not set";
@@ -54,7 +51,7 @@ export function PendingSource({
     };
   }, [sourceId]);
   return (
-    <Card>
+    <Card className={styles.card}>
       <h2
         className={styles.evidenceHeading}
         ref={evidenceHeading}
