@@ -5,12 +5,12 @@ import {
   type OperatorMember,
   type OperatorOrganizationDetail,
 } from "@relay/contracts";
-import { type Database, sql } from "@relay/db";
+import { type Database, provisionOrganization, sql } from "@relay/db";
 import { maskEmail } from "./mask.ts";
 import type {
-  OperatorAuditEntry,
   OperatorStore,
   OperatorTransaction,
+  PlatformEvent,
 } from "./service.ts";
 
 type Row = Record<string, unknown>;
@@ -29,58 +29,32 @@ function idList(ids: readonly string[]) {
 
 type Executor = Pick<Database, "execute">["execute"];
 
-/** Every statement below runs on the transaction client passed in, never on `db`. */
+/**
+ * Every statement below runs on the transaction client passed in, never on `db`.
+ * The store interface is deliberately small: shared organization creation and
+ * provisioning live in `packages/db/src/repositories/provisioning.ts` so the CLI
+ * and the console cannot drift.
+ */
 function createTransaction(execute: Executor): OperatorTransaction {
   return {
-    async verifiedAccount(email) {
-      const row = rows(
-        await execute(
-          sql`select id from "user" where lower(email)=${email} and email_verified=true for share`,
-        ),
-      )[0];
-      const userId = text(row?.id);
-      return userId === "" ? null : { userId };
-    },
-    async hasPassword(userId) {
-      const found = rows(
-        await execute(
-          sql`select id from account where user_id=${userId} and provider_id='credential' and password is not null and length(password)>0 for share`,
-        ),
-      );
-      return found.length > 0;
-    },
-    async lockOrganizationName(name) {
-      await execute(
-        sql`select pg_advisory_xact_lock(hashtextextended(lower(${name}),0))`,
-      );
-    },
-    async organizationTaken({ name, slug }) {
-      const found = rows(
-        await execute(
-          sql`select 1 from organization where slug=${slug} or lower(name)=lower(${name})`,
-        ),
-      );
-      return found.length > 0;
-    },
-    async insertOrganization({ organizationId, name, slug }) {
-      await execute(
-        sql`insert into organization(id,name,slug,created_at) values (${organizationId},${name},${slug},now())`,
-      );
-    },
-    async insertMembership({ membershipId, organizationId, userId, role }) {
-      await execute(
-        sql`insert into member(id,organization_id,user_id,role,created_at) values (${membershipId},${organizationId},${userId},${role},now())`,
-      );
-    },
-    async insertSettings({ organizationId, settings }) {
-      await execute(
-        sql`insert into organization_settings(organization_id,revision,timezone,automation_policy,policy_version,routing,fallback_membership_id,ack_minutes,retention_days) values (${organizationId},${settings.revision},${settings.timezone},${settings.automationPolicy},${settings.policyVersion},${JSON.stringify(settings.routing)}::jsonb,${settings.fallbackMembershipId},${settings.ackMinutes},${settings.retentionDays})`,
+    provision(input) {
+      // The shared helper takes a strict creation command; the correlation id
+      // is its own option, not part of the organization input.
+      return provisionOrganization(
+        execute,
+        {
+          name: input.name,
+          slug: input.slug,
+          timezone: input.timezone,
+          ownerEmail: input.ownerEmail,
+        },
+        { correlationId: input.correlationId },
       );
     },
     async lockOrganization(organizationId) {
       // A plain read: the row locks below are what serialize this change, and
       // taking a shared organization lock first would invert the lock order the
-      // tenant paths and the planned owner trigger use.
+      // tenant paths and the owner trigger use.
       const found = rows(
         await execute(
           sql`select id from organization where id=${organizationId}`,
@@ -95,6 +69,86 @@ function createTransaction(execute: Executor): OperatorTransaction {
         ),
       );
       return found.length > 0;
+    },
+    async rename({ organizationId, name, slug, expectedName, expectedSlug }) {
+      // Same advisory lock as creation: the name has no unique index.
+      await execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(lower(${name}),0))`,
+      );
+      const current = rows(
+        await execute(
+          sql`select name,slug from organization where id=${organizationId} for update`,
+        ),
+      )[0];
+      if (!current)
+        return {
+          ok: false,
+          error: {
+            code: "NOT_FOUND",
+            message: "Resource was not found",
+            correlationId: "-",
+            retryable: false,
+          },
+        };
+      if (
+        text(current.name) !== expectedName ||
+        text(current.slug) !== expectedSlug
+      )
+        return {
+          ok: false,
+          error: {
+            code: "CONFLICT",
+            message: "The record changed. Refresh and try again",
+            correlationId: "-",
+            retryable: false,
+          },
+        };
+      const taken = rows(
+        await execute(
+          sql`select 1 from organization where id<>${organizationId} and (slug=${slug} or lower(name)=lower(${name}))`,
+        ),
+      );
+      if (taken.length > 0)
+        return {
+          ok: false,
+          error: {
+            code: "CONFLICT",
+            message: "The record changed. Refresh and try again",
+            correlationId: "-",
+            retryable: false,
+          },
+        };
+      await execute(
+        sql`update organization set name=${name}, slug=${slug} where id=${organizationId}`,
+      );
+      return { ok: true, value: undefined };
+    },
+    async accessAccount(email) {
+      const row = rows(
+        await execute(
+          sql`select u.id from "user" u join account a on a.user_id=u.id and a.provider_id='credential' and a.password is not null and length(a.password)>0 where lower(u.email)=${email} and u.email_verified=true limit 1`,
+        ),
+      )[0];
+      const userId = text(row?.id);
+      return userId === "" ? null : { userId };
+    },
+    async addOwnerMembership({ organizationId, userId, membershipId }) {
+      await execute(
+        sql`insert into member(id,organization_id,user_id,role,created_at) values (${membershipId},${organizationId},${userId},'owner',now())`,
+      );
+    },
+    async revokeAccountAccess(userId) {
+      await execute(sql`delete from session where user_id=${userId}`);
+      await execute(
+        sql`update account set password=null, updated_at=now() where user_id=${userId} and provider_id='credential'`,
+      );
+    },
+    async ownerMemberships(organizationId) {
+      return rows(
+        await execute(
+          sql`select id from member where organization_id=${organizationId} and role='owner' order by id`,
+        ),
+      ).map((row) => text(row.id));
     },
     async lockMemberRows({ organizationId, membershipId }) {
       const found = rows(
@@ -115,12 +169,21 @@ function createTransaction(execute: Executor): OperatorTransaction {
         sql`update member set role=${role} where organization_id=${organizationId} and id=${membershipId}`,
       );
     },
-    async recordAudit(entry: OperatorAuditEntry) {
+    async recordAudit(entry) {
       await execute(
-        sql`insert into organization_audit_event(organization_id,operation_id,phase,action,target_id,actor,correlation_id,before,after,occurred_at) values (${entry.organizationId},${randomUUID()},'applied','member.role',${entry.membershipId},${JSON.stringify({ kind: "operator", userId: entry.actor.userId })}::jsonb,${entry.correlationId},${entry.before === null ? null : JSON.stringify(entry.before)}::jsonb,${JSON.stringify(entry.after)}::jsonb,now())`,
+        sql`insert into organization_audit_event(organization_id,operation_id,phase,action,target_id,actor,correlation_id,before,after,occurred_at) values (${entry.organizationId},${randomUUID()},'applied',${entry.action},${entry.membershipId},${JSON.stringify({ kind: "operator", userId: entry.actor.userId })}::jsonb,${entry.correlationId},${entry.before === null ? null : JSON.stringify(entry.before)}::jsonb,${JSON.stringify(entry.after)}::jsonb,now())`,
       );
     },
+    async recordPlatformEvent(event) {
+      await insertPlatformEvent(execute, event);
+    },
   };
+}
+
+async function insertPlatformEvent(execute: Executor, event: PlatformEvent) {
+  await execute(
+    sql`insert into platform_audit_event(id,operator_user_id,action,target_organization_id,query,correlation_id,occurred_at) values (${randomUUID()},${event.operatorUserId},${event.action},${event.targetOrganizationId},${event.query},${event.correlationId},now())`,
+  );
 }
 
 /**
@@ -134,6 +197,9 @@ function createTransaction(execute: Executor): OperatorTransaction {
  */
 export function createOperatorStore(db: Database): OperatorStore {
   return {
+    recordPlatformEvent(event) {
+      return insertPlatformEvent(db.execute.bind(db) as Executor, event);
+    },
     async transaction(run) {
       return db.transaction((tx) =>
         run(createTransaction(tx.execute.bind(tx) as Executor)),

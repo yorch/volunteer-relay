@@ -52,6 +52,14 @@ function fakeService(overrides: Partial<OperatorService> = {}) {
       calls.push({ name: "setMemberRole", input });
       return { ok: true, value: undefined };
     },
+    async assignOwner(input) {
+      calls.push({ name: "assignOwner", input });
+      return { ok: true, value: undefined };
+    },
+    async renameOrganization(input) {
+      calls.push({ name: "renameOrganization", input });
+      return { ok: true, value: undefined };
+    },
     ...overrides,
   };
   return { calls, service };
@@ -228,7 +236,14 @@ describe("operator transport", () => {
     const { calls, service } = fakeService();
     const response = await handler({ service })(get("organizations?q=tide"));
     expect(response.status).toBe(200);
-    expect(calls).toEqual([{ name: "list", input: { q: "tide" } }]);
+    expect(calls).toEqual([
+      {
+        name: "list",
+        input: expect.objectContaining({ query: { q: "tide" } }),
+      },
+    ]);
+    const input = calls[0]?.input as { actor: { userId: string } };
+    expect(input.actor.userId).toBe("operator-1");
   });
 
   it("rejects a malformed body and an oversized body before dispatch", async () => {

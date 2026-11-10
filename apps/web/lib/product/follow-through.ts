@@ -13,6 +13,7 @@ import {
   type Database,
   sql,
 } from "@relay/db";
+import { databaseErrorConstraint } from "@relay/db";
 import { APIError } from "better-auth/api";
 import type { Auth, SessionResolver } from "../auth/index.ts";
 import { productFailure, readProductJson } from "./http.ts";
@@ -178,6 +179,11 @@ export function createFollowThroughHttp(
           started.value.operationId,
           "failed",
         );
+        // The database refuses the last-owner removal before the library's own
+        // (unlocked) check can pass. That is a state conflict the owner can act
+        // on, not a retryable outage.
+        if (databaseErrorConstraint(error) === "organization_last_owner_check")
+          return fail("CONFLICT");
         return fail(
           error instanceof APIError && error.statusCode < 500
             ? "FORBIDDEN"

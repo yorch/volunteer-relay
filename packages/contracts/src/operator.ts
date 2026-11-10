@@ -278,6 +278,37 @@ export type OperatorCreateOrganizationCommand = z.infer<
   typeof operatorCreateOrganizationCommandSchema
 >;
 
+/**
+ * Rename. Both the name and the slug are sent as they were observed, so a
+ * change made by someone else — including a case-only or name-only change —
+ * conflicts instead of being overwritten.
+ */
+export const operatorRenameOrganizationCommandSchema = z
+  .object({
+    organizationId: id,
+    name: organizationName,
+    slug,
+    expectedName: organizationName,
+    expectedSlug: slug,
+  })
+  .strict();
+export type OperatorRenameOrganizationCommand = z.infer<
+  typeof operatorRenameOrganizationCommandSchema
+>;
+
+/**
+ * Assign an existing verified account as owner. Only valid for an organization
+ * with no owner left (recovery); the account's sessions and password are
+ * revoked in the same transaction, so the mailbox must complete a reset before
+ * the person can sign in again.
+ */
+export const operatorAssignOwnerCommandSchema = z
+  .object({ organizationId: id, email: z.email().max(254) })
+  .strict();
+export type OperatorAssignOwnerCommand = z.infer<
+  typeof operatorAssignOwnerCommandSchema
+>;
+
 export const operatorCreateOrganizationResultSchema = z
   .object({ organizationId: id })
   .strict();

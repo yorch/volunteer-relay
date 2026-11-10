@@ -25,6 +25,7 @@ export * from "./repositories/last-organization.ts";
 export * from "./repositories/memberships.ts";
 export * from "./repositories/model-budget.ts";
 export * from "./repositories/processing.ts";
+export * from "./repositories/provisioning.ts";
 export * from "./repositories/retention.ts";
 export * from "./repositories/sources.ts";
 export * as schema from "./schema/index.ts";
