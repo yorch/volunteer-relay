@@ -1,25 +1,8 @@
 import { randomUUID } from "node:crypto";
 import {
-  automationPolicySchema,
-  organizationSettingsSchema,
-} from "../packages/contracts/src/index.ts";
-import { createDatabase, sql } from "../packages/db/src/index.ts";
-
-// Initial settings are validated against the canonical contract rather than
-// restated as SQL literals. The repository's own defaults are not exported, so
-// keep these values in step with packages/db/src/repositories/follow-through.ts.
-function initialSettings(timezone: string) {
-  return organizationSettingsSchema.parse({
-    revision: 1,
-    timezone,
-    automationPolicy: automationPolicySchema.parse("review-all"),
-    policyVersion: "1",
-    routing: {},
-    fallbackMembershipId: null,
-    ackMinutes: 60,
-    retentionDays: 365,
-  });
-}
+  createDatabase,
+  provisionOrganization,
+} from "../packages/db/src/index.ts";
 
 const usage =
   "Usage: node scripts/provision-organization.ts --email <verified account email> --name <organization name> --slug <new slug> --timezone <IANA timezone>";
@@ -71,39 +54,25 @@ async function main() {
   if (!url) throw new Error("DATABASE_URL is required");
   const { db, close } = createDatabase(url);
   try {
-    const organizationId = randomUUID();
-    await db.transaction(async (tx) => {
-      const users = await tx.execute(
-        sql`select id from "user" where email=${input.email} and email_verified=true for share`,
-      );
-      const userId = users.rows[0]?.id;
-      if (typeof userId !== "string")
-        throw new Error("A verified credential account is required");
-      const credential = await tx.execute(
-        sql`select id from account where user_id=${userId} and provider_id='credential' and password is not null and length(password)>0 for share`,
-      );
-      if (!credential.rows.length)
-        throw new Error("A verified credential account is required");
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtextextended(lower(${input.name}), 0))`,
-      );
-      const existing = await tx.execute(
-        sql`select 1 from organization where slug=${input.slug} or lower(name)=lower(${input.name})`,
-      );
-      if (existing.rows.length)
-        throw new Error("Organization name or slug already exists");
-      await tx.execute(
-        sql`insert into organization (id,name,slug,created_at) values (${organizationId},${input.name},${input.slug},now())`,
-      );
-      await tx.execute(
-        sql`insert into member (id,organization_id,user_id,role,created_at) values (${randomUUID()},${organizationId},${userId},'owner',now())`,
-      );
-      const settings = initialSettings(input.timezone);
-      await tx.execute(
-        sql`insert into organization_settings (organization_id,revision,timezone,automation_policy,policy_version,routing,fallback_membership_id,ack_minutes,retention_days) values (${organizationId},${settings.revision},${settings.timezone},${settings.automationPolicy},${settings.policyVersion},${JSON.stringify(settings.routing)}::jsonb,${settings.fallbackMembershipId},${settings.ackMinutes},${settings.retentionDays})`,
-      );
-    });
-    process.stdout.write(`${JSON.stringify({ organizationId })}\n`);
+    const result = await db.transaction((tx) =>
+      provisionOrganization(
+        tx.execute.bind(tx),
+        {
+          name: input.name,
+          slug: input.slug,
+          timezone: input.timezone,
+          ownerEmail: input.email,
+        },
+        { correlationId: randomUUID() },
+      ),
+    );
+    // The one place an organization is created is shared with the operator
+    // console, so the CLI cannot drift from it. Exit codes and messages stay
+    // exactly as documented in docs/provisioning.md.
+    if (!result.ok) throw new Error(result.error.message);
+    process.stdout.write(
+      `${JSON.stringify({ organizationId: result.value.organizationId })}\n`,
+    );
   } finally {
     await close();
   }

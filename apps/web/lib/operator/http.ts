@@ -2,10 +2,12 @@ import { randomUUID } from "node:crypto";
 import {
   type ApiError,
   errorCodeHttpStatus,
+  operatorAssignOwnerCommandSchema,
   operatorCreateOrganizationCommandSchema,
   operatorMemberRoleCommandSchema,
   operatorOrganizationDetailQuerySchema,
   operatorOrganizationQuerySchema,
+  operatorRenameOrganizationCommandSchema,
   type Result,
 } from "@relay/contracts";
 import type { RateLimiter, RateRule } from "../auth-http/rate-limit.ts";
@@ -197,7 +199,11 @@ export function createOperatorHandler(deps: OperatorHttpDependencies) {
           cursor: url.searchParams.get("cursor") ?? undefined,
         });
         if (!parsed.success) return reply(failure("VALIDATION", correlationId));
-        const result = await deps.service.list(parsed.data);
+        const result = await deps.service.list({
+          query: parsed.data,
+          actor: { userId: actor.userId },
+          correlationId,
+        });
         return reply(
           result.ok
             ? result
@@ -213,6 +219,7 @@ export function createOperatorHandler(deps: OperatorHttpDependencies) {
         if (!parsed.success) return reply(failure("VALIDATION", correlationId));
         const result = await deps.service.detail({
           organizationId: parsed.data.organizationId,
+          actor: { userId: actor.userId },
           correlationId,
         });
         return reply(
@@ -239,6 +246,34 @@ export function createOperatorHandler(deps: OperatorHttpDependencies) {
         return reply(
           result.ok
             ? result
+            : { ...result, error: { ...result.error, correlationId } },
+        );
+      }
+      if (path === "member-add") {
+        const parsed = operatorAssignOwnerCommandSchema.safeParse(body);
+        if (!parsed.success) return reply(failure("VALIDATION", correlationId));
+        const result = await deps.service.assignOwner({
+          actor,
+          command: parsed.data,
+          correlationId,
+        });
+        return reply(
+          result.ok
+            ? { ok: true, value: {} }
+            : { ...result, error: { ...result.error, correlationId } },
+        );
+      }
+      if (path === "organization-rename") {
+        const parsed = operatorRenameOrganizationCommandSchema.safeParse(body);
+        if (!parsed.success) return reply(failure("VALIDATION", correlationId));
+        const result = await deps.service.renameOrganization({
+          actor,
+          command: parsed.data,
+          correlationId,
+        });
+        return reply(
+          result.ok
+            ? { ok: true, value: {} }
             : { ...result, error: { ...result.error, correlationId } },
         );
       }
