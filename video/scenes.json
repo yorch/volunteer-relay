@@ -46,14 +46,14 @@
       ],
       "focus": [
         {
-          "x": 0.38,
+          "x": 0.44,
           "y": 0.45,
           "scale": 1.05,
           "atSeconds": 1,
           "holdSeconds": 9
         },
         {
-          "x": 0.6,
+          "x": 0.56,
           "y": 0.42,
           "scale": 1.04,
           "atSeconds": 12,
@@ -69,7 +69,8 @@
           "holdSeconds": 5,
           "label": null
         }
-      ]
+      ],
+      "cards": []
     },
     {
       "id": "S03",
@@ -92,14 +93,14 @@
       ],
       "focus": [
         {
-          "x": 0.3,
+          "x": 0.42,
           "y": 0.42,
           "scale": 1.06,
           "atSeconds": 1,
           "holdSeconds": 8
         },
         {
-          "x": 0.76,
+          "x": 0.58,
           "y": 0.55,
           "scale": 1.07,
           "atSeconds": 10,
@@ -115,7 +116,8 @@
           "holdSeconds": 5,
           "label": null
         }
-      ]
+      ],
+      "cards": []
     },
     {
       "id": "S04",
@@ -138,14 +140,14 @@
       ],
       "focus": [
         {
-          "x": 0.55,
+          "x": 0.48,
           "y": 0.45,
           "scale": 1.04,
           "atSeconds": 1,
           "holdSeconds": 8
         },
         {
-          "x": 0.5,
+          "x": 0.52,
           "y": 0.55,
           "scale": 1.06,
           "atSeconds": 11,
@@ -161,7 +163,8 @@
           "holdSeconds": 5,
           "label": null
         }
-      ]
+      ],
+      "cards": []
     },
     {
       "id": "S05",
@@ -184,14 +187,14 @@
       ],
       "focus": [
         {
-          "x": 0.74,
+          "x": 0.56,
           "y": 0.42,
           "scale": 1.05,
           "atSeconds": 1,
           "holdSeconds": 9
         },
         {
-          "x": 0.72,
+          "x": 0.52,
           "y": 0.8,
           "scale": 1.07,
           "atSeconds": 11,
@@ -207,7 +210,16 @@
           "holdSeconds": 5,
           "label": null
         }
-      ]
+      ],
+      "cards": [
+        {
+          "title": "No double counting",
+          "lines": ["2 messages → 1 visit", "0 hours counted twice"],
+          "atSeconds": 6,
+          "holdSeconds": 3.2
+        }
+      ],
+      "dipToBlack": true
     },
     {
       "id": "S06",
@@ -230,14 +242,14 @@
       ],
       "focus": [
         {
-          "x": 0.45,
+          "x": 0.46,
           "y": 0.45,
           "scale": 1.05,
           "atSeconds": 1,
           "holdSeconds": 10
         },
         {
-          "x": 0.45,
+          "x": 0.5,
           "y": 0.62,
           "scale": 1.06,
           "atSeconds": 13,
@@ -253,7 +265,8 @@
           "holdSeconds": 5,
           "label": null
         }
-      ]
+      ],
+      "cards": []
     },
     {
       "id": "S07",
@@ -276,14 +289,14 @@
       ],
       "focus": [
         {
-          "x": 0.45,
+          "x": 0.46,
           "y": 0.4,
           "scale": 1.04,
           "atSeconds": 1,
           "holdSeconds": 9
         },
         {
-          "x": 0.5,
+          "x": 0.52,
           "y": 0.68,
           "scale": 1.05,
           "atSeconds": 12,
@@ -299,7 +312,8 @@
           "holdSeconds": 5,
           "label": null
         }
-      ]
+      ],
+      "cards": []
     },
     {
       "id": "S08",

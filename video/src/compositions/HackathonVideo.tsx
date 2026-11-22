@@ -6,6 +6,7 @@ import {
   useVideoConfig,
 } from "remotion";
 import scenesJson from "../../scenes.json";
+import { ActBreak } from "../components/ActBreak.tsx";
 import { Captions } from "../components/Captions.tsx";
 import type { HackathonVideoProps } from "../lib/props.ts";
 import { parseSceneManifest } from "../lib/schema.ts";
@@ -84,6 +85,22 @@ export function HackathonVideo(props: HackathonVideoProps) {
         <Audio src={staticFile(props.musicFile)} loop volume={0.08} />
       ) : null}
       {props.assets.captions ? <Captions cues={props.cues} /> : null}
+      {props.timeline.scenes
+        .filter((timelineScene) =>
+          manifest.scenes.some(
+            (scene) => scene.id === timelineScene.id && scene.dipToBlack,
+          ),
+        )
+        .map((timelineScene) => (
+          <Sequence
+            key={`dip-${timelineScene.id}`}
+            from={timelineScene.startFrame}
+            durationInFrames={Math.round(0.5 * props.timeline.fps)}
+            layout="none"
+          >
+            <ActBreak />
+          </Sequence>
+        ))}
     </AbsoluteFill>
   );
 }

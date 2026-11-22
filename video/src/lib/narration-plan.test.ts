@@ -12,6 +12,8 @@ const scene = (id: string) =>
     capture: null,
     overlays: [],
     annotations: [],
+    cards: [],
+    dipToBlack: false,
     focus: [],
     minSeconds: 10,
     maxSeconds: 20,

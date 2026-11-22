@@ -5,6 +5,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
+import { demoQrDataUri, demoUrl } from "../assets/qr-demo.ts";
 import type { Scene } from "../lib/schema.ts";
 import { theme, typography } from "../theme.ts";
 
@@ -73,29 +74,84 @@ export function Closing({ scene }: { scene: Scene }) {
       </div>
       <div
         style={{
-          marginTop: 64,
+          marginTop: 56,
           opacity: urlOpacity,
           display: "flex",
-          flexDirection: "column",
           alignItems: "center",
-          gap: 16,
+          gap: 72,
         }}
       >
+        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span
+              style={{
+                fontSize: 22,
+                letterSpacing: 2.4,
+                textTransform: "uppercase",
+                color: theme.teal,
+                fontWeight: 700,
+              }}
+            >
+              Live demo
+            </span>
+            <div
+              style={{
+                fontFamily: typography.mono,
+                fontSize: 46,
+                padding: "12px 26px",
+                borderRadius: 12,
+                border: `3px solid ${theme.tealDeep}`,
+                background: theme.surface,
+                color: theme.tealDeep,
+              }}
+            >
+              {demoUrl.replace("https://", "")}
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span
+              style={{
+                fontSize: 20,
+                letterSpacing: 2,
+                textTransform: "uppercase",
+                color: theme.inkSoft,
+                fontWeight: 700,
+              }}
+            >
+              Source · MIT
+            </span>
+            <div
+              style={{
+                fontFamily: typography.mono,
+                fontSize: 28,
+                color: theme.inkSoft,
+              }}
+            >
+              {repositoryUrl}
+            </div>
+          </div>
+        </div>
         <div
           style={{
-            fontFamily: typography.mono,
-            fontSize: 40,
-            padding: "14px 28px",
-            borderRadius: 12,
-            border: `2px solid ${theme.teal}`,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 10,
+            padding: 16,
+            borderRadius: 18,
             background: theme.surface,
-            color: theme.tealDeep,
+            border: `2px solid ${theme.line}`,
           }}
         >
-          {repositoryUrl}
-        </div>
-        <div style={{ fontSize: 28, color: theme.inkSoft }}>
-          MIT licensed implementation · Next.js, PostgreSQL, TypeScript
+          <img
+            src={demoQrDataUri}
+            alt="QR code for the live demo"
+            width={232}
+            height={232}
+          />
+          <span style={{ fontSize: 20, color: theme.inkSoft }}>
+            Scan to try it
+          </span>
         </div>
       </div>
       <div

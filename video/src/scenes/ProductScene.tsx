@@ -1,7 +1,9 @@
 import { useCurrentFrame, useVideoConfig } from "remotion";
 import { Callout } from "../components/Callout.tsx";
+import { InfoCard } from "../components/InfoCard.tsx";
 import { ProductFrame } from "../components/ProductFrame.tsx";
 import { Spotlight } from "../components/Spotlight.tsx";
+import { Texture } from "../components/Texture.tsx";
 import {
   focusCss,
   focusOrigin,
@@ -60,6 +62,8 @@ export function ProductScene({
           );
         })}
       </div>
+      <Texture />
+      <InfoCard cards={scene.cards} />
     </div>
   );
 }

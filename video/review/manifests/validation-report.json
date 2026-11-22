@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "validatedAt": "2026-11-22T16:46:35.033Z",
+  "validatedAt": "2026-11-22T17:07:03.698Z",
   "summary": "36 ok, 0 warnings, 0 blockers, 0 skipped",
   "steps": [
     {
@@ -161,7 +161,7 @@
     {
       "name": "proof render",
       "status": "ok",
-      "detail": "18.00s 3.9 MiB, audio=aac"
+      "detail": "18.00s 3.8 MiB, audio=aac"
     },
     {
       "name": "proof render loudness",
@@ -171,7 +171,7 @@
     {
       "name": "final render",
       "status": "ok",
-      "detail": "157.30s 25.0 MiB, audio=aac"
+      "detail": "157.30s 25.3 MiB, audio=aac"
     },
     {
       "name": "final render loudness",
