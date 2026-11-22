@@ -77,8 +77,7 @@ video/scenes.json  ────┤
                        ├─ scripts/voice.ts ──► generated/narration/*.mp3 + alignments/*.json
                        │                        └─ generated/narration/manifest.json
 app rehearsal ─────────┤
-                       └─ scripts/capture.ts ─► generated/captions? no:
-                                               generated/captures/S0X.mp4
+                       └─ scripts/capture.ts ─► generated/captures/S0X.mp4
                                                generated/capture-manifest.json
                                                          (commit, origin, markers, regions)
 
@@ -100,8 +99,8 @@ under `review/` is a committed snapshot for reviewers (see `review/README.md`).
 ## Delivery targets
 
 1920×1080, 30 fps, H.264 (yuv420p, bt709), AAC, ≤ 180 s, SRT captions, −16 LUFS
-integrated, true peak ≤ −1 dBTP. The scene floor currently plans 162.3 s with the
-scratch voice; final duration follows measured narration.
+integrated, true peak ≤ −1 dBTP. Current cut: 157.30 s with final ElevenLabs
+narration at speed 1.10; duration always follows measured narration.
 
 ## Hard rules encoded in the tooling
 

@@ -6,14 +6,14 @@ frozen copy so a reviewer can watch the result without running the toolchain.
 
 ## Provenance
 
-| Field               | Value                                                                                                   |
-| ------------------- | ------------------------------------------------------------------------------------------------------- |
-| Captured app commit | `4ce24e6` (`main` + video overlay fix, after the #19 review sweep)                                      |
-| Capture origin      | **local** rehearsal (`http://127.0.0.1:3300`) — not the hosted deployment                               |
-| Narration           | **ElevenLabs** (`eleven_multilingual_v2`), one voice, `speed 1.10`, 363-word draft, per-scene alignment |
-| Captions            | phrase-level, derived from provider character alignment (`alignment`)                                   |
-| Proof               | 18.00 s excerpt of S03, rendered by `bun run video:proof`                                               |
-| Mix                 | per-scene gain to −16 LUFS with a true-peak limiter                                                     |
+| Field          | Value                                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------------------- |
+| Footage commit | `42bda8c` — authoritative value is `appCommit` in `manifests/capture-manifest.json`                     |
+| Capture origin | **local** rehearsal (`http://127.0.0.1:3300`) — not the hosted deployment                               |
+| Narration      | **ElevenLabs** (`eleven_multilingual_v2`), one voice, `speed 1.10`, 363-word draft, per-scene alignment |
+| Captions       | phrase-level, derived from provider character alignment (`alignment`)                                   |
+| Proof          | 18.00 s excerpt of S03, rendered by `bun run video:proof`                                               |
+| Mix            | per-scene gain to −16 LUFS with a true-peak limiter                                                     |
 
 The hosted origin (`https://volunteer-relay.brnby.com`) is healthy but no hosted
 recording credentials exist here, so every clip is labelled `local`. Never present
@@ -23,7 +23,7 @@ this footage as the deployed release.
 
 | Path             | What it shows                                                                                                           |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `final.mp4`      | Full programme: 176.20 s, 1920×1080, 30 fps, H.264/AAC; −16.5 LUFS, −4.0 dBTP                                           |
+| `final.mp4`      | Full programme: 157.30 s, 1920×1080, 30 fps, H.264/AAC; −16.4 LUFS, −4.0 dBTP                                           |
 | `proof.mp4`      | 1920×1080, 30 fps, H.264 yuv420p/bt709, AAC; 18.00 s; −16.4 LUFS, −4.2 dBTP                                             |
 | `scenes/S02.mp4` | Coordinator inbox with 7 updates awaiting review (baseline)                                                             |
 | `scenes/S03.mp4` | Original update beside proposed fields, each tied to its source                                                         |
@@ -38,6 +38,12 @@ this footage as the deployed release.
 Totals asserted during capture: baseline 180 approved minutes / 3 contributions /
 7 in review / 10 sources; after S04 300 minutes / 5 contributions / 3 activities;
 after S05 unchanged; after S06 the urgent need is acknowledged.
+
+## Refresh procedure
+
+Exact copy block and the "render last before validate" rule live in
+[`../docs/state.md`](../docs/state.md#refresh-the-committed-review-copy). Update the
+"Footage commit" row above from `manifests/capture-manifest.json`, never from memory.
 
 ## Regenerating
 

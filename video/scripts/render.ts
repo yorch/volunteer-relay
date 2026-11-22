@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, rmSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import {
   ensureDir,
   log,
@@ -182,15 +182,20 @@ async function main(): Promise<void> {
       `Audio: ${loudness.integratedLufs?.toFixed(1) ?? "?"} LUFS integrated, ${loudness.truePeakDb?.toFixed(1) ?? "?"} dBTP`,
     );
   else log("Audio: no audio stream (narration or music was absent)");
+  const relativePath = (path: string) => {
+    const rel = relative(videoRoot, path);
+    // Never publish an absolute path (home directory) in committed evidence.
+    return rel.startsWith("..") ? (path.split("/").at(-1) ?? "") : rel;
+  };
   const report = {
     schemaVersion: 1,
     mode,
     narrationSource: timeline.narrationSource,
     captureOrigin: captures?.targetMode ?? "none",
     manifestScenes: manifest.scenes.length,
-    output: output.replace(`${videoRoot}/`, ""),
+    output: relativePath(output),
     bytes,
-    measured: probe,
+    measured: { ...probe, path: relativePath(probe.path) },
     loudness,
     renderedAt: new Date().toISOString(),
   };

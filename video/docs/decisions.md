@@ -35,7 +35,9 @@ consequence, and what would reverse it. Dates are 2026-11-08 unless noted.
 ## D3 — Narration: one stock ElevenLabs voice at `speed 1.10`
 
 - **Decision:** `eleven_multilingual_v2`, one voice, one settings set, `speed 1.10`
-  (~142 wpm), 363-word draft (target 350–390), no cloning.
+  (~142 wpm), 363-word draft (target 350–390), no cloning. The stock voice id is
+  configured as `ELEVENLABS_VOICE_ID` (not a secret, but kept out of the repo to
+  avoid pinning an account-specific value in docs).
 - **Why:** the first cut read at 129 wpm and felt slow; 1.10 recovered ~19 s of
   runtime and energy without sounding rushed. 1.16 was offered and declined
   (kept as an option in the backlog).

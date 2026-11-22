@@ -96,7 +96,12 @@ async function main(): Promise<void> {
 
   if (args.flags.reset) {
     log(
-      "video:prepare does not reset databases. For a local restart only, stop the rehearsal app and recreate the disposable database manually, for example: docker compose -p relay-video exec postgres dropdb -U relay relay_video_recording && createdb relay_video_recording, then re-run migrations and this command with VIDEO_LOCAL_DATABASE_MARKER=relay-video-recording. Hosted data is never reset.",
+      `video:prepare does not reset databases. For a local restart only, stop the rehearsal app and recreate the disposable database manually:
+
+  docker exec relay-video-postgres-1 psql -U relay -d postgres -c "drop database if exists relay_video_recording with (force)"
+  docker exec relay-video-postgres-1 createdb -U relay relay_video_recording
+
+then re-run migrations and this command with VIDEO_LOCAL_DATABASE_MARKER=relay-video-recording. Hosted data is never reset.`,
     );
     return;
   }

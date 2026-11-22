@@ -3,7 +3,8 @@
 > Current status, resume commands and drift policy: [`state.md`](state.md). Decisions: [`decisions.md`](decisions.md).
 
 Audited from source at `00dfa71` (`main`) plus a read-only probe of the deployed
-origin. Every claim names the code, route or test that supports it. Nothing here
+origin; re-check app claims against `HEAD` before recording (several UI PRs landed
+after that audit). Every claim names the code, route or test that supports it. Nothing here
 is inferred from the implementation plan.
 
 ## Deployed release
@@ -31,7 +32,7 @@ Hosted and local footage must never be mixed in one delivery.
 | S05 possible duplicate            | **Working review gate, partial automatic matching.** A later update is flagged with an unresolved `duplicateCandidate`, and a second contribution for the same person/activity is refused as `duplicate-contribution`. There is no fuzzy auto-merge and no silent deletion: staff decide.                                        | `demo-data.ts` (`duplicate` run), `packages/db/src/repositories/domain.ts:454`, review pane "Unresolved in original proposal"                                        |
 | S06 ownership and acknowledgment  | **Working assign/acknowledge/resolve; escalation implemented but not captured.** `assign` requires an owner; `acknowledge` is a separate staff action; `resolve` records an outcome. The worker escalates overdue acknowledgments (`escalateOverdue`). No clock is changed for the video, so escalation is narrated, not filmed. | `product/index.tsx` (`Need`, "Manage need"), `/api/product/need-transition`, `apps/worker/src/index.ts:106`, `packages/db/src/repositories/follow-through.ts:459`    |
 | S07 weekly report                 | **Working aggregate report; no per-number drill-down on the report page.** Approved minutes/hours, contributions, activities, open/resolved needs, pending unknowns and excluded unknown-date rows are computed server side. Traceability comes from the inbox evidence pane and the audit history, not from clicking a metric.  | `apps/web/components/product/index.tsx` (`Summary`), `packages/contracts/src/reports.ts`, `/api/product/reports`, `/api/product/audit`, `/workspace/history`         |
-| S08 close                         | **Designed graphic.** Repository URL, MIT licence and synthetic-data/AI-narration disclosure.                                                                                                                                                                                                                                    | `video/src/scenes/Closing.tsx`, `LICENSE`                                                                                                                            |
+| S08 close                         | **Designed graphic.** Repository URL, MIT licence and a small "AI narration" line; the synthetic-data wording was removed at the operator's request (D8 in `decisions.md`).                                                                                                                                                      | `video/src/scenes/Closing.tsx`, `LICENSE`                                                                                                                            |
 
 ## Verified behaviour the narration relies on
 
@@ -90,8 +91,9 @@ Hosted and local footage must never be mixed in one delivery.
 4. **No second volunteer identity.** Ana's later duplicate report exists as a
    fixture authored by the demo volunteer. A separate Ana account would need a
    seed change; S05 therefore shows the volunteer's own later update.
-5. **No ElevenLabs credentials.** Narration is blocked unless supplied audio is
-   used; a clearly labelled local scratch voice may be generated for timing
-   verification only.
+5. **Narration credentials live outside the repo.** ElevenLabs is configured
+   locally (`ELEVENLABS_*` in `video/.env.local`); without it, narration falls back
+   to supplied audio (`--audio-dir`) or a labelled macOS `say` scratch voice for
+   timing only.
 6. **Live provider checks not run.** No OpenAI, SMTP or Telegram call was made
    from this workspace.

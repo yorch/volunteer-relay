@@ -135,6 +135,10 @@ export class Report {
   blocked(): Step[] {
     return this.steps.filter((step) => step.status === "blocked");
   }
+  /** Every step, for the committed report: an empty `blocked` list needs evidence. */
+  all(): Step[] {
+    return [...this.steps];
+  }
   summary(): string {
     const counts = { ok: 0, warn: 0, blocked: 0, skipped: 0 };
     for (const step of this.steps) counts[step.status] += 1;

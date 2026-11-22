@@ -40,7 +40,7 @@ never committed, and are not suitable for the hosted deployment.
 | Deployed app `https://volunteer-relay.brnby.com` | healthy at probe time (`/api/health`, `/api/ready` → 200, runtime 26.11.1); commit/build id not exposed → **unknown release** |
 | Hosted recording credentials                     | **blocked** — none supplied in this environment                                                                               |
 | AI extraction (server-side OpenAI)               | configured in code, **not verified**; no live key here, and the demo proposals are authored fixtures                          |
-| Narration (ElevenLabs)                           | **blocked** — no API key/voice; a labelled local scratch voice was used for timing only                                       |
+| Narration (ElevenLabs)                           | **verified** — final narration generated (`eleven_multilingual_v2`, speed 1.10); voice id configured locally, never committed |
 | Telegram                                         | not required for the core video; adapter exists, replay transport in the demo, no live check                                  |
 | Email delivery                                   | controlled local Mailpit/SMTP only; no real recipients were contacted                                                         |
 | Rendering (Remotion, Chromium, FFmpeg, ffprobe)  | ready; Remotion uses the cached Playwright Chrome Headless Shell via `REMOTION_BROWSER_EXECUTABLE`                            |

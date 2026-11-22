@@ -374,7 +374,8 @@ function main(): void {
     schemaVersion: 1,
     validatedAt: new Date().toISOString(),
     summary: report.summary(),
-    steps: report.blocked(),
+    steps: report.all(),
+    blocked: report.blocked().map((entry) => entry.name),
   });
   log("");
   log(`summary: ${report.summary()}`);

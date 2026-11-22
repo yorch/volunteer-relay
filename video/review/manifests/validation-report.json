@@ -1,6 +1,188 @@
 {
   "schemaVersion": 1,
-  "validatedAt": "2026-11-08T20:53:16.650Z",
+  "validatedAt": "2026-11-22T16:46:35.033Z",
   "summary": "36 ok, 0 warnings, 0 blockers, 0 skipped",
-  "steps": []
+  "steps": [
+    {
+      "name": "scene manifest",
+      "status": "ok",
+      "detail": "8 scenes, 30 fps, max 180s"
+    },
+    {
+      "name": "recording scenario",
+      "status": "ok",
+      "detail": "video-hackathon-tidepath-2026-11; oracle fixtures/demo/expected-start.json"
+    },
+    {
+      "name": "authored baselines",
+      "status": "ok",
+      "detail": "3 checkpoint(s) authored"
+    },
+    {
+      "name": "no secrets in manifests",
+      "status": "ok",
+      "detail": "no credential values found"
+    },
+    {
+      "name": "ignore rule video/.env.local",
+      "status": "ok",
+      "detail": "ignored"
+    },
+    {
+      "name": "ignore rule video/.auth/x.json",
+      "status": "ok",
+      "detail": "ignored"
+    },
+    {
+      "name": "ignore rule video/generated/x.json",
+      "status": "ok",
+      "detail": "ignored"
+    },
+    {
+      "name": "ignore rule video/output/x.mp4",
+      "status": "ok",
+      "detail": "ignored"
+    },
+    {
+      "name": "narration coverage",
+      "status": "ok",
+      "detail": "8 scenes, source elevenlabs"
+    },
+    {
+      "name": "S01 narration",
+      "status": "ok",
+      "detail": "16.63s measured, 16.63s recorded, audio=mp3"
+    },
+    {
+      "name": "S02 narration",
+      "status": "ok",
+      "detail": "20.62s measured, 20.62s recorded, audio=mp3"
+    },
+    {
+      "name": "S03 narration",
+      "status": "ok",
+      "detail": "19.18s measured, 19.18s recorded, audio=mp3"
+    },
+    {
+      "name": "S04 narration",
+      "status": "ok",
+      "detail": "19.18s measured, 19.18s recorded, audio=mp3"
+    },
+    {
+      "name": "S05 narration",
+      "status": "ok",
+      "detail": "15.84s measured, 15.84s recorded, audio=mp3"
+    },
+    {
+      "name": "S06 narration",
+      "status": "ok",
+      "detail": "23.64s measured, 23.64s recorded, audio=mp3"
+    },
+    {
+      "name": "S07 narration",
+      "status": "ok",
+      "detail": "21.36s measured, 21.36s recorded, audio=mp3"
+    },
+    {
+      "name": "S08 narration",
+      "status": "ok",
+      "detail": "15.93s measured, 15.93s recorded, audio=mp3"
+    },
+    {
+      "name": "capture coverage",
+      "status": "ok",
+      "detail": "6 product scenes from local (http://127.0.0.1:3300)"
+    },
+    {
+      "name": "capture origin consistency",
+      "status": "ok",
+      "detail": "single origin: local http://127.0.0.1:3300"
+    },
+    {
+      "name": "S02 capture",
+      "status": "ok",
+      "detail": "1920x1080 23.63s fps=30.00"
+    },
+    {
+      "name": "S03 capture",
+      "status": "ok",
+      "detail": "1920x1080 21.20s fps=30.00"
+    },
+    {
+      "name": "S04 capture",
+      "status": "ok",
+      "detail": "1920x1080 21.13s fps=30.00"
+    },
+    {
+      "name": "S05 capture",
+      "status": "ok",
+      "detail": "1920x1080 17.83s fps=30.00"
+    },
+    {
+      "name": "S06 capture",
+      "status": "ok",
+      "detail": "1920x1080 25.63s fps=30.00"
+    },
+    {
+      "name": "S07 capture",
+      "status": "ok",
+      "detail": "1920x1080 23.40s fps=30.00"
+    },
+    {
+      "name": "timeline",
+      "status": "ok",
+      "detail": "157.30s, 4719 frames, contiguous=true, endsAtTotal=true"
+    },
+    {
+      "name": "captions srt",
+      "status": "ok",
+      "detail": "67 cue(s) in SRT, 67 placed on the timeline"
+    },
+    {
+      "name": "caption timing",
+      "status": "ok",
+      "detail": "67 cues inside 157.30s, max two lines"
+    },
+    {
+      "name": "final readiness",
+      "status": "ok",
+      "detail": "narration, captures, captions and origin all ready"
+    },
+    {
+      "name": "final render identity",
+      "status": "ok",
+      "detail": "final.mp4 came from a full render"
+    },
+    {
+      "name": "final render duration",
+      "status": "ok",
+      "detail": "157.30s measured, 157.30s planned full programme"
+    },
+    {
+      "name": "proof render",
+      "status": "ok",
+      "detail": "18.00s 3.9 MiB, audio=aac"
+    },
+    {
+      "name": "proof render loudness",
+      "status": "ok",
+      "detail": "-16.4 LUFS integrated, -4.2 dBTP (targets -16 LUFS, ≤ -1 dBTP)"
+    },
+    {
+      "name": "final render",
+      "status": "ok",
+      "detail": "157.30s 25.0 MiB, audio=aac"
+    },
+    {
+      "name": "final render loudness",
+      "status": "ok",
+      "detail": "-16.4 LUFS integrated, -4.0 dBTP (targets -16 LUFS, ≤ -1 dBTP)"
+    },
+    {
+      "name": "licence and attribution",
+      "status": "ok",
+      "detail": "docs/asset-licenses.md must record Remotion eligibility and media licences"
+    }
+  ],
+  "blocked": []
 }

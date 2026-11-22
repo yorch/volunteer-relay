@@ -57,21 +57,26 @@ identifier manually if the operator has one; otherwise state that it is unknown.
 Use a dedicated Compose project and a disposable database whose name ends with
 `_video_recording`. The tooling refuses anything else.
 
+`video/.env.local` holds the video and app variables together; export it in every
+shell (migrate, seed, provision, prepare, auth, capture and `next dev` all read
+`process.env`).
+
 ```sh
+set -a; . video/.env.local; set +a          # every shell you use
+
 RELAY_POSTGRES_PORT=55480 docker compose -p relay-video up -d postgres
+docker exec relay-video-postgres-1 psql -U relay -d postgres \
+  -c "drop database if exists relay_video_recording with (force)"
 docker exec relay-video-postgres-1 createdb -U relay relay_video_recording
-
-# Export for the app and the scripts (see/video/.env.local for the video side):
-export NODE_ENV=development APP_URL=http://127.0.0.1:3300
-export DATABASE_URL=postgres://relay:relay@127.0.0.1:55480/relay_video_recording
-export ATTACHMENT_ROOT=$PWD/.relay-local/video-attachments
-export BETTER_AUTH_SECRET=$(grep '^BETTER_AUTH_SECRET=' video/.env.local | cut -d= -f2-)
-export VIDEO_LOCAL_DATABASE_MARKER=relay-video-recording
-
 node packages/db/src/migrate.ts
-bun run video:provision      # creates/reuses the synthetic demo identities, stores missing passwords 0600
-node apps/web/node_modules/next/dist/bin/next dev apps/web --hostname 127.0.0.1 --port 3300
-bun run video:prepare        # in a second shell: seed + verify the baseline
+
+# start the app FIRST: provision/prepare/auth/capture all speak HTTP
+RELAY_NEXT_DIST_DIR=.next-video node apps/web/node_modules/next/dist/bin/next dev \
+  apps/web --hostname 127.0.0.1 --port 3300
+# wait for: curl -sf http://127.0.0.1:3300/api/health
+
+bun run video:provision      # second shell, sourced again
+bun run video:prepare        # seed + verify the authored baseline
 bun run video:auth
 ```
 
@@ -79,7 +84,7 @@ Restart from a clean state only by recreating your own disposable database:
 
 ```sh
 docker exec relay-video-postgres-1 psql -U relay -d postgres \
-  -c "drop database relay_video_recording with (force)"
+  -c "drop database if exists relay_video_recording with (force)"
 docker exec relay-video-postgres-1 createdb -U relay relay_video_recording
 node packages/db/src/migrate.ts && bun run video:provision && bun run video:prepare && bun run video:auth
 ```
@@ -108,9 +113,11 @@ regenerate everything. Supplied or scratch audio deletes any stale provider
 alignment before it is used. Pronunciation overrides live in
 `narration/pronunciations.json`.
 
-Narration is currently **blocked** in this environment (no key). The proof render
-used `--scratch`, so its audio is a labelled local timing voice, not the final
-voice.
+Current state: narration is **final** (ElevenLabs, 363 words, 157.30 s programme).
+Two fallbacks exist and are always labelled:
+`--scratch` generates a macOS `say` timing voice (macOS only, never final), and
+`--audio-dir` imports supplied `S01.mp3 … S08.mp3`. To compose before any audio
+exists, pass `--allow-silence` to `video:timeline`.
 
 ## 4. Capture
 

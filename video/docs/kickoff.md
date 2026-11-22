@@ -3,11 +3,11 @@
 Three ways to start, ordered by how much is reused. Pick one, then hand the
 matching prompt to the new session.
 
-| Mode                            | Reuses                                     | Work                        | When                                 |
-| ------------------------------- | ------------------------------------------ | --------------------------- | ------------------------------------ |
-| **A. Re-record this video**     | everything                                 | recapture + render, ~10 min | app UI moved, same story             |
-| **B. New story, same pipeline** | capture/voice/render tooling, demo dataset | half day to two days        | new narrative, new scenes            |
-| **C. Separate production**      | tooling only                               | its own branch/worktree     | different product, different dataset |
+| Mode                            | Reuses                                   | Work                           | When                                 |
+| ------------------------------- | ---------------------------------------- | ------------------------------ | ------------------------------------ |
+| **A. Re-record this video**     | local caches in _this_ checkout          | recapture + render, ~10–15 min | app UI moved, same story             |
+| **B. New story, same pipeline** | tooling + demo dataset (no cached audio) | half day to two days           | new narrative, new scenes            |
+| **C. Separate production**      | tooling only                             | its own branch/worktree        | different product, different dataset |
 
 ---
 
@@ -23,7 +23,8 @@ Re-record the Volunteer Relay hackathon video in this repo.
 2. Run `bun run video:doctor`. Report blockers before changing anything.
 3. Follow the "Resume in a fresh session" block in video/docs/state.md exactly.
 4. Recapture only if generated/capture-manifest.json appCommit differs from HEAD
-   and the UI changed; otherwise reuse existing captures and re-render.
+   and the UI changed; otherwise reuse existing captures and re-render. Recapture
+   needs a fresh database (drop/create/migrate) — see docs/state.md.
 5. Finish with `bun run video:validate`, `bun run video:verify` and `bun run verify`.
    Refresh video/review/ and update the two "footage commit" rows
    (video/review/README.md and video/docs/readiness-report.md).
@@ -40,7 +41,7 @@ Re-record the Volunteer Relay hackathon video in this repo.
 ```text
 Produce a new Volunteer Relay demo video using the existing video/** pipeline.
 
-Read first: AGENTS.md, VIDEO-AGENT-PROMPT.md, video/README.md,
+Read first: AGENTS.md, video/README.md,
 video/docs/state.md, video/docs/decisions.md, video/docs/feature-audit.md,
 video/docs/improvement-backlog.md.
 
@@ -97,6 +98,10 @@ green, then a small conventional commit.
 
 ### Phase 3 — capture and iterate (~30 min per pass)
 
+`video:timeline` needs measured narration first. If the script is not final yet,
+use `bun run video:voice -- --scratch` (macOS `say`, clearly labelled, never the
+final voice) or pass `--allow-silence` to `video:timeline`.
+
 ```sh
 bun run video:prepare          # local: disposable DB + seed + baseline check
 bun run video:auth
@@ -104,6 +109,9 @@ bun run video:capture -- --fresh
 bun run video:timeline
 bun run video:proof            # 18 s excerpt, fast feedback
 ```
+
+`video:proof` excerpts the hard-coded `PROOF_SCENE` (`scripts/timeline.ts`, `S03`
+by default). If your story has no `S03`, edit that constant first.
 
 Inspect stills from the proof (`ffmpeg -ss <t> -i video/output/proof.mp4 -frames:v 1`)
 before rendering the full programme. Fix alignment/pacing here, not later.
@@ -119,14 +127,15 @@ bun run video:validate
 bun run video:verify && bun run verify
 ```
 
-Then refresh `video/review/`, update `docs/state.md` (snapshot + footage commit),
+Then refresh `video/review/` with the exact copy block in `docs/state.md`, update
+`docs/state.md` (snapshot + footage commit),
 `docs/readiness-report.md` (numbers), `review/README.md` (provenance) and commit.
 
 ---
 
 ## C. Something that diverges a lot
 
-Create `video/productions/<name>/` with its own `scenes.json`, `fixtures/`,
+Create `video/productions/NAME/` with its own `scenes.json`, `fixtures/`,
 `narration/` and `review/`, and pass the paths through the scripts (they read
 `video/scenes.json` today, so this needs a small `--scenes`/`--out-dir` argument —
 treat it as a tooling change inside `video/**`, same branch, same gates).
@@ -162,9 +171,10 @@ Mode B is cheaper.
 ```
 
 Rules enforced by the tooling: product scenes must have a capture plan and a
-registered action; scene ids are unique; minimum durations must fit inside
-`maxSeconds` (180 s); narration + 0.6 s tail must fit the scene cap; footage must be
-at least as long as its scene; the programme must stay under `maxSeconds`.
+registered action; scene ids are unique; each scene's `minSeconds` must be ≤ its own
+`maxSeconds`; narration + 0.6 s tail must fit the scene's `maxSeconds`; footage must
+be at least as long as its scene; the whole programme stays under the manifest's
+`maxSeconds` (180 s).
 
 ## Story guardrails (kept from the brief)
 
