@@ -120,6 +120,13 @@
       "when": 1794287913761,
       "tag": "0016_hot_union_jack",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795365796005,
+      "tag": "0017_blue_banshee",
+      "breakpoints": true
     }
   ]
 }

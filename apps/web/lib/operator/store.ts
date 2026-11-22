@@ -52,15 +52,24 @@ function createTransaction(execute: Executor): OperatorTransaction {
       );
     },
     async lockOrganization(organizationId) {
-      // A plain read: the row locks below are what serialize this change, and
-      // taking a shared organization lock first would invert the lock order the
-      // tenant paths and the owner trigger use.
+      // A plain read that decides whether the organization exists. It takes no
+      // lock on the row: the paths below take the transaction-scoped advisory
+      // lock keyed on the organization for ownership, and a row lock here would
+      // invert the lock order the tenant paths use.
       const found = rows(
         await execute(
           sql`select id from organization where id=${organizationId}`,
         ),
       );
       return found.length > 0;
+    },
+    async lockOwnerInvariant(organizationId) {
+      // The same key the last-owner trigger takes, in the same transaction: a
+      // zero-owner recovery and a concurrent tenant demotion must not both
+      // decide from a view that predates the other one's change.
+      await execute(
+        sql`select pg_advisory_xact_lock(hashtextextended('organization-owner:'||${organizationId},0))`,
+      );
     },
     async hasMembership({ organizationId, userId }) {
       const found = rows(

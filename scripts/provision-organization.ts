@@ -54,8 +54,13 @@ async function main() {
   if (!url) throw new Error("DATABASE_URL is required");
   const { db, close } = createDatabase(url);
   try {
-    const result = await db.transaction((tx) =>
-      provisionOrganization(
+    // The one place an organization is created is shared with the operator
+    // console, so the CLI cannot drift from it. Exit codes and messages stay
+    // exactly as documented in docs/provisioning.md. A refusal throws inside
+    // the callback, so Drizzle rolls back: a throw after the transaction
+    // resolved would commit a partial organization.
+    const provisioned = await db.transaction(async (tx) => {
+      const result = await provisionOrganization(
         tx.execute.bind(tx),
         {
           name: input.name,
@@ -64,14 +69,12 @@ async function main() {
           ownerEmail: input.email,
         },
         { correlationId: randomUUID() },
-      ),
-    );
-    // The one place an organization is created is shared with the operator
-    // console, so the CLI cannot drift from it. Exit codes and messages stay
-    // exactly as documented in docs/provisioning.md.
-    if (!result.ok) throw new Error(result.error.message);
+      );
+      if (!result.ok) throw new Error(result.error.message);
+      return result.value;
+    });
     process.stdout.write(
-      `${JSON.stringify({ organizationId: result.value.organizationId })}\n`,
+      `${JSON.stringify({ organizationId: provisioned.organizationId })}\n`,
     );
   } finally {
     await close();
