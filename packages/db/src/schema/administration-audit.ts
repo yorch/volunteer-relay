@@ -37,7 +37,7 @@ export const organizationAuditEvent = pgTable(
     ),
     check(
       "organization_audit_action_check",
-      sql`${t.action} in ('settings.update','member.role','member.remove','member.invite')`,
+      sql`${t.action} in ('settings.update','member.role','member.remove','member.invite','member.add','organization.create','organization.update')`,
     ),
   ],
 );

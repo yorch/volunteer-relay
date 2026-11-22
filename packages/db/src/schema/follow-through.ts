@@ -65,7 +65,8 @@ export const inAppNotification = pgTable(
     recipientId: text("recipient_id").notNull(),
     revision: integer("revision").notNull().default(1),
     type: text("type").notNull(),
-    needId: text("need_id").notNull(),
+    // Nullable: an ownership-change notice is not about a need.
+    needId: text("need_id"),
     title: text("title").notNull(),
     appPath: text("app_path").notNull(),
     dedupeKey: text("dedupe_key").notNull(),
@@ -77,7 +78,7 @@ export const inAppNotification = pgTable(
     unique().on(t.organizationId, t.recipientId, t.dedupeKey),
     check(
       "notification_type_check",
-      sql`${t.type} in ('need-assigned','need-overdue')`,
+      sql`${t.type} in ('need-assigned','need-overdue','ownership-changed')`,
     ),
   ],
 );

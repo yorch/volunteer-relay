@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   automationPolicySchema,
   OPERATOR_ORGANIZATION_PAGE_SIZE,
+  type OperatorAssignOwnerCommand,
   type OperatorCreateOrganizationCommand,
   type OperatorCreateOrganizationResult,
   type OperatorMemberRoleCommand,
@@ -9,12 +10,16 @@ import {
   type OperatorOrganizationList,
   type OperatorOrganizationQuery,
   type OperatorOwner,
+  type OperatorRenameOrganizationCommand,
   type OperatorRole,
+  operatorAssignOwnerCommandSchema,
   operatorCreateOrganizationCommandSchema,
   operatorMemberRoleCommandSchema,
   operatorOrganizationQuerySchema,
+  operatorRenameOrganizationCommandSchema,
   type Result,
 } from "@relay/contracts";
+import { databaseErrorConstraint } from "@relay/db";
 import type { OperatorIdentity } from "./accounts.ts";
 
 type Code =
@@ -110,6 +115,11 @@ export function decodeCursor(value: string): [string, string] | null {
 export interface OperatorAuditEntry {
   organizationId: string;
   membershipId: string;
+  action:
+    | "member.role"
+    | "member.add"
+    | "organization.create"
+    | "organization.update";
   correlationId: string;
   before: unknown;
   after: unknown;
@@ -118,35 +128,16 @@ export interface OperatorAuditEntry {
 
 /** One transactional unit of work. Implemented over SQL in `store.ts`. */
 export interface OperatorTransaction {
-  verifiedAccount(email: string): Promise<{ userId: string } | null>;
-  hasPassword(userId: string): Promise<boolean>;
-  /** Serializes same-name creation; lower(name) has no unique index. */
-  lockOrganizationName(name: string): Promise<void>;
-  organizationTaken(input: { name: string; slug: string }): Promise<boolean>;
-  insertOrganization(input: {
-    organizationId: string;
+  /** Creates the organization and its first owner through the shared helper. */
+  provision(input: {
     name: string;
     slug: string;
-  }): Promise<void>;
-  insertMembership(input: {
-    membershipId: string;
-    organizationId: string;
-    userId: string;
-    role: "owner";
-  }): Promise<void>;
-  insertSettings(input: {
-    organizationId: string;
-    settings: {
-      revision: number;
-      timezone: string;
-      automationPolicy: string;
-      policyVersion: string;
-      routing: Record<string, never>;
-      fallbackMembershipId: null;
-      ackMinutes: number;
-      retentionDays: number;
-    };
-  }): Promise<void>;
+    timezone: string;
+    ownerEmail: string;
+    correlationId: string;
+  }): Promise<
+    Result<{ organizationId: string; membershipId: string; userId: string }>
+  >;
   /** False when the organization does not exist. */
   lockOrganization(organizationId: string): Promise<boolean>;
   /** True when this user already belongs to the organization. */
@@ -154,6 +145,26 @@ export interface OperatorTransaction {
     organizationId: string;
     userId: string;
   }): Promise<boolean>;
+  /** Rename under the name lock, excluding this organization from the check. */
+  rename(input: {
+    organizationId: string;
+    name: string;
+    slug: string;
+    expectedName: string;
+    expectedSlug: string;
+  }): Promise<Result<void>>;
+  /** Verified credential account for a possible owner assignment. */
+  accessAccount(email: string): Promise<{ userId: string } | null>;
+  /** Adds an owner membership for an account outside the organization. */
+  addOwnerMembership(input: {
+    organizationId: string;
+    userId: string;
+    membershipId: string;
+  }): Promise<void>;
+  /** Forces the account to prove the mailbox again: no session, no password. */
+  revokeAccountAccess(userId: string): Promise<void>;
+  /** Current owner memberships of the organization. */
+  ownerMemberships(organizationId: string): Promise<string[]>;
   /**
    * Locks the target membership and every current owner row of the
    * organization, so the owner count a decision relies on holds until commit.
@@ -168,10 +179,22 @@ export interface OperatorTransaction {
     role: OperatorRole;
   }): Promise<void>;
   recordAudit(entry: OperatorAuditEntry): Promise<void>;
+  /** Same-transaction platform trail for a mutation. */
+  recordPlatformEvent(event: PlatformEvent): Promise<void>;
+}
+
+export interface PlatformEvent {
+  operatorUserId: string;
+  action: string;
+  targetOrganizationId: string | null;
+  query: string | null;
+  correlationId: string;
 }
 
 export interface OperatorStore {
   transaction<T>(run: (tx: OperatorTransaction) => Promise<T>): Promise<T>;
+  /** Records a read before it happens; a failure must fail the read closed. */
+  recordPlatformEvent(input: PlatformEvent): Promise<void>;
   listOrganizations(input: {
     pattern: string | null;
     after: [string, string] | null;
@@ -197,11 +220,14 @@ export interface OperatorStore {
 }
 
 export interface OperatorService {
-  list(
-    query: OperatorOrganizationQuery,
-  ): Promise<Result<OperatorOrganizationList>>;
+  list(input: {
+    query: OperatorOrganizationQuery;
+    actor: OperatorIdentity;
+    correlationId: string;
+  }): Promise<Result<OperatorOrganizationList>>;
   detail(input: {
     organizationId: string;
+    actor: OperatorIdentity;
     correlationId: string;
   }): Promise<Result<OperatorOrganizationDetail>>;
   createOrganization(input: {
@@ -209,6 +235,16 @@ export interface OperatorService {
     command: OperatorCreateOrganizationCommand;
     correlationId: string;
   }): Promise<Result<OperatorCreateOrganizationResult>>;
+  assignOwner(input: {
+    actor: OperatorIdentity;
+    command: OperatorAssignOwnerCommand;
+    correlationId: string;
+  }): Promise<Result<void>>;
+  renameOrganization(input: {
+    actor: OperatorIdentity;
+    command: OperatorRenameOrganizationCommand;
+    correlationId: string;
+  }): Promise<Result<void>>;
   setMemberRole(input: {
     actor: OperatorIdentity;
     command: OperatorMemberRoleCommand;
@@ -227,7 +263,7 @@ export function createOperatorService(
   { newId = () => randomUUID() }: { newId?: () => string } = {},
 ): OperatorService {
   return {
-    async list(query) {
+    async list({ query, actor, correlationId }) {
       const parsed = operatorOrganizationQuerySchema.safeParse(query);
       if (!parsed.success) return operatorFailure("VALIDATION", "-");
       const term = parsed.data.q?.toLowerCase();
@@ -237,6 +273,16 @@ export function createOperatorService(
       if (parsed.data.cursor && !after)
         return operatorFailure("VALIDATION", "-");
       try {
+        // A read is recorded before it happens: an operator must never see an
+        // organization without leaving a trace, so a failed record fails the
+        // read closed.
+        await store.recordPlatformEvent({
+          operatorUserId: actor.userId,
+          action: "operator.list",
+          targetOrganizationId: null,
+          query: parsed.data.q ?? null,
+          correlationId,
+        });
         const page = await store.listOrganizations({
           pattern: term ? `%${escapeLike(term)}%` : null,
           after,
@@ -259,12 +305,12 @@ export function createOperatorService(
             : null,
         });
       } catch {
-        logFailure("list", "-");
-        return operatorFailure("DEPENDENCY_UNAVAILABLE", "-");
+        logFailure("list", correlationId);
+        return operatorFailure("DEPENDENCY_UNAVAILABLE", correlationId);
       }
     },
 
-    async detail({ organizationId, correlationId }) {
+    async detail({ organizationId, actor, correlationId }) {
       if (
         typeof organizationId !== "string" ||
         organizationId.length === 0 ||
@@ -272,6 +318,13 @@ export function createOperatorService(
       )
         return operatorFailure("VALIDATION", correlationId);
       try {
+        await store.recordPlatformEvent({
+          operatorUserId: actor.userId,
+          action: "operator.detail",
+          targetOrganizationId: organizationId,
+          query: null,
+          correlationId,
+        });
         const detail = await store.getOrganization(organizationId, 200);
         return detail === null
           ? operatorFailure("NOT_FOUND", correlationId)
@@ -285,71 +338,159 @@ export function createOperatorService(
     async createOrganization({ actor, command, correlationId }) {
       const parsed = operatorCreateOrganizationCommandSchema.safeParse(command);
       if (!parsed.success) return operatorFailure("VALIDATION", correlationId);
-      const { name, slug, timezone } = parsed.data;
-      const email = parsed.data.ownerEmail.trim().toLowerCase();
-      const organizationId = newId();
-      const membershipId = newId();
-      // Kept in step with scripts/provision-organization.ts and the defaults in
-      // packages/db/src/repositories/follow-through.ts. A shared creation helper
-      // (including the advisory lock) is proposed as a B-owned follow-up in the
-      // ADR rather than duplicated silently in a second place.
-      const settings = {
-        revision: 1,
-        timezone,
-        automationPolicy: automationPolicySchema.parse("review-all"),
-        policyVersion: "1",
-        routing: {} as Record<string, never>,
-        fallbackMembershipId: null,
-        ackMinutes: 60,
-        retentionDays: 365,
-      };
       try {
         return await store.transaction(async (tx) => {
-          const account = await tx.verifiedAccount(email);
-          // One neutral refusal for "no such account", "unverified" and "no
-          // password": the operator learns nothing about the address.
-          if (!account || !(await tx.hasPassword(account.userId)))
-            return operatorFailure("VALIDATION", correlationId);
-          // A global capability must not be convertible into a tenant role:
-          // the console never makes the operator an owner of anything.
-          if (account.userId === actor.userId)
+          // Refused before the write, not after: the operator must never be the
+          // owner of anything, even for the duration of a rolled-back insert.
+          const existing = await tx.accessAccount(
+            parsed.data.ownerEmail.trim().toLowerCase(),
+          );
+          if (existing?.userId === actor.userId)
             return operatorFailure("FORBIDDEN", correlationId);
-          await tx.lockOrganizationName(name);
-          if (await tx.organizationTaken({ name, slug }))
-            return operatorFailure("CONFLICT", correlationId);
-          await tx.insertOrganization({ organizationId, name, slug });
-          await tx.insertMembership({
-            membershipId,
-            organizationId,
-            userId: account.userId,
-            role: "owner",
+          // One shared creation path with scripts/provision-organization.ts.
+          const created = await tx.provision({
+            name: parsed.data.name,
+            slug: parsed.data.slug,
+            timezone: parsed.data.timezone,
+            ownerEmail: parsed.data.ownerEmail,
+            correlationId,
           });
-          await tx.insertSettings({ organizationId, settings });
-          // The existing audit vocabulary only (no migration in this slice): the
-          // initial ownership grant, attributed to the operator, with the
-          // creation flag in `after`. A dedicated organization.create action is
-          // proposed as a B-owned follow-up in the ADR.
+          if (!created.ok) return created;
+          const { organizationId, membershipId, userId } = created.value;
+          if (userId === actor.userId)
+            return operatorFailure("FORBIDDEN", correlationId);
           await tx.recordAudit({
             organizationId,
             membershipId,
             correlationId,
+            action: "organization.create",
             before: null,
-            after: {
-              role: "owner",
-              organizationCreated: true,
-              organizationId,
-              userId: account.userId,
-            },
+            after: { name: parsed.data.name, slug: parsed.data.slug },
             actor,
+          });
+          await tx.recordAudit({
+            organizationId,
+            membershipId,
+            correlationId,
+            action: "member.add",
+            before: null,
+            after: { role: "owner", userId },
+            actor,
+          });
+          await tx.recordPlatformEvent({
+            operatorUserId: actor.userId,
+            action: "organization.create",
+            targetOrganizationId: organizationId,
+            query: null,
+            correlationId,
           });
           return ok({ organizationId });
         });
       } catch (error) {
-        // A concurrent creation with the same slug reaches the unique index
-        // rather than the advisory lock; that is a conflict, not an outage.
         if (postgresCode(error) === "23505")
           return operatorFailure("CONFLICT", correlationId);
         logFailure("createOrganization", correlationId);
+        return operatorFailure("DEPENDENCY_UNAVAILABLE", correlationId);
+      }
+    },
+
+    async assignOwner({ actor, command, correlationId }) {
+      const parsed = operatorAssignOwnerCommandSchema.safeParse(command);
+      if (!parsed.success) return operatorFailure("VALIDATION", correlationId);
+      const email = parsed.data.email.trim().toLowerCase();
+      try {
+        return await store.transaction(async (tx) => {
+          const { organizationId } = parsed.data;
+          if (!(await tx.lockOrganization(organizationId)))
+            return operatorFailure("NOT_FOUND", correlationId);
+          if (await tx.hasMembership({ organizationId, userId: actor.userId }))
+            return operatorFailure("FORBIDDEN", correlationId);
+          // Recovery only: an organization that still has an owner goes through
+          // ordinary ownership changes, which notify and conflict on staleness.
+          if ((await tx.ownerMemberships(organizationId)).length > 0)
+            return operatorFailure("CONFLICT", correlationId);
+          const account = await tx.accessAccount(email);
+          if (!account) return operatorFailure("VALIDATION", correlationId);
+          if (account.userId === actor.userId)
+            return operatorFailure("FORBIDDEN", correlationId);
+          const membershipId = newId();
+          await tx.addOwnerMembership({
+            organizationId,
+            userId: account.userId,
+            membershipId,
+          });
+          // The account may have been registered by someone else while the
+          // address was unverified: verification alone does not rotate a
+          // password or end sessions. Nothing signs in again without the
+          // mailbox.
+          await tx.revokeAccountAccess(account.userId);
+          await tx.recordAudit({
+            organizationId,
+            membershipId,
+            correlationId,
+            action: "member.add",
+            before: null,
+            after: { role: "owner", userId: account.userId, recovery: true },
+            actor,
+          });
+          await tx.recordPlatformEvent({
+            operatorUserId: actor.userId,
+            action: "member.add",
+            targetOrganizationId: organizationId,
+            query: null,
+            correlationId,
+          });
+          return ok(undefined);
+        });
+      } catch (error) {
+        if (postgresCode(error) === "23505")
+          return operatorFailure("CONFLICT", correlationId);
+        logFailure("assignOwner", correlationId);
+        return operatorFailure("DEPENDENCY_UNAVAILABLE", correlationId);
+      }
+    },
+
+    async renameOrganization({ actor, command, correlationId }) {
+      const parsed = operatorRenameOrganizationCommandSchema.safeParse(command);
+      if (!parsed.success) return operatorFailure("VALIDATION", correlationId);
+      try {
+        return await store.transaction(async (tx) => {
+          const { organizationId } = parsed.data;
+          if (await tx.hasMembership({ organizationId, userId: actor.userId }))
+            return operatorFailure("FORBIDDEN", correlationId);
+          const renamed = await tx.rename({
+            organizationId,
+            name: parsed.data.name,
+            slug: parsed.data.slug,
+            expectedName: parsed.data.expectedName,
+            expectedSlug: parsed.data.expectedSlug,
+          });
+          if (!renamed.ok) return renamed;
+          await tx.recordAudit({
+            organizationId,
+            membershipId: organizationId,
+            correlationId,
+            action: "organization.update",
+            before: {
+              name: parsed.data.expectedName,
+              slug: parsed.data.expectedSlug,
+            },
+            after: { name: parsed.data.name, slug: parsed.data.slug },
+            actor,
+          });
+          await tx.recordPlatformEvent({
+            operatorUserId: actor.userId,
+            action: "organization.update",
+            targetOrganizationId: organizationId,
+            query: null,
+            correlationId,
+          });
+          return ok(undefined);
+        });
+      } catch (error) {
+        if (postgresCode(error) === "23505")
+          return operatorFailure("CONFLICT", correlationId);
+        logFailure("renameOrganization", correlationId);
         return operatorFailure("DEPENDENCY_UNAVAILABLE", correlationId);
       }
     },
@@ -396,13 +537,25 @@ export function createOperatorService(
             organizationId,
             membershipId,
             correlationId,
+            action: "member.role",
             before: { role: target.role },
             after: { role },
             actor,
           });
+          await tx.recordPlatformEvent({
+            operatorUserId: actor.userId,
+            action: "member.role",
+            targetOrganizationId: organizationId,
+            query: null,
+            correlationId,
+          });
           return ok(undefined);
         });
-      } catch {
+      } catch (error) {
+        // The database invariant is the backstop for this path; surface it as a
+        // conflict so an operator is told to refresh rather than to retry later.
+        if (databaseErrorConstraint(error) === "organization_last_owner_check")
+          return operatorFailure("CONFLICT", correlationId);
         logFailure("setMemberRole", correlationId);
         return operatorFailure("DEPENDENCY_UNAVAILABLE", correlationId);
       }

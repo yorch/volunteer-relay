@@ -3,7 +3,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { OperatorStore } from "../../../apps/web/lib/operator/service.ts";
 import { createOperatorService } from "../../../apps/web/lib/operator/service.ts";
 import { createOperatorStore } from "../../../apps/web/lib/operator/store.ts";
-import { type Database, sql } from "../../../packages/db/src/index.ts";
+import {
+  type Database,
+  databaseErrorCode,
+  databaseErrorConstraint,
+  sql,
+} from "../../../packages/db/src/index.ts";
 import { openTestDatabase, resetAuthTables } from "../auth/support.ts";
 
 // Real-Postgres acceptance for the operator console. Placed in the auth
@@ -28,7 +33,7 @@ afterAll(async () => {
 async function reset() {
   await resetAuthTables(db);
   await db.execute(
-    sql`truncate table "organization_settings", "organization_audit_event" cascade`,
+    sql`truncate table "organization_settings", "organization_audit_event", "platform_audit_event" cascade`,
   );
 }
 
@@ -68,7 +73,7 @@ async function counts(organizationId: string) {
     sql`select role,count(*)::int as total from member where organization_id=${organizationId} group by role`,
   );
   const audit = await db.execute(
-    sql`select action,phase,actor,before,after from organization_audit_event where organization_id=${organizationId}`,
+    sql`select action,phase,actor,before,after from organization_audit_event where organization_id=${organizationId} order by action,phase`,
   );
   return {
     owners:
@@ -96,14 +101,24 @@ describe("operator console against PostgreSQL", () => {
     if (!result.ok) return;
     const { audit, owners } = await counts(result.value.organizationId);
     expect(owners).toBe(1);
-    expect(audit).toHaveLength(1);
+    // Creation and the first ownership grant are separate audit facts.
+    expect(audit).toHaveLength(2);
     expect(audit[0]).toMatchObject({
-      action: "member.role",
+      action: "member.add",
       phase: "applied",
       actor: { kind: "operator", userId: operator.userId },
       before: null,
     });
-    expect(audit[0]?.after).toMatchObject({ organizationCreated: true });
+    expect(audit[0]?.after).toMatchObject({ role: "owner" });
+    expect(audit[1]).toMatchObject({
+      action: "organization.create",
+      phase: "applied",
+      before: null,
+    });
+    expect(audit[1]?.after).toMatchObject({
+      name: "Synthetic Tidepath",
+      slug: "synthetic-tidepath",
+    });
     const settings = await db.execute(
       sql`select timezone,automation_policy from organization_settings where organization_id=${result.value.organizationId}`,
     );
@@ -289,6 +304,7 @@ describe("operator console against PostgreSQL", () => {
 
     const detail = await service.detail({
       organizationId,
+      actor: operator,
       correlationId: "c",
     });
     expect(detail.ok).toBe(true);
@@ -299,11 +315,207 @@ describe("operator console against PostgreSQL", () => {
     );
     expect(JSON.stringify(detail.value)).not.toContain("only@example.invalid");
 
-    const list = await service.list({});
+    const list = await service.list({
+      query: {},
+      actor: operator,
+      correlationId: "c",
+    });
     expect(list.ok).toBe(true);
     if (!list.ok) return;
     expect(list.value.organizations[0]?.organizationId).toBe(organizationId);
     // The domain is kept on purpose; the mailbox is not.
     expect(JSON.stringify(list.value)).not.toContain("only@example.invalid");
+  });
+});
+
+describe("last-owner invariant across every path", () => {
+  it("refuses a tenant-path demotion that would leave zero owners", async () => {
+    await reset();
+    const only = await account("only@example.invalid");
+    const organizationId = await organization("Solo Owner", "solo-owner", [
+      only,
+    ]);
+    // The tenant path writes member rows directly through Better Auth; the
+    // database trigger is the only thing that can stop it, and it must name the
+    // constraint so the caller can answer CONFLICT rather than 503.
+    const failure = await db
+      .execute(
+        sql`update member set role='coordinator' where organization_id=${organizationId} and user_id=${only}`,
+      )
+      .then(() => null)
+      .catch((error: unknown) => error);
+    expect(failure).not.toBeNull();
+    expect(databaseErrorCode(failure)).toBe("23514");
+    expect(databaseErrorConstraint(failure)).toBe(
+      "organization_last_owner_check",
+    );
+    expect((await counts(organizationId)).owners).toBe(1);
+  });
+
+  it("lets an operator demote one of two owners, and the trigger blocks the second", async () => {
+    await reset();
+    const first = await account("first@example.invalid");
+    const second = await account("second@example.invalid");
+    const organizationId = await organization("Two Owners", "two-owners", [
+      first,
+      second,
+    ]);
+    const target = (
+      await db.execute(
+        sql`select id from member where organization_id=${organizationId} and user_id=${second}`,
+      )
+    ).rows[0]?.id as string;
+    const service = createOperatorService(store, { newId: randomUUID });
+    const demoted = await service.setMemberRole({
+      actor: operator,
+      correlationId: "c",
+      command: {
+        organizationId,
+        membershipId: target,
+        role: "coordinator",
+        expectedRole: "owner",
+      },
+    });
+    expect(demoted.ok).toBe(true);
+    // Now the tenant path tries to demote the remaining owner directly.
+    const failure = await db
+      .execute(
+        sql`update member set role='coordinator' where organization_id=${organizationId}`,
+      )
+      .then(() => null)
+      .catch((error: unknown) => error);
+    expect(failure).not.toBeNull();
+    expect((await counts(organizationId)).owners).toBe(1);
+  });
+});
+
+describe("operator recovery, rename and platform trail", () => {
+  it("recovers a zero-owner organization by revoking the account's access", async () => {
+    await reset();
+    const stuck = await account("stuck@example.invalid");
+    const organizationId = await organization("Stuck Org", "stuck-org", []);
+    await db.execute(
+      sql`insert into session(id,expires_at,token,created_at,updated_at,user_id) values (${randomUUID()},now() + interval '1 day',${randomUUID()},now(),now(),${stuck})`,
+    );
+    const service = createOperatorService(store, { newId: randomUUID });
+    const assigned = await service.assignOwner({
+      actor: operator,
+      correlationId: "c",
+      command: { organizationId, email: "stuck@example.invalid" },
+    });
+    expect(assigned.ok).toBe(true);
+    const sessions = await db.execute(
+      sql`select id from session where user_id=${stuck}`,
+    );
+    expect(sessions.rows).toHaveLength(0);
+    const credential = await db.execute(
+      sql`select password from account where user_id=${stuck} and provider_id='credential'`,
+    );
+    expect(credential.rows[0]?.password).toBeNull();
+    const { audit, owners } = await counts(organizationId);
+    expect(owners).toBe(1);
+    expect(audit[0]).toMatchObject({ action: "member.add", phase: "applied" });
+
+    // A second assignment is refused: the organization has an owner again.
+    const again = await service.assignOwner({
+      actor: operator,
+      correlationId: "c",
+      command: { organizationId, email: "stuck@example.invalid" },
+    });
+    expect(again.ok).toBe(false);
+    if (!again.ok) expect(again.error.code).toBe("CONFLICT");
+  });
+
+  it("renews a name and slug, conflicts on a stale view, and records both audits", async () => {
+    await reset();
+    const ownerId = await account("owner@example.invalid");
+    const organizationId = await organization("Old Name", "old-name", [
+      ownerId,
+    ]);
+    const service = createOperatorService(store, { newId: randomUUID });
+    const renamed = await service.renameOrganization({
+      actor: operator,
+      correlationId: "c",
+      command: {
+        organizationId,
+        name: "New Name",
+        slug: "new-name",
+        expectedName: "Old Name",
+        expectedSlug: "old-name",
+      },
+    });
+    expect(renamed.ok).toBe(true);
+    const stale = await service.renameOrganization({
+      actor: operator,
+      correlationId: "c",
+      command: {
+        organizationId,
+        name: "Third Name",
+        slug: "third-name",
+        expectedName: "Old Name",
+        expectedSlug: "old-name",
+      },
+    });
+    expect(stale.ok).toBe(false);
+    if (!stale.ok) expect(stale.error.code).toBe("CONFLICT");
+    const row = await db.execute(
+      sql`select name,slug from organization where id=${organizationId}`,
+    );
+    expect(row.rows[0]).toMatchObject({ name: "New Name", slug: "new-name" });
+    const { audit } = await counts(organizationId);
+    expect(audit[0]).toMatchObject({
+      action: "organization.update",
+      phase: "applied",
+    });
+  });
+
+  it("records every operator read in the platform trail and fails closed", async () => {
+    await reset();
+    const ownerId = await account("owner@example.invalid");
+    const organizationId = await organization("Trace Org", "trace-org", [
+      ownerId,
+    ]);
+    const service = createOperatorService(store, { newId: randomUUID });
+    expect(
+      (
+        await service.list({
+          query: { q: "trace" },
+          actor: operator,
+          correlationId: "corr-1",
+        })
+      ).ok,
+    ).toBe(true);
+    expect(
+      (
+        await service.detail({
+          organizationId,
+          actor: operator,
+          correlationId: "corr-2",
+        })
+      ).ok,
+    ).toBe(true);
+    const trail = await db.execute(
+      sql`select action,target_organization_id,query,correlation_id from platform_audit_event order by occurred_at`,
+    );
+    expect(trail.rows).toEqual([
+      {
+        action: "operator.list",
+        target_organization_id: null,
+        query: "trace",
+        correlation_id: "corr-1",
+      },
+      {
+        action: "operator.detail",
+        target_organization_id: organizationId,
+        query: null,
+        correlation_id: "corr-2",
+      },
+    ]);
+    // The trail is append-only.
+    const tamper = await db
+      .execute(sql`update platform_audit_event set action='operator.list'`)
+      .then(() => null)
+      .catch((error: unknown) => error);
+    expect(tamper).not.toBeNull();
   });
 });

@@ -242,6 +242,12 @@ export function createAuth({
         // not merely declared, and the library also enforces recipient/expiry/
         // single-use. Out-of-contract roles are rejected by the roles map below.
         requireEmailVerificationOnInvitation: true,
+        // Organizations are created by provisioning or the platform operator
+        // console, never by a signed-in user; deletion has no supported path yet
+        // (the audit and ledger rows are not disposable). Keeping both off means
+        // an unreachable library endpoint cannot bypass those rules.
+        allowUserToCreateOrganization: false,
+        disableOrganizationDeletion: true,
         invitationExpiresIn: policy.invitationExpiresInSec,
         ...(sendInvitationEmail ? { sendInvitationEmail } : {}),
       }),

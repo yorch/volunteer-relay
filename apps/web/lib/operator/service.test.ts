@@ -3,6 +3,7 @@ import type {
   OperatorAuditEntry,
   OperatorStore,
   OperatorTransaction,
+  PlatformEvent,
 } from "./service.ts";
 import {
   createOperatorService,
@@ -24,6 +25,8 @@ interface State {
   }[];
   accounts: { email: string; userId: string; password: boolean }[];
   audits: OperatorAuditEntry[];
+  platform: PlatformEvent[];
+  revoked: string[];
   failNext: boolean;
 }
 
@@ -31,6 +34,8 @@ function fakeStore(seed: Partial<State> = {}) {
   const state: State = {
     accounts: seed.accounts ?? [],
     audits: seed.audits ?? [],
+    platform: seed.platform ?? [],
+    revoked: seed.revoked ?? [],
     failNext: seed.failNext ?? false,
     // Cloned so one test's role change cannot leak into the next fixture.
     organizations: (seed.organizations ?? []).map((row) => ({
@@ -42,38 +47,50 @@ function fakeStore(seed: Partial<State> = {}) {
     state.audits.push(entry);
   };
   const tx: OperatorTransaction = {
-    async verifiedAccount(email) {
-      const found = state.accounts.find(
-        (account) => account.email === email.toLowerCase(),
+    async provision(input) {
+      if (
+        state.organizations.some(
+          (organization) =>
+            organization.slug === input.slug ||
+            organization.name.toLowerCase() === input.name.toLowerCase(),
+        )
+      )
+        return {
+          ok: false,
+          error: {
+            code: "CONFLICT",
+            message: "Organization name or slug already exists",
+            correlationId: input.correlationId,
+            retryable: false,
+          },
+        };
+      const account = state.accounts.find(
+        (row) => row.email === input.ownerEmail.toLowerCase(),
       );
-      return found ? { userId: found.userId } : null;
-    },
-    async hasPassword(userId) {
-      return state.accounts.find((a) => a.userId === userId)?.password === true;
-    },
-    async lockOrganizationName() {},
-    async organizationTaken({ name, slug }) {
-      return state.organizations.some(
-        (organization) =>
-          organization.slug === slug ||
-          organization.name.toLowerCase() === name.toLowerCase(),
-      );
-    },
-    async insertOrganization({ organizationId, name, slug }) {
+      if (!account || !account.password)
+        return {
+          ok: false,
+          error: {
+            code: "VALIDATION",
+            message: "A verified credential account is required",
+            correlationId: input.correlationId,
+            retryable: false,
+          },
+        };
+      const organizationId = `org-${state.organizations.length + 1}`;
+      const membershipId = `member-new-${state.organizations.length + 1}`;
       state.organizations.push({
         organizationId,
-        name,
-        slug,
+        name: input.name,
+        slug: input.slug,
         createdAt: "2026-01-01T00:00:00.000Z",
-        members: [],
+        members: [{ membershipId, userId: account.userId, role: "owner" }],
       });
+      return {
+        ok: true,
+        value: { organizationId, membershipId, userId: account.userId },
+      };
     },
-    async insertMembership({ membershipId, organizationId, userId, role }) {
-      state.organizations
-        .find((organization) => organization.organizationId === organizationId)
-        ?.members.push({ membershipId, userId, role });
-    },
-    async insertSettings() {},
     async lockOrganization(organizationId) {
       return state.organizations.some(
         (organization) => organization.organizationId === organizationId,
@@ -86,6 +103,71 @@ function fakeStore(seed: Partial<State> = {}) {
             (organization) => organization.organizationId === organizationId,
           )
           ?.members.some((member) => member.userId === userId) === true
+      );
+    },
+    async rename({ organizationId, name, slug, expectedName, expectedSlug }) {
+      const organization = state.organizations.find(
+        (row) => row.organizationId === organizationId,
+      );
+      const conflict = () => ({
+        ok: false as const,
+        error: {
+          code: "CONFLICT" as const,
+          message: "The record changed. Refresh and try again",
+          correlationId: "-",
+          retryable: false,
+        },
+      });
+      if (!organization)
+        return {
+          ok: false,
+          error: {
+            code: "NOT_FOUND",
+            message: "Resource was not found",
+            correlationId: "-",
+            retryable: false,
+          },
+        };
+      if (
+        organization.name !== expectedName ||
+        organization.slug !== expectedSlug
+      )
+        return conflict();
+      if (
+        state.organizations.some(
+          (row) =>
+            row.organizationId !== organizationId &&
+            (row.slug === slug ||
+              row.name.toLowerCase() === name.toLowerCase()),
+        )
+      )
+        return conflict();
+      organization.name = name;
+      organization.slug = slug;
+      return { ok: true, value: undefined };
+    },
+    async accessAccount(email) {
+      const account = state.accounts.find(
+        (row) => row.email === email.toLowerCase(),
+      );
+      return account ? { userId: account.userId } : null;
+    },
+    async addOwnerMembership({ organizationId, userId, membershipId }) {
+      state.organizations
+        .find((organization) => organization.organizationId === organizationId)
+        ?.members.push({ membershipId, userId, role: "owner" });
+    },
+    async revokeAccountAccess(userId) {
+      state.revoked.push(userId);
+    },
+    async ownerMemberships(organizationId) {
+      return (
+        state.organizations
+          .find(
+            (organization) => organization.organizationId === organizationId,
+          )
+          ?.members.filter((member) => member.role === "owner")
+          .map((member) => member.membershipId) ?? []
       );
     },
     async lockMemberRows({ organizationId }) {
@@ -103,11 +185,18 @@ function fakeStore(seed: Partial<State> = {}) {
       if (member) member.role = role;
     },
     recordAudit: audit,
+    async recordPlatformEvent(event) {
+      state.platform.push(event);
+    },
   };
   const store: OperatorStore = {
     async transaction(run) {
       if (state.failNext) throw new Error("unavailable");
       return run(tx);
+    },
+    async recordPlatformEvent(event) {
+      if (state.failNext) throw new Error("unavailable");
+      state.platform.push(event);
     },
     async listOrganizations({ pattern, after, limit }) {
       const all = state.organizations
@@ -229,7 +318,11 @@ describe("operator service reads", () => {
       { q: "50%" },
       { cursor: "not a cursor" },
     ]) {
-      const result = await service.list(query as never);
+      const result = await service.list({
+        query: query as never,
+        actor,
+        correlationId: "c",
+      });
       expect(result.ok).toBe(false);
       if (!result.ok) expect(result.error.code).toBe("VALIDATION");
     }
@@ -237,7 +330,7 @@ describe("operator service reads", () => {
 
   it("reports truncation from the owner count, not from the returned rows", async () => {
     const { service } = fakeStore({ organizations: [organization] });
-    const result = await service.list({});
+    const result = await service.list({ query: {}, actor, correlationId: "c" });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.organizations).toHaveLength(1);
@@ -252,12 +345,16 @@ describe("operator service reads", () => {
       name: `Organization ${String(index).padStart(3, "0")}`,
     }));
     const { service } = fakeStore({ organizations: many });
-    const first = await service.list({});
+    const first = await service.list({ query: {}, actor, correlationId: "c" });
     expect(first.ok).toBe(true);
     if (!first.ok) return;
     expect(first.value.organizations).toHaveLength(50);
     expect(first.value.nextCursor).not.toBeNull();
-    const second = await service.list({ cursor: first.value.nextCursor ?? "" });
+    const second = await service.list({
+      query: { cursor: first.value.nextCursor ?? "" },
+      actor,
+      correlationId: "c",
+    });
     expect(second.ok).toBe(true);
     if (!second.ok) return;
     expect(second.value.organizations).toHaveLength(10);
@@ -268,12 +365,14 @@ describe("operator service reads", () => {
     const { service } = fakeStore({ organizations: [organization] });
     const missing = await service.detail({
       organizationId: "org-missing",
+      actor,
       correlationId: "c",
     });
     expect(missing.ok).toBe(false);
     if (!missing.ok) expect(missing.error.code).toBe("NOT_FOUND");
     const invalid = await service.detail({
       organizationId: "x".repeat(129),
+      actor,
       correlationId: "c",
     });
     expect(invalid.ok).toBe(false);
@@ -508,12 +607,18 @@ describe("operator organization creation", () => {
     expect(state.organizations[0]?.members).toEqual([
       expect.objectContaining({ userId: "user-9", role: "owner" }),
     ]);
+    expect(state.audits).toHaveLength(2);
+    expect(state.audits[0]?.action).toBe("organization.create");
     expect(state.audits[0]?.after).toMatchObject({
+      name: "Harbor Collective",
+      slug: "harbor-collective",
+    });
+    expect(state.audits[1]?.action).toBe("member.add");
+    expect(state.audits[1]?.after).toMatchObject({
       role: "owner",
-      organizationCreated: true,
       userId: "user-9",
     });
-    expect(state.audits[0]?.correlationId).toBe("corr-create");
+    expect(state.audits[1]?.correlationId).toBe("corr-create");
   });
 
   it("refuses an unknown, unverified or passwordless account with one neutral error", async () => {
