@@ -28,6 +28,13 @@ interface State {
   platform: PlatformEvent[];
   revoked: string[];
   failNext: boolean;
+  failTrail: boolean;
+  /** Set when the transaction callback threw, as the real adapter rolls back. */
+  rolledBack: boolean;
+  /** Order of ownership decisions, to prove the lock comes before the count. */
+  order: string[];
+  /** Hides the account from the pre-write check only, simulating a race. */
+  hideAccountFromPrecheck: boolean;
 }
 
 function fakeStore(seed: Partial<State> = {}) {
@@ -37,6 +44,10 @@ function fakeStore(seed: Partial<State> = {}) {
     platform: seed.platform ?? [],
     revoked: seed.revoked ?? [],
     failNext: seed.failNext ?? false,
+    failTrail: seed.failTrail ?? false,
+    rolledBack: seed.rolledBack ?? false,
+    order: seed.order ?? [],
+    hideAccountFromPrecheck: seed.hideAccountFromPrecheck ?? false,
     // Cloned so one test's role change cannot leak into the next fixture.
     organizations: (seed.organizations ?? []).map((row) => ({
       ...row,
@@ -96,6 +107,9 @@ function fakeStore(seed: Partial<State> = {}) {
         (organization) => organization.organizationId === organizationId,
       );
     },
+    async lockOwnerInvariant(organizationId) {
+      state.order.push(`owner-lock:${organizationId}`);
+    },
     async hasMembership({ organizationId, userId }) {
       return (
         state.organizations
@@ -147,6 +161,10 @@ function fakeStore(seed: Partial<State> = {}) {
       return { ok: true, value: undefined };
     },
     async accessAccount(email) {
+      if (state.hideAccountFromPrecheck) {
+        state.hideAccountFromPrecheck = false;
+        return null;
+      }
       const account = state.accounts.find(
         (row) => row.email === email.toLowerCase(),
       );
@@ -161,6 +179,7 @@ function fakeStore(seed: Partial<State> = {}) {
       state.revoked.push(userId);
     },
     async ownerMemberships(organizationId) {
+      state.order.push(`owner-count:${organizationId}`);
       return (
         state.organizations
           .find(
@@ -192,10 +211,17 @@ function fakeStore(seed: Partial<State> = {}) {
   const store: OperatorStore = {
     async transaction(run) {
       if (state.failNext) throw new Error("unavailable");
-      return run(tx);
+      try {
+        return await run(tx);
+      } catch (error) {
+        // The real adapter rolls back when the callback throws; a returned
+        // Result commits, which is what S3 was about.
+        state.rolledBack = true;
+        throw error;
+      }
     },
     async recordPlatformEvent(event) {
-      if (state.failNext) throw new Error("unavailable");
+      if (state.failNext || state.failTrail) throw new Error("unavailable");
       state.platform.push(event);
     },
     async listOrganizations({ pattern, after, limit }) {
@@ -735,5 +761,159 @@ describe("operator cursor helpers", () => {
 
   it("escapes LIKE metacharacters", () => {
     expect(escapeLike("100%_a\\b")).toBe("100\\%\\_a\\\\b");
+  });
+});
+
+describe("operator ownership serialization and write refusals", () => {
+  // A valid organization that has lost every owner: the only state in which
+  // zero-owner recovery and a promotion are both considered.
+  const withoutOwners = {
+    ...organization,
+    members: [coordinator, volunteer],
+  };
+
+  it("takes the last-owner advisory lock before counting owners", async () => {
+    const { service, state } = fakeStore({
+      accounts: [
+        { email: "new@example.org", userId: "user-9", password: true },
+      ],
+      organizations: [withoutOwners],
+    });
+    const result = await service.assignOwner({
+      actor,
+      correlationId: "c",
+      command: { organizationId: "org-1", email: "new@example.org" },
+    });
+    expect(result.ok).toBe(true);
+    // Without the lock the only entry would be the count: two recoveries could
+    // both see zero owners and both assign one.
+    expect(state.order).toEqual(["owner-lock:org-1", "owner-count:org-1"]);
+    expect(state.revoked).toEqual(["user-9"]);
+  });
+
+  it("refuses a promotion in a zero-owner organization and records the refusal", async () => {
+    const { service, state } = fakeStore({ organizations: [withoutOwners] });
+    const result = await service.setMemberRole({
+      actor,
+      correlationId: "c-promote",
+      command: {
+        organizationId: "org-1",
+        membershipId: "member-1",
+        role: "owner",
+        expectedRole: "coordinator",
+      },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("FORBIDDEN");
+    expect(
+      state.organizations[0]?.members.find((m) => m.membershipId === "member-1")
+        ?.role,
+    ).toBe("coordinator");
+    expect(state.audits).toHaveLength(0);
+    expect(state.platform).toEqual([
+      {
+        operatorUserId: "operator-1",
+        action: "member.role.refused",
+        targetOrganizationId: "org-1",
+        query: null,
+        correlationId: "c-promote",
+      },
+    ]);
+  });
+
+  it("rolls a creation back when the new account turns out to be the operator's", async () => {
+    const { service, state } = fakeStore({
+      accounts: [
+        {
+          email: "operator@example.org",
+          userId: "operator-1",
+          password: true,
+        },
+      ],
+      // The pre-write check misses the account, as a verification race can;
+      // the post-write backstop must then throw so Drizzle rolls back.
+      hideAccountFromPrecheck: true,
+    });
+    const result = await service.createOrganization({
+      actor,
+      correlationId: "c-race",
+      command: {
+        name: "Harbor Collective",
+        slug: "harbor-collective",
+        timezone: "America/New_York",
+        ownerEmail: "operator@example.org",
+      },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("FORBIDDEN");
+    expect(state.rolledBack).toBe(true);
+    expect(state.audits).toHaveLength(0);
+    expect(state.platform.map((event) => event.action)).toEqual([
+      "organization.create.refused",
+    ]);
+  });
+
+  it("records refused writes without the submitted address", async () => {
+    const { service, state } = fakeStore({ organizations: [withoutOwners] });
+    const unknownOwner = await service.assignOwner({
+      actor,
+      correlationId: "c-assign",
+      command: { organizationId: "org-1", email: "stranger@example.org" },
+    });
+    expect(unknownOwner.ok).toBe(false);
+    if (!unknownOwner.ok) expect(unknownOwner.error.code).toBe("VALIDATION");
+    const unknownCreator = await service.createOrganization({
+      actor,
+      correlationId: "c-create",
+      command: {
+        name: "Harbor Collective",
+        slug: "harbor-collective",
+        timezone: "UTC",
+        ownerEmail: "stranger@example.org",
+      },
+    });
+    expect(unknownCreator.ok).toBe(false);
+    expect(state.platform).toEqual([
+      {
+        operatorUserId: "operator-1",
+        action: "member.add.refused",
+        targetOrganizationId: "org-1",
+        query: null,
+        correlationId: "c-assign",
+      },
+      {
+        operatorUserId: "operator-1",
+        action: "organization.create.refused",
+        targetOrganizationId: null,
+        query: null,
+        correlationId: "c-create",
+      },
+    ]);
+    expect(JSON.stringify(state.platform)).not.toContain("@");
+  });
+
+  it("keeps a refusal when the refusal itself cannot be recorded", async () => {
+    const { service, state } = fakeStore({
+      organizations: [withoutOwners],
+      failTrail: true,
+    });
+    const result = await service.setMemberRole({
+      actor,
+      correlationId: "c",
+      command: {
+        organizationId: "org-1",
+        membershipId: "member-1",
+        role: "owner",
+        expectedRole: "coordinator",
+      },
+    });
+    // The write was refused before any change, so a trail outage must not
+    // report it as an outage — the operator is not told to retry.
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("FORBIDDEN");
+      expect(result.error.retryable).toBe(false);
+    }
+    expect(state.platform).toHaveLength(0);
   });
 });
