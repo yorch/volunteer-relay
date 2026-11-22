@@ -61,4 +61,5 @@ The render path normalises narration to −16 LUFS per scene, limits true peaks 
 adds sparse UI click/confirm accents tied to real action markers. Spotlights are enabled only on page-level headings, which sit outside every
 scrolling pane; inner-element boxes drift in this workspace, so they are not
 annotated. The footage shows real cursor movement, clicks and typing, and S04
-ends by opening the visit's original evidence. The programme is 157.30 s, under the 180 s limit.
+ends by opening the visit's original evidence. The programme is 157.30 s, under the 180 s limit. The close now carries the
+live demo URL plus a QR code; S05 has a composed "no double counting" card.

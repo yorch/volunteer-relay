@@ -54,6 +54,17 @@ export const annotationSchema = z
   .strict();
 export type Annotation = z.infer<typeof annotationSchema>;
 
+/** Composed information card (not tied to any DOM element). */
+export const cardSchema = z
+  .object({
+    title: z.string().min(1).max(60),
+    lines: z.array(z.string().min(1).max(80)).min(1).max(4),
+    atSeconds: z.number().finite().nonnegative(),
+    holdSeconds: durationSeconds,
+  })
+  .strict();
+export type Card = z.infer<typeof cardSchema>;
+
 export const capturePlanSchema = z
   .object({
     /** Stable checkpoint id proved by an application-state assertion. */
@@ -80,6 +91,9 @@ export const sceneSchema = z
     capture: capturePlanSchema.nullable(),
     overlays: z.array(overlaySchema).max(6),
     annotations: z.array(annotationSchema).max(4).default([]),
+    cards: z.array(cardSchema).max(2).default([]),
+    /** Short black dip at scene start, used to separate acts. */
+    dipToBlack: z.boolean().default(false),
     focus: z.array(focusSchema).max(4),
     minSeconds: durationSeconds,
     maxSeconds: durationSeconds,

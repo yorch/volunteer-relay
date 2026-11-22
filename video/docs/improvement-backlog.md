@@ -9,12 +9,12 @@ Current baseline for comparison: 157.30 s, product visible at **17.2 s**,
 
 ## Tier 1 — cheap, no recapture
 
-### B1. End card that converts
+### B1. End card that converts — **done**
 
 Show the live app (`volunteer-relay.brnby.com`) next to the repository URL, plus a
 QR code and the MIT line. Today S08 shows only the repo. ~30 min, composition-only.
 
-### B2. Quantify the duplicate beat
+### B2. Quantify the duplicate beat — **done**
 
 A 2 s composed card on the S05 beat: `2 messages → 1 visit → 0 double counting`.
 It is the most judge-legible claim in the story and it is literally true of the
@@ -25,7 +25,7 @@ implementation (`duplicate-contribution` constraint). ~1 h.
 4 s card after S07: `unknown stays unknown` · `pending never counts as approved` ·
 `every number keeps its source`. Optionally 1.5 s of the History page. ~1 h.
 
-### B4. Craft pass
+### B4. Craft pass — **done**
 
 - top/bottom gradient scrim + 1–2 % grain to unify graphics with footage;
 - captions ~10 % smaller on the scrim;
